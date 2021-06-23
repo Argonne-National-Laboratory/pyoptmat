@@ -1,0 +1,4 @@
+*.nc filter=lfs diff=lfs merge=lfs -text
+examples/a617/a617-dataset/A617_data.nc filter=lfs diff=lfs merge=lfs -text
+examples/synthetic/tension/*.nc filter=lfs diff=lfs merge=lfs -text
+examples/synthetic/creep-fatigue/*.nc filter=lfs diff=lfs merge=lfs -text

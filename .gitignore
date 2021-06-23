@@ -1,0 +1,16 @@
+*.ipynb_checkpoints
+*.pyc
+*.swp
+*~
+*.png
+learning
+*.pickle
+*.pt
+examples/final_examples/a617-950-deterministic/loss-history.txt
+*.pdf
+*.lyx
+**/loss-history.txt
+*.prof
+**/#*.lyx#
+nohup.out
+examples/a617
