@@ -26,18 +26,18 @@ class IsotropicHardeningModel(HardeningModel):
 class VoceIsotropicHardeningModel(IsotropicHardeningModel):
   """
     Voce isotropic hardening, defined by
+    
+    .. math::
 
-    $\sigma_{iso} = h$
+      \\sigma_{iso} = h
 
-    $\dot{h} = d * (R - h) * |\dot{\vapresilon}_{in}|$
+      \\dot{h} = d (R - h) \\left|\\dot{\\varepsilon}_{in}\\right|
 
-    Parameters:
-      R:        saturated increase/decrease in flow stress
-      d:        parameter controlling the rate of saturation
-
-    Additional Parameters:
-      R_scale:  scaling function for R
-      d_scale:  scaling function for d
+    Args:
+      R:                    saturated increase/decrease in flow stress
+      d:                    parameter controlling the rate of saturation
+      R_scale (optional):   scaling function for R
+      d_scale (optional):   scaling function for d
   """
   def __init__(self, R, d, R_scale = lambda x: x, 
       d_scale = lambda x: x):
@@ -61,7 +61,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
       Map from the vector of internal variables to the isotropic hardening
       value
 
-      Parameters:
+      Args:
         h:      the vector of internal variables for this model
     """
     return h[:,0]
@@ -70,7 +70,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
     """
       Derivative of the map with respect to the internal variables
 
-      Parameters:
+      Args:
         h:      the vector of internal variables for this model
     """
     return torch.ones((h.shape[0],1), device = h.device)
@@ -86,7 +86,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
     """
       The rate evolving the internal variables
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -98,7 +98,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
     """
       The derivative of this history rate with respect to the stress
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -110,7 +110,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
     """
       The derivative of the history rate with respect to the internal variables
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -124,7 +124,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
       The derivative of the history rate with respect to the inelastic
       strain rate
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -167,7 +167,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
       The map between the vector of internal variables and the kinematic 
       hardening
 
-      Parameters:
+      Args:
         h:      vector of internal variables
     """
     return torch.zeros(h.shape[0], device = h.device)
@@ -177,7 +177,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
       Derivative of the map to the kinematic hardening with respect to the
       vector of internal variables
 
-      Parameters:
+      Args:
         h:      vector of internal variables
     """
     return torch.zeros(h.shape[0],0, device = h.device)
@@ -186,7 +186,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
     """
       The history evolution rate.  Here this is an empty vector.
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -200,7 +200,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
 
       Here this is an empty vector.
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -214,7 +214,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
 
       Here this is an empty vector.
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -229,7 +229,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
 
       Here this is an empty vector.
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -249,15 +249,15 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
 
     The variable evolves as:
 
-    \dot{h} = 2.0/3 C \varepsilon - g h |\varepsilon|
+    .. math::
     
-    Parameters:
-      C:        kinematic hardening parameter
-      g:        recovery parameter
+      \\dot{x}=\\frac{2}{3}C\\dot{\\varepsilon}_{in}-gx\\left|\\dot{\\varepsilon}_{in}\\right| 
 
-    Additional Parameters:
-      C_scale:  scaling function for C
-      g_scale:  scaling function for g
+    Args:
+      C:                    kinematic hardening parameter
+      g:                    recovery parameter
+      C_scale (optional):   scaling function for C
+      g_scale (optional):   scaling function for g
   """
   def __init__(self, C, g, C_scale = lambda x: x,
       g_scale = lambda x: x):
@@ -280,7 +280,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
     """
       The map from the internal variables to the kinematic hardening
 
-      Parameters:
+      Args:
         h:      vector of internal variables
     """
     return h[:,0]
@@ -290,7 +290,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
       Derivative of the map to the kinematic hardening with respect to the
       vector of internal variables
 
-      Parameters:
+      Args:
         h:      vector of internal variables      
     """
     return torch.ones((h.shape[0],1), device = h.device)
@@ -306,7 +306,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
     """
       The evolution rate for the internal variables
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -319,7 +319,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
     """
       The derivative of the history rate with respect to the stress
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -331,7 +331,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
     """
       The derivative of the history rate with respect to the history
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -344,7 +344,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
       The derivative of the history rate with respect to the inelastic
       strain rate.
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -363,20 +363,22 @@ class ChabocheHardeningModel(KinematicHardeningModel):
 
     The model maintains n backstresses and sums them to provide the
     total kinematic hardening
+    
+    .. math::
 
-    $\sigma_{kin} = \sum X_i$
+      \\sigma_{kin}=\\sum_{i=1}^{n_{kin}}x_{i}
 
     Each individual backstress evolves per the Frederick-Armstrong model
 
-    $\dot{X}_i$ = 2.0/3 C \varepsilon - g h |\varepsilon|$ 
+    .. math::
 
-    Parameters:
-      C:        *vector* of hardening coefficients
-      g:        *vector* of recovery coefficients
+      \\dot{x}_{i}=\\frac{2}{3}C_{i}\\dot{\\varepsilon}_{in}-g_{i}x_{i}\\left|\\dot{\\varepsilon}_{in}\\right|
 
-    Additional Parameters:
-      C_scale:  scaling function for C
-      g_scale:  scaling function for g
+    Args:
+      C:                    *vector* of hardening coefficients
+      g:                    *vector* of recovery coefficients
+      C_scale (optional):   scaling function for C
+      g_scale (optional):   scaling function for g
   """
   def __init__(self, C, g, C_scale = lambda x: x, g_scale = lambda x: x):
     super().__init__()
@@ -400,9 +402,9 @@ class ChabocheHardeningModel(KinematicHardeningModel):
     """
       The map between the internal variables and the kinematic hardening
 
-      Here $\sigma = \sum h_i$
+      Here :math:`\\sigma_{kin}=\\sum_{i=1}^{n_{kin}}x_{i}`
 
-      Parameters:
+      Args:
         h:      vector of internal variables
     """
     return torch.sum(h, 1)
@@ -412,7 +414,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
       Derivative of the map between the internal variables and the 
       kinematic hardening with respect to the internal variables
 
-      Parameters:
+      Args:
         h:      vector of internal variables
     """
     return torch.ones((h.shape[0],self.nback), device = h.device)
@@ -428,7 +430,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
     """
       The evolution rate for the internal variables
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -441,7 +443,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
     """
       The derivative of the history rate with respect to stress
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -453,7 +455,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
     """
       The derivative of the history rate with respect to the history
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -467,7 +469,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
       The derivative of the history rate with respect to the inelastic strain
       rate
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time

@@ -7,32 +7,33 @@ class InelasticModel(nn.Module):
   """
     This object provides the basic response used to run and calibrate 
     constitutive models: an inelastic model defined by a flowrule and the
-    standard viscoplastic stress rate equation:
+    standard viscoplastic stress rate equation
 
-    \dot{\sigma} = E\left(\dot{\varepsilon} - (1-d) \varepsilon_{vp} \right)
+    .. math::
 
-    Parameters:
-      E:        Material young's modulus
-      flowrule: flow rule defining the inelastic strain rate
+      \\dot{\\sigma} = E \\left(\\dot{\\varepsilon} - (1-d) \\dot{\\varepsilon}_{in} \\right)
 
-    Additional Parameters:
-      substeps:     subdivide each provided timestep into multiple steps to
-                    reduce integration error, defaults to 1
-      method:       integrate method used to solve the equations, defaults 
-                    to 'backward-euler'
-      dmodel:       damage model defining the damage variable evolution rate,
-                    defaults to NoDamage
-      E_scale:      scaling function for the Young's modulus
-      rtol:         relative tolerance for implicit integration
-      atol:         absolute tolerance for implicit integration
-      progress:     print a progress bar for forward time integration
-      miter:        maximum nonlinear iterations for implicit time integration
-      d0:           intitial value of damage
-      use_adjoint:  if True use the adjoint approach to calculate 
-                    sensitivities, if False use AD
-      extra_params: additional, external parameter to include in the
-                    adjoint calculation.  Used if not all the parameters
-                    can be determined by introspection
+    Args:
+      E:                        Material Young's modulus
+      flowrule:                 :py:class:`pyoptmat.flowrules.FlowRule` defining the inelastic
+                                strain rate
+      substeps (optional):      subdivide each provided timestep into multiple steps to
+                                reduce integration error, defaults to 1
+      method (optional):        integrate method used to solve the equations, defaults 
+                                to `"backward-euler"`
+      dmodel (optional):        :py:class:`pyoptmat.damage.DamageModel` defining the damage variable
+                                evolution rate, defaults to :py:class:`pyoptmat.damage.NoDamage`
+      E_scale (optional):       scaling function for the Young's modulus
+      rtol (optional):          relative tolerance for implicit integration
+      atol (optional):          absolute tolerance for implicit integration
+      progress (optional):      print a progress bar for forward time integration
+      miter (optional):         maximum nonlinear iterations for implicit time integration
+      d0 (optional):            intitial value of damage
+      use_adjoint (optional):   if `True` use the adjoint approach to calculate 
+                                sensitivities, if `False` use pytroch automatic differentiation
+      extra_params (optional):  additional, external parameter to include in the
+                                adjoint calculation.  Used if not all the parameters
+                                can be determined by introspection
   """
   def __init__(self, E, flowrule, substeps = 1, method = 'backward-euler', 
       dmodel = damage.NoDamage(), E_scale = lambda x: x,
@@ -59,13 +60,13 @@ class InelasticModel(nn.Module):
     """
       Basic model definition: take time and strain rate and return stress
 
-      Parameters:
+      Args:
         t:          input times, shape (ntime)
         strains:    input strains, shape (ntime, nbatch)
 
       Returns:
         y:          stacked [stress, history, damage] vector of shape 
-                    (ntime,nbatch,1+nhist+1)
+                    `(ntime,nbatch,1+nhist+1)`
     """
     device = strains.device
     strain_rates = torch.cat((torch.zeros(1,strains.shape[1], device = device),
@@ -101,7 +102,7 @@ class InelasticModel(nn.Module):
       Setup before a solve.  This gets called after sampling parameters,
       for inference problems
 
-      Parameters:
+      Args:
         t:              input times
         strain-rates:   input strain rates
     """
@@ -120,7 +121,7 @@ class InelasticModel(nn.Module):
       Forward model call function: returns the rate of [stress, history, damage] 
       and the Jacobian
 
-      Parameters:
+      Args:
         t:          input time, shape (nbatch,)
         states:     input state, shape (nbatch,1+nhist+1)
 

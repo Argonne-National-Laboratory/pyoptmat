@@ -31,7 +31,7 @@ class NoDamage(DamageModel):
       The damage rate and the derivative wrt to the damage variable.
       Here it's just zero.
 
-      Parameters:
+      Args:
         s:      stress
         d:      current value of damage
         t:      current time
@@ -44,7 +44,7 @@ class NoDamage(DamageModel):
 
       Here again it's zero
 
-      Parameters:
+      Args:
         s:      stress
         d:      current value of damage
         t:      current time
@@ -59,17 +59,18 @@ class HayhurstLeckie(DamageModel):
     rutpure." Acta Metallurgica, 25(9): pp. 1059-1070 (1977).
 
     The model defines the damage rate as
+    
+    .. math::
 
+      \\left(\\frac{\\left|\\sigma\\right|}{A}\\right)^{\\xi}\\left(1-d\\right)^{\\xi-\\phi}
 
-    Parameters:
-      A:            Reference stress
-      xi:           Stress sensitivity
-      phi:          Damage sensitivity
-
-    Additional Parameters:
-      A_scale:      scaling function for A
-      xi_scale:     scaling function for xi
-      phi_scale:    scaling function for phi
+    Args:
+      A:                    Reference stress
+      xi:                   Stress sensitivity
+      phi:                  Damage sensitivity
+      A_scale (optional):   Scaling function for A
+      xi_scale (optional):  Scaling function for xi
+      phi_scale (optional): Scaling function for phi
   """
   def __init__(self, A, xi, phi, A_scale = lambda x: x,
       xi_scale = lambda x: x, phi_scale = lambda x: x):
@@ -97,7 +98,7 @@ class HayhurstLeckie(DamageModel):
       Damage rate and the derivative of the rate with respect to the 
       damage variable
 
-      Parameters:
+      Args:
         s:      stress
         d:      damage variable
         t:      time
@@ -110,7 +111,7 @@ class HayhurstLeckie(DamageModel):
     """
       Derivative of the damage rate with respect to the stress
 
-      Parameters:
+      Args:
         s:      stress
         d:      damage variable
         t:      time

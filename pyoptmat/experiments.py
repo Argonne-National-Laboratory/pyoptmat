@@ -1,23 +1,24 @@
 """
   Various routines for dealing with generating input and processing output
   for abstracted records of experimental tests.
+  
   These routines do things like:
-    - Convert simplified descriptions of tests into strain/strain time
+    * Convert simplified descriptions of tests into strain/strain time
       histories that the models can use
-    - Generate random experiments and the corresponding inputs
+    * Generate random experiments and the corresponding inputs
 
   We define the various tests with a dictionary
 
   Strain controlled load cycles are defined by a dictionary with:
-    - "max_strain" -- the maximum strain 
-    - "R" -- the ration between min_strain/max_strain
-    - "strain_rate" -- the loading rate
-    - "tension_hold" -- tensile hold time
-    - "compression_hold" -- compression hold time
+    * "max_strain" -- the maximum strain 
+    * "R" -- the ration between min_strain/max_strain
+    * "strain_rate" -- the loading rate
+    * "tension_hold" -- tensile hold time
+    * "compression_hold" -- compression hold time
 
   Tension tests are defined by:
-    - "strain_rate" -- loading rate
-    - "max_strain" -- maximum strain
+    * "strain_rate" -- loading rate
+    * "max_strain" -- maximum strain
 """
 
 import numpy as np
@@ -28,11 +29,11 @@ import torch
 def generate_random_tension(strain_rate = [1.0e-6,1.0e-2], 
     max_strain = 0.2):
   """
-    Generate a random tension test condition in the provided ranges
+  Generate a random tension test condition in the provided ranges
 
-    Parameters:
-      strain_rate:      range of strain rates
-      max_strain:       maximum strain to simulate
+  Args:
+    strain_rate (optional): Range of strain rates
+    max_strain (optional):  Maximum strain to simulate
   """
   return {
       "max_strain": max_strain,
@@ -41,12 +42,11 @@ def generate_random_tension(strain_rate = [1.0e-6,1.0e-2],
       }
 
 def sample_tension(test, nsteps = 50):
-  """
-    Generate the times and strains for a tensile test
+  """Generate the times and strains for a tensile test
 
-    Parameters:
-      test:     dictionary defining the test case
-      nsteps:   number of steps to sample
+  Args:
+    test:               Dictionary defining the test case
+    nsteps (optional):  Number of steps to sample
   """
   tmax = test['max_strain'] / test['strain_rate']
   times = np.linspace(0,tmax,nsteps)
@@ -60,7 +60,7 @@ def generate_random_cycle(max_strain = [0,0.02], R = [-1, 1],
   """
     Generate a random cycle in the provided ranges
 
-    Parameters:
+    Args:
       max_strain:       range of the maximum strains
       R:                range of R ratios
       strain_rate:      range of loading strain rates
@@ -79,21 +79,22 @@ def sample_cycle_normalized_times(cycle, N, nload = 10, nhold = 10):
   """
     Take a random cycle dictionary and expand into discrete 
     times, strains samples where times are the actual, physical
-    times, given over the fixed phases: 
-      0         ->  tphase:     tension load
-      tphase    ->  2*tphase:   tension hold
-      2*tphase  ->  3*tphase:   unload
-      3*tphase  ->  4*tphase:   compression load
-      4*tphase  ->  5*tphase:   compression hold
-      5*tphase  ->  6*tphase:   unload
+    times, given over the fixed phases
+
+      * :math:`0 \\rightarrow  t_{phase}` -- tension load
+      * :math:`t_{phase} \\rightarrow 2 t_{phase}` -- tension hold
+      * :math:`2 t_{phase} \\rightarrow 3 t_{phase}` --   unload
+      * :math:`3 t_{phase} \\rightarrow 4 t_{phase}` -- compression load
+      * :math:`4 t_{phase} \\rightarrow 5 t_{phase}` -- compression hold
+      * :math:`5 t_{phase} \\rightarrow 6 t_{phase}` -- unload
 
     This pattern repeats for N cycles
 
-    Parameters:
-      cycle:        dictionary defining the load cycle
-      N:            number of repeats to include in the history
-      nload:        number of steps to use for the load time
-      nhold:        number of steps to use for the hold time
+    Args:
+      cycle:            dictionary defining the load cycle
+      N:                number of repeats to include in the history
+      nload (optional): number of steps to use for the load time
+      nhold (optional): number of steps to use for the hold time
   """
   emax = cycle['max_strain']
   emin = cycle['R'] * cycle['max_strain']

@@ -16,13 +16,11 @@ def visualize_variance(strain, stress_true, stress_calc, alpha = 0.05):
   """
     Visualize variance for batched examples
 
-    Parameters:
-      strain:       input strain
-      stress_true:  actual stress values
-      stress_calc:  simulated stress values
-
-    Additional Parameters:
-      alpha:        alpha value for shading
+    Args:
+      strain:           input strain
+      stress_true:      actual stress values
+      stress_calc:      simulated stress values
+      alpha (optional): alpha value for shading
   """
   ntrue = stress_true.shape[1]
   max_true, _ = stress_true.kthvalue(int(ntrue*(1-alpha)), dim=1)
@@ -53,12 +51,10 @@ def new_differentiate(fn, x0, eps = 1.0e-6):
   """
     New numerical differentiation function to handle the batched-model cases
 
-    Parameters:
-      fn:       function to differentiate via finite differences
-      x0:       point at which to take the numerical derivative
-
-    Additional Parameters:
-      eps:      perturbation to use
+    Args:
+      fn:               function to differentiate via finite differences
+      x0:               point at which to take the numerical derivative
+      eps (optional):   perturbation to use
   """
   v0 = fn(x0)
   nbatch = v0.shape[0]
@@ -99,12 +95,10 @@ def differentiate(fn, x0, eps = 1.0e-6):
   """
     Numerical differentiation used in the tests
 
-    Parameters:
-      fn:       function to differentiate via finite differences
-      x0:       point at which to take the numerical derivative
-
-    Additional Parameters:
-      eps:      perturbation to use
+    Args:
+      fn:               function to differentiate via finite differences
+      x0:               point at which to take the numerical derivative
+      eps (optional):   perturbation to use
   """
   v0 = fn(x0)
   nbatch = v0.shape[0]
@@ -145,13 +139,13 @@ def timeseries_interpolate_batch_times(times, values, t):
   """
     Interpolate the time series defined by X to the times defined by t
 
-    Parameters:
-      times     input time series as a (ntime,nbatch) array
-      values    input value series as a (ntime,nbatch) array
-      t         batch times as a (nbatch,) array
+    Args:
+      times     input time series as a `(ntime,nbatch)` array
+      values    input value series as a `(ntime,nbatch)` array
+      t         batch times as a `(nbatch,)` array
 
     Returns:
-      Interpolated values as a (nbatch,) array
+      Interpolated values as a `(nbatch,)` array
   """
   gi = torch.remainder(torch.sum((times - t) <= 0,dim = 0), times.shape[0])
   slopes = (values[gi] - values[gi-1])/(times[gi] - times[gi-1])
@@ -161,13 +155,13 @@ def timeseries_interpolate_single_times(times, values, t):
   """
     Interpolate the time series defined by X to the times defined by t
 
-    Parameters:
-      times     input time series as a (ntime,) array
-      values    input value series as a (ntime,nbatch) array
+    Args:
+      times     input time series as a `(ntime,)` array
+      values    input value series as a `(ntime,nbatch)` array
       t         times as a scalar
 
     Returns:
-      Interpolated values as a (nbatch,) array
+      Interpolated values as a `(nbatch,)` array
   """
   gi = torch.remainder(torch.sum((times - t) <= 0,dim = 0), times.shape[0])
   slopes = (values[gi] - values[gi-1])/(times[gi,None] - times[gi-1,None])
@@ -175,7 +169,7 @@ def timeseries_interpolate_single_times(times, values, t):
 
 def random_parameter(frange):
   """
-    Generate a random parameter value as a 1, tensor
+    Generate a random parameter value as a `(1,)` tensor
 
     Parameter:
       frange:       range to sample
@@ -187,9 +181,13 @@ def random_parameter(frange):
 
 def heaviside(X):
   """
-    A pytorch-differentiable version of the heaviside function
+    A pytorch-differentiable version of the Heaviside function
 
-    Parameters:
+    .. math::
+      
+      H\\left(x\\right) = \\frac{\\operatorname{sign}(x) + 1)}{2}
+
+    Args:
       X:        tensor input
   """
   return (torch.sign(X) + 1.0) / 2.0
@@ -198,7 +196,11 @@ def macaulay(X):
   """
     A pytorch-differentiable version of the Macualay bracket
 
-    Parameters:
+    .. math::
+      
+      M\\left(x\\right) = x H\\left(x\\right)
+
+    Args:
       X:        tensor input
   """
   return X * heaviside(X)

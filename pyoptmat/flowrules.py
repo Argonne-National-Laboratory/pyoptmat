@@ -25,14 +25,18 @@ class FlowRule(nn.Module):
 class PerfectViscoplasticity(FlowRule):
   """
     Perfect viscoplasticity defined as
-      eps_dot = (s/eta)**n
-      hist_dot = NOTHING
 
-    Parameters:
+    .. math::
+
+      \\dot{\\varepsilon}_{in}=\\left(\\frac{\\left|\\sigma\\right|}{\\eta}\\right)^{n}\\operatorname{sign}\\left(\\sigma\\right)
+      
+      \\dot{h} = \\emptyset
+
+    Args:
       n:            rate sensitivity
       eta:          flow viscosity
 
-    Additional Parameters:
+    Additional Args:
       n_scale:      scaling function mapping parameter -> actual value of n
       eta_scale:    scaling function mapping parameter -> actual value of eta
   """
@@ -57,7 +61,7 @@ class PerfectViscoplasticity(FlowRule):
       The uniaxial flow rate itself and the derivative 
       with respect to stress
 
-      Parameters:
+      Args:
         s:          stress
         h:          history
         t:          time
@@ -80,7 +84,7 @@ class PerfectViscoplasticity(FlowRule):
 
       Here this is zero...
 
-      Parameters:
+      Args:
         s:      stress
         h:      history
         t:      time
@@ -90,20 +94,24 @@ class PerfectViscoplasticity(FlowRule):
 class IsoKinViscoplasticity(FlowRule):
   """
     Viscoplasticity with isotropic and kinematic hardening, defined as
-      eps_dot = <(|s-x| - s0 - k) / eta>**n * sign(s-x)
-      hist_dot = defined by hardening model
 
-    Parameters:
-      n:            rate sensitivity
-      eta:          flow viscoplastic
-      s0:           initial value of flow stress (i.e. "yield stress")
-      isotropic:    object providing the isotropic hardening model
-      kinematic:    object providing the kinematic hardening model
+    .. math::
 
-    Additional Parameters:
-      n_scale:      scaling function for n
-      eta_scale:    scaling function for eta
-      s0_scale:     scaling function for s0
+      \\dot{\\varepsilon}_{in}=\\left\\langle \\frac{\\left|\\sigma-x\\right|-s_{0}-k}{\\eta}\\right\\rangle ^{n}\\operatorname{sign}\\left(\\sigma-X\\right)
+    
+    and where the :py:class:`pyoptmat.hardening.IsotropicHardeningModel` and 
+    :py:class:`pyoptmat.hardening.KinematicHardeningModel` objects determine the
+    history rate
+    
+    Args:
+      n:                    rate sensitivity
+      eta:                  flow viscosity
+      s0:                   initial value of flow stress (i.e. "yield stress")
+      isotropic:            object providing the isotropic hardening model
+      kinematic:            object providing the kinematic hardening model
+      n_scale (optional):   scaling function for n
+      eta_scale (optional): scaling function for eta
+      s0_scale (optional):  scaling function for s0
   """
   def __init__(self, n, eta, s0, isotropic, kinematic,
       n_scale = lambda x: x, eta_scale = lambda x: x, 
@@ -134,7 +142,7 @@ class IsoKinViscoplasticity(FlowRule):
     """
       The flow rate itself and the derivative with respect to stress
 
-      Parameters:
+      Args:
         s:      stress
         h:      internal variables
         t:      time
@@ -149,7 +157,7 @@ class IsoKinViscoplasticity(FlowRule):
     """
       The derivative of the flow rate with respect to the isotropic hardening
 
-      Parameters:
+      Args:
         s:      stress
         h:      internal variables
         t:      time
@@ -166,7 +174,7 @@ class IsoKinViscoplasticity(FlowRule):
     """
       The derivative of the flow rate with respect to the kinematic hardening
 
-      Parameters:
+      Args:
         s:      stress
         h;      internal variables
         t:      time
@@ -193,7 +201,7 @@ class IsoKinViscoplasticity(FlowRule):
       The first chunk of entries is for the isotropic hardening,
       the second for the kinematic hardening.
 
-      Parameters:
+      Args:
         s:      stress
         h;      internal variables
         t:      time
@@ -234,7 +242,7 @@ class IsoKinViscoplasticity(FlowRule):
     """
       The derivative of the flow rate with respect to the internal variables
 
-      Parameters:
+      Args:
         s:      stress
         h;      internal variables
         t:      time
@@ -255,7 +263,7 @@ class IsoKinViscoplasticity(FlowRule):
     """
       The derivative of the history rate with respect to the stress
 
-      Parameters:
+      Args:
         s:      stress
         h;      internal variables
         t:      time

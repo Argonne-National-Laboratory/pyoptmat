@@ -14,3 +14,4 @@ examples/final_examples/a617-950-deterministic/loss-history.txt
 **/#*.lyx#
 nohup.out
 examples/a617
+doc/sphinx/_build

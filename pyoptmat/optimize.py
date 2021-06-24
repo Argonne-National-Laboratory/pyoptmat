@@ -27,12 +27,10 @@ def construct_weights(etypes, weights, normalize = True):
   """
     Construct an array of weights 
 
-    Parameters:
-      etypes:       strings giving the experiment type
-      weights:      dictionary mapping etype: weight
-
-    Additional Parameters:
-      normalize:    normalize by the number of experiments of each type
+    Args:
+      etypes:               strings giving the experiment type
+      weights:              dictionary mapping etype to weight
+      normalize (optional): normalize by the number of experiments of each type
   """
   warray = torch.ones(len(etypes))
 
@@ -53,19 +51,17 @@ def grid_search(model, time, strain, stress, loss, bounds,
   """
     Use a coarse grid search to find a good starting point
 
-    Parameters:
-      model:        forward model
-      time:         time data
-      strain:       strain data
-      stress:       stress data
-      loss:         loss function
-      bounds:       bounds on each parameter
-      ngrid:        number of points
-
-    Additional parameters:
-      method:       method for generating the grid
-      save_grid:    save the parameter grid to a file for future use
-      rbf_function: kernel for radial basis interpolation
+    Args:
+      model:                    forward model
+      time:                     time data
+      strain:                   strain data
+      stress:                   stress data
+      loss:                     loss function
+      bounds:                   bounds on each parameter
+      ngrid:                    number of points
+      method (optional):        method for generating the grid
+      save_grid (optional):     save the parameter grid to a file for future use
+      rbf_function (optional):  kernel for radial basis interpolation
   """
   # It's wasteful to do the adjoint propagation here, disable it
   use_adjoint = model.use_adjoint
@@ -138,19 +134,19 @@ def grid_search(model, time, strain, stress, loss, bounds,
 
 def bounded_scale_function(bounds):
   """
-    Sets up a scaling function that maps (0,1) to (bounds[0], bounds[1])
+    Sets up a scaling function that maps `(0,1)` to `(bounds[0], bounds[1])`
     and clips the values to remain in that range
 
-    Parameters:
+    Args:
       bounds:   tuple giving the parameter bounds
   """
   return lambda x: torch.clamp(x, 0, 1)*(bounds[1]-bounds[0]) + bounds[0]
 
 class DeterministicModel(Module):
   """
-    Wrap a material model to provide a PyTorch deterministic model
+    Wrap a material model to provide a :py:mod:`pytorch` deterministic model
 
-    Parameters:
+    Args:
       maker:      function that returns a valid Module, given the 
                   input parameters
       names:      names to use for the parameters
@@ -176,7 +172,7 @@ class DeterministicModel(Module):
     """
       Integrate forward and return the stress
 
-      Parameters:
+      Args:
         times:      time points to hit
         strains:    input strain data
     """
@@ -186,12 +182,13 @@ class DeterministicModel(Module):
 
 class StatisticalModel(PyroModule):
   """
-    Wrap a material model to provide a PyTorch single-level statistical model
+    Wrap a material model to provide a py:mod:`pyro` single-level 
+    statistical model
 
     Single level means each parameter is sampled once before running
     all the tests -- i.e. each test is run on the "heat" of material
 
-    Parameters:
+    Args:
       maker:      function that returns a valid Module, given the 
                   input parameters
       names:      names to use for the parameters
@@ -221,11 +218,11 @@ class StatisticalModel(PyroModule):
     """
       Integrate forward and return the result
 
-      Parameters:
+      Args:
         times:      time points to hit in integration
         strains:    input strains
 
-      Additional Parameters:
+      Additional Args:
         true:       true values of the stress, if we're using this
                     model in inference
     """
@@ -237,7 +234,7 @@ class StatisticalModel(PyroModule):
     
 class HierarchicalStatisticalModel(PyroModule):
   """
-    Wrap a material model to provide a hierarchical Pyro statistical
+    Wrap a material model to provide a hierarchical :py:mod:`pyro` statistical
     model
 
     This type of statistical model does two levels of sampling for each
@@ -255,21 +252,22 @@ class HierarchicalStatisticalModel(PyroModule):
     distributions, and then each parameter population comes from a
     Normal distribution
 
-    Parameters: 
-      maker:                function that returns a valid material Module, 
-                            given the input parameters
-      names:                names to use for each parameter
-      loc_loc_priors:       location of the prior for the mean of each param
-      loc_scale_priors:     scale of the prior of the mean of each param
-      scale_scale_priors:   scale of the prior of the std dev. of each param
-      noise_priors:         prior on the white noise
-
-    Additional Parameters:
-      loc_suffix:           append to the variable name to give the top level
-                            sample for the location
-      scale_suffix:         append to the variable name to give the top level
-                            sample for the scale
-      include_noise:        if true include white noise in the inference
+    Args: 
+      maker:                    function that returns a valid material Module, 
+                                given the input parameters
+      names:                    names to use for each parameter
+      loc_loc_priors:           location of the prior for the mean of each
+                                parameter
+      loc_scale_priors:         scale of the prior of the mean of each
+                                parameter
+      scale_scale_priors:       scale of the prior of the standard
+                                deviation of each parameter
+      noise_priors:             prior on the white noise
+      loc_suffix (optional):    append to the variable name to give the top
+                                level sample for the location
+      scale_suffix (optional):  append to the variable name to give the top
+                                level sample for the scale
+      include_noise (optional): if true include white noise in the inference
   """
   def __init__(self, maker, names, loc_loc_priors, loc_scale_priors,
       scale_scale_priors, noise_prior, loc_suffix = "_loc",
@@ -355,13 +353,11 @@ class HierarchicalStatisticalModel(PyroModule):
       Evaluate the forward model, conditioned by the true stresses if
       they are available
 
-      Parameters:
-        times:          time points to hit
-        strains:        input strains
-
-      Additional Parameters:
-        true_stresses:  actual stress values, if we're conditioning for
-                        inference
+      Args:
+        times:                      time points to hit
+        strains:                    input strains
+        true_stresses (optional):   actual stress values, if we're conditioning
+                                    for inference
     """
     # Sample the top level parameters
     curr = self.sample_top()
