@@ -1,0 +1,7 @@
+sphinxcontrib-napoleon
+torch
+numpy
+scipy
+scikit-learn
+pyro
+tqdm
