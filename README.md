@@ -1,3 +1,5 @@
+# pyoptmat: a package for calibrating statistical constitutive models
+
 pyoptmat is a package for calibrating statistical, inelastic constitutive 
 models to data.  The package is based on [pytorch](https://pytorch.org/)
 and [pyro](https://pyro.ai/) and provides a framework for using machine-learning
