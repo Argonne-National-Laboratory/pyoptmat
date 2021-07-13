@@ -5,3 +5,5 @@ scipy
 scikit-learn
 pyro-ppl
 tqdm
+matplotlib
+scikit-optimize
