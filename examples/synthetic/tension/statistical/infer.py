@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 import pyro
 from pyro.infer import SVI, Trace_ELBO
+from pyro.contrib.easyguide import easy_guide
 import pyro.optim as optim
 
 import matplotlib.pyplot as plt
@@ -72,8 +73,8 @@ if __name__ == "__main__":
   
   # 5) Setup the optimizer and loss
   lr = 5.0e-3
-  niter = 4000
-  num_samples = 1
+  niter = 500
+  num_samples = 2
   
   optimizer = optim.Adam({"lr": lr})
   svi = SVI(model, guide, optimizer, 
@@ -93,8 +94,8 @@ if __name__ == "__main__":
   print("\tloc\t\tscale")
   for n in names:
     print("%s:\t%3.2f/0.50\t%3.2f/%3.2f" % (n,
-      pyro.param("AutoDelta." + n + model.loc_suffix).data,
-      pyro.param("AutoDelta." + n + model.scale_suffix).data,
+      pyro.param(n + model.loc_suffix + model.param_suffix).data,
+      pyro.param(n + model.scale_suffix + model.param_suffix).data,
       scale))
   print("")
 

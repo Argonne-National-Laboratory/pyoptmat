@@ -19,6 +19,7 @@ from skopt.sampler import Lhs
 import pyro
 from pyro.nn import PyroModule, PyroSample
 import pyro.distributions as dist
+import pyro.distributions.constraints as constraints
 from pyro.contrib.autoguide import AutoDelta, init_to_mean
 
 from tqdm import tqdm
@@ -271,14 +272,23 @@ class HierarchicalStatisticalModel(PyroModule):
   """
   def __init__(self, maker, names, loc_loc_priors, loc_scale_priors,
       scale_scale_priors, noise_prior, loc_suffix = "_loc",
-      scale_suffix = "_scale", include_noise = False):
+      scale_suffix = "_scale", param_suffix = "_param", include_noise = False):
     super().__init__()
     
     # Store things we might later 
     self.maker = maker
     self.loc_suffix = loc_suffix
     self.scale_suffix = scale_suffix
+    self.param_suffix = param_suffix
     self.include_noise = include_noise
+
+    self.names = names
+
+    # We need these for the shapes...
+    self.loc_loc_priors = loc_loc_priors
+    self.loc_scale_priors = loc_scale_priors
+    self.scale_scale_priors = scale_scale_priors
+    self.noise_prior = noise_prior
 
     # Setup both the top and bottom level variables
     self.bot_vars = names
@@ -330,8 +340,35 @@ class HierarchicalStatisticalModel(PyroModule):
       bottom level parameters.  This could be altered in the future
       to have the bottom level use a normal.
     """
-    guide = AutoDelta(self, init_loc_fn = init_to_mean())
-    self.extra_param_names = ["AutoDelta." + name for name in self.bot_vars]
+    def guide(times, strains, true_stresses = None):
+      # Setup and sample the top-level loc and scale
+      top_loc_samples = []
+      top_scale_samples = []
+      dims = []
+      for var, loc_loc, loc_scale, scale_scale, in zip(
+          self.names, self.loc_loc_priors, self.loc_scale_priors, 
+          self.scale_scale_priors):
+        dim = loc_loc.dim()
+        dims.append(dim)
+        loc_param = pyro.param(var + self.loc_suffix + self.param_suffix, loc_loc)
+        scale_param = pyro.param(var + self.scale_suffix + self.param_suffix, scale_scale,
+            constraint = constraints.positive)
+        
+        top_loc_samples.append(pyro.sample(var + self.loc_suffix, dist.Delta(loc_param).to_event(dim)))
+        top_scale_samples.append(pyro.sample(var + self.scale_suffix, dist.Delta(scale_param).to_event(dim)))
+
+      # Add in the noise, if included in the inference
+      if self.include_noise:
+        eps_param = pyro.param("eps" + self.param_suffix, torch.tensor(self.noise_prior), constraint = constraints.positive)
+        eps_sample = pyro.sample("eps", dist.Delta(eps_param))
+
+      # Plate on experiments and sample individual values
+      with pyro.plate("trials", times.shape[1]):
+        for name, loc, scale, dim in zip(self.names, top_loc_samples, top_scale_samples, dims):
+          param_value = pyro.sample(name, dist.Normal(loc, scale).to_event(dim))
+    
+    self.extra_param_names = [var + self.loc_suffix + self.param_suffix for var in self.names] 
+
     return guide
 
   def get_extra_params(self):

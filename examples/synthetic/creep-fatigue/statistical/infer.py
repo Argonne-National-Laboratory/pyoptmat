@@ -84,8 +84,8 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 1.0e-3
-  niter = 3000
+  lr = 5.0e-3
+  niter = 500
   num_samples = 1
   
   optimizer = optim.Adam({"lr": lr})
@@ -106,18 +106,18 @@ if __name__ == "__main__":
   print("\tloc\t\tscale")
   for n in names[:-2]:
     print("%s:\t%3.2f/0.50\t%3.2f/%3.2f" % (n,
-      pyro.param("AutoDelta." + n + model.loc_suffix).data,
-      pyro.param("AutoDelta." + n + model.scale_suffix).data,
+      pyro.param(n + model.loc_suffix + model.param_suffix).data,
+      pyro.param(n + model.scale_suffix + model.param_suffix).data,
       scale))
   for i in range(nback):
     print("%s%i:\t%3.2f/0.50\t%3.2f/%3.2f" % (names[-2],i,
-      pyro.param("AutoDelta." + names[-2] + model.loc_suffix).data[i],
-      pyro.param("AutoDelta." + names[-2] + model.scale_suffix).data[i],
+      pyro.param(names[-2] + model.loc_suffix + model.param_suffix).data[i],
+      pyro.param(names[-2] + model.scale_suffix + model.param_suffix).data[i],
       scale))
   for i in range(nback):
     print("%s%i:\t%3.2f/0.50\t%3.2f/%3.2f" % (names[-1],i,
-      pyro.param("AutoDelta." + names[-1] + model.loc_suffix).data[i],
-      pyro.param("AutoDelta." + names[-1] + model.scale_suffix).data[i],
+      pyro.param(names[-1] + model.loc_suffix + model.param_suffix).data[i],
+      pyro.param(names[-1] + model.scale_suffix + model.param_suffix).data[i],
       scale))
   print("")
 
