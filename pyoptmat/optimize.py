@@ -293,10 +293,12 @@ class HierarchicalStatisticalModel(PyroModule):
     # Setup both the top and bottom level variables
     self.bot_vars = names
     self.top_vars = []
+    self.dims = []
     for var, loc_loc, loc_scale, scale_scale, in zip(
         names, loc_loc_priors, loc_scale_priors, scale_scale_priors):
       # These set standard PyroSamples with names of var + suffix
       dim = loc_loc.dim()
+      self.dims.append(dim)
       self.top_vars.append(var + loc_suffix)
       setattr(self, self.top_vars[-1], PyroSample(dist.Normal(loc_loc,
         loc_scale).to_event(dim)))
@@ -344,12 +346,10 @@ class HierarchicalStatisticalModel(PyroModule):
       # Setup and sample the top-level loc and scale
       top_loc_samples = []
       top_scale_samples = []
-      dims = []
       for var, loc_loc, loc_scale, scale_scale, in zip(
           self.names, self.loc_loc_priors, self.loc_scale_priors, 
           self.scale_scale_priors):
         dim = loc_loc.dim()
-        dims.append(dim)
         loc_param = pyro.param(var + self.loc_suffix + self.param_suffix, loc_loc)
         scale_param = pyro.param(var + self.scale_suffix + self.param_suffix, scale_scale,
             constraint = constraints.positive)
@@ -364,10 +364,11 @@ class HierarchicalStatisticalModel(PyroModule):
 
       # Plate on experiments and sample individual values
       with pyro.plate("trials", times.shape[1]):
-        for name, loc, scale, dim in zip(self.names, top_loc_samples, top_scale_samples, dims):
+        for name, loc, scale, dim in zip(self.names, top_loc_samples, top_scale_samples, self.dims):
           param_value = pyro.sample(name, dist.Normal(loc, scale).to_event(dim))
     
-    self.extra_param_names = [var + self.loc_suffix + self.param_suffix for var in self.names] 
+    self.extra_param_names = [var + self.loc_suffix + self.param_suffix for var in self.names] + [
+        var + self.scale_suffix + self.param_suffix for var in self.names]
 
     return guide
 
@@ -378,12 +379,12 @@ class HierarchicalStatisticalModel(PyroModule):
       We can't determine this by introspection on the base model, so
       it needs to be done here
     """
-    if len(self.extra_param_names) == 0:
-      return []
-    elif self.extra_param_names[0] not in pyro.get_param_store().keys():
-      return []
-    else:
-      return [pyro.param(name) for name in self.extra_param_names]
+    # Do some consistency checking
+    for p in self.extra_param_names:
+      if p not in pyro.get_param_store().keys():
+        raise ValueError("Internal error, parameter %s not in store!" % p)
+
+    return [pyro.param(name).unconstrained() for name in self.extra_param_names]
 
   def forward(self, times, strains, true_stresses = None):
     """
