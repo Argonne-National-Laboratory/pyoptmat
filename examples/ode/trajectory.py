@@ -9,7 +9,7 @@ import pyro
 from pyro.nn import PyroSample
 import pyro.distributions as dist
 from pyro.contrib.autoguide import AutoDiagonalNormal, AutoDelta, AutoNormal, init_to_mean,  AutoMultivariateNormal
-from pyro.infer import SVI, Trace_ELBO, Predictive
+from pyro.infer import SVI, Trace_ELBO, Predictive, JitTrace_ELBO
 import pyro.optim as optim
 import pyro.distributions.constraints as constraints
 from pyro import poutine
@@ -30,10 +30,10 @@ a_scale_act = 0.04
 v_loc_prior = 1.5
 v_scale_prior = 0.1
 a_loc_prior = 0.3
-a_scale_prior = 0.07
+a_scale_prior = 0.1
 
 eps_act = 0.05
-eps_prior = 0.05 # Just measure variance in data...
+eps_prior = 0.1 # Just measure variance in data...
 
 pyro.enable_validation()
 
@@ -62,7 +62,7 @@ class Integrator(pyro.nn.PyroModule):
     self.extra_params = extra_params
 
   def forward(self, times):
-    return ode.odeint_adjoint(self.eqn, self.y0, times, extra_params = self.extra_params)
+    return ode.odeint_adjoint(self.eqn, self.y0, times, error_check = False, extra_params = self.extra_params)
 
 class ODE(pyro.nn.PyroModule):
   def __init__(self, v, a):
@@ -84,10 +84,20 @@ class ODE(pyro.nn.PyroModule):
 
 class Model(pyro.nn.PyroModule):
   def __init__(self, maker, names, loc_priors, scale_priors,
-      loc_suffix = "_loc", scale_suffix = "_scale"):
+      loc_suffix = "_loc", scale_suffix = "_scale", param_suffix = "_param",
+      bot_suffix = "_bot"):
     super().__init__()
 
     self.maker = maker
+
+    self.loc_suffix = loc_suffix
+    self.scale_suffix = scale_suffix
+    self.param_suffix = param_suffix
+    self.bot_suffix = bot_suffix
+    self.loc_priors = loc_priors
+    self.scale_priors = scale_priors
+    self.eps_prior = eps_prior
+    self.names = names
 
     # Setup both levels of distributions
     self.bot_vars = names
@@ -95,14 +105,14 @@ class Model(pyro.nn.PyroModule):
     for var, loc, scale in zip(names, loc_priors, scale_priors):
       setattr(self, var + loc_suffix, PyroSample(dist.Normal(loc, scale)))
       self.top_vars.append(var + loc_suffix)
-      setattr(self, var + scale_suffix, PyroSample(dist.HalfNormal(scale)))
+      setattr(self, var + scale_suffix, PyroSample(dist.LogNormal(scale,1)))
       self.top_vars.append(var + scale_suffix)
       setattr(self, var, PyroSample(
         lambda self, var = var: dist.Normal(getattr(self, var + loc_suffix), 
           getattr(self, var + scale_suffix))))
     
     # Setup noise
-    self.eps = PyroSample(dist.HalfNormal(eps_prior))
+    self.eps = PyroSample(dist.LogNormal(eps_prior,1))
 
     self.extra_param_names = []
 
@@ -128,17 +138,38 @@ class Model(pyro.nn.PyroModule):
     return [getattr(self, name) for name in self.bot_vars]
 
   def make_guide(self):
-    guide = AutoDelta(self, init_loc_fn = init_to_mean())
-    self.extra_param_names = ["AutoDelta." + name for name in self.bot_vars]
+    def guide(times, actual = None):
+      top_loc_samples = []
+      top_scale_samples = []
+
+      for name, loc, scale in zip(self.names, self.loc_priors, self.scale_priors):
+        loc_param = pyro.param(name + self.loc_suffix + self.param_suffix,
+            torch.tensor(loc))
+        scale_param = pyro.param(name + self.scale_suffix + self.param_suffix,
+            torch.tensor(scale), constraint = constraints.positive)
+
+        top_loc_samples.append(pyro.sample(name + self.loc_suffix, 
+          dist.Delta(loc_param)))
+        top_scale_samples.append(pyro.sample(name + self.scale_suffix, 
+          dist.Delta(scale_param)))
+
+      eps_param = pyro.param("eps" + self.param_suffix, 
+          torch.tensor(self.eps_prior), constraint = constraints.positive)
+      eps_sample = pyro.sample("eps", dist.Delta(eps_param))
+      
+      with pyro.plate("trials", times.shape[1]):
+        for name, loc_sample, scale_sample, loc_prior, scale_prior in zip(self.names, top_loc_samples,
+            top_scale_samples, self.loc_priors, self.scale_priors):
+          ll_param = pyro.param(name + self.param_suffix, 
+              torch.ones(times.shape[1]) * torch.tensor(loc_prior))
+          pyro.sample(name, dist.Delta(ll_param))
+
+    self.extra_param_names = [var + self.param_suffix for var in self.names]
+
     return guide
 
   def gen_extra(self):
-    if len(self.extra_param_names) == 0:
-      return []
-    elif self.extra_param_names[0] not in pyro.get_param_store().keys():
-      return []
-    else:
-      return [pyro.param(name) for name in self.extra_param_names]
+    return [pyro.param(name).unconstrained() for name in self.extra_param_names]
 
 if __name__ == "__main__":
   nsamples = 50
@@ -168,15 +199,18 @@ if __name__ == "__main__":
   # Setup the model
   model = Model(maker, ["v", "a"], [v_loc_prior, a_loc_prior], [v_scale_prior, a_scale_prior])
 
-  lr = 1.0e-3
-  niter = 2000
+  lr = 5.0e-3
+  niter = 500
   num_samples = 1
 
   guide = model.make_guide()
+  
+  # Init guide
+  guide(times)
 
-  optimizer = optim.Adam({"lr": lr})
+  optimizer = optim.ClippedAdam({"lr": lr})
   svi = SVI(model, guide, optimizer, 
-      loss = Trace_ELBO(num_particles=num_samples))
+      loss = JitTrace_ELBO(num_particles=num_samples))
   
   t = tqdm(range(niter))
   loss_hist = []
@@ -186,11 +220,11 @@ if __name__ == "__main__":
     t.set_description("Loss: %3.2e" % loss)
 
   print("Inferred distributions:")
-  print("Velocity mean: %4.3f, actual %4.3f" % (pyro.param("AutoDelta.v_loc").data, v_loc_act))
-  print("Velocity scale: %4.3f, actual %4.3f" % (pyro.param("AutoDelta.v_scale").data, v_scale_act))
-  print("Angle mean: %4.3f, actual %4.3f" % (pyro.param("AutoDelta.a_loc").data, a_loc_act))
-  print("Angle scale: %4.3f, actual %4.3f" % (pyro.param("AutoDelta.a_scale").data, a_scale_act))
-  print("White noise: %4.3f, actual %4.3f" % (pyro.param("AutoDelta.eps").data, eps_act))
+  print("Velocity mean: %4.3f, actual %4.3f" % (pyro.param("v_loc_param").data, v_loc_act))
+  print("Velocity scale: %4.3f, actual %4.3f" % (pyro.param("v_scale_param").data, v_scale_act))
+  print("Angle mean: %4.3f, actual %4.3f" % (pyro.param("a_loc_param").data, a_loc_act))
+  print("Angle scale: %4.3f, actual %4.3f" % (pyro.param("a_scale_param").data, a_scale_act))
+  print("White noise: %4.3f, actual %4.3f" % (pyro.param("eps_param").data, eps_act))
 
   plt.plot(loss_hist)
   plt.show()

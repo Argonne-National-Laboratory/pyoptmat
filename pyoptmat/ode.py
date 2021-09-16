@@ -30,14 +30,14 @@ class FixedGridSolver:
     Superclass of all solvers that use a fixed grid (versus an adaptive method)
 
     Args:
-      func:                 function returning the time rate of change and,
-                            optionally, the jacobian
-      y0:                   initial condition
-      substep (optional):   subdivide each provided timestep into some number
-                            of subdivisions for integration
-      progress (optional):  report integration progress with :py:mod:`tqdm`
+      func:                         function returning the time rate of change and,
+                                    optionally, the jacobian
+      y0:                           initial condition
+      adjoint_params (optional):    additional named parameters to track in adjoint pass, beyond those
+                                    we can determine by introspection
+      error_check (optional, True): check errors, if False assume model is configured correctly
   """   
-  def __init__(self, func, y0, adjoint_params = None, **kwargs):
+  def __init__(self, func, y0, adjoint_params = None, error_check = True, **kwargs):
     # Store basic info about the system
     self.func = func
     self.y0 = y0
@@ -50,25 +50,27 @@ class FixedGridSolver:
 
     # Store for later
     self.adjoint_params = adjoint_params
+    self.error_check = error_check
     
     # Sort out if the function is providing the jacobian
     self.has_jac = True
-    fake_time = torch.zeros(self.batch_size, device = y0.device)
-    try:
-      a, b = self.func(fake_time, self.y0)
-    except ValueError:
-      self.has_jac = False
-    if not self.has_jac:
-      a = self.func(fake_time, self.y0)
+    if self.error_check:
+      fake_time = torch.zeros(self.batch_size, device = y0.device)
+      try:
+        a, b = self.func(fake_time, self.y0)
+      except ValueError:
+        self.has_jac = False
+      if not self.has_jac:
+        a = self.func(fake_time, self.y0)
 
-    if a.dim() != 2:
-      raise ValueError("ODE solvers require batched functions returning (nbatch, nvars)!")
+      if a.dim() != 2:
+        raise ValueError("ODE solvers require batched functions returning (nbatch, nvars)!")
 
-    if self.has_jac and ((a.shape + a.shape[1:]) != b.shape):
-      raise ValueError("Function returns Jacobian of the wrong shape!")
+      if self.has_jac and ((a.shape + a.shape[1:]) != b.shape):
+        raise ValueError("Function returns Jacobian of the wrong shape!")
 
-    if not self.has_jac:
-      raise ValueError("This implementation requires a hard coded Jacobian!")
+      if not self.has_jac:
+        raise ValueError("This implementation requires a hard coded Jacobian!")
 
   def _get_param_partial(self, t, y, og):
     """
@@ -123,31 +125,33 @@ class FixedGridSolver:
                                     adjoint pass
     """
     # Basic error checking
-    if t.dim() != 2 or t.shape[1] != self.batch_size:
-      raise ValueError("Expected times to be a ntime x batch_size array!")
+    if self.error_check:
+      if t.dim() != 2 or t.shape[1] != self.batch_size:
+        raise ValueError("Expected times to be a ntime x batch_size array!")
     
     # Construct the substepped grid
     times = self._construct_grid(t)
     
     # Setup "real" results
-    result = torch.empty(len(t), *self.y0.shape, dtype = self.y0.dtype,
+    result = torch.empty(t.shape[0], *self.y0.shape, dtype = self.y0.dtype,
         device = self.y0.device)
     result[0] = self.y0
     
     # Setup "cached" results, if required
     if cache_adjoint:
-      self.full_result = torch.empty(len(times), *self.y0.shape, dtype = self.y0.dtype,
+      self.full_result = torch.empty(t.shape[0], *self.y0.shape, dtype = self.y0.dtype,
           device = self.y0.device)
       self.full_result[0] = self.y0
-      self.full_jacobian = torch.empty(len(times), self.batch_size, self.prob_size, 
+      self.full_jacobian = torch.empty(t.shape[0], self.batch_size, self.prob_size, 
           self.prob_size, dtype = self.y0.dtype, device = self.y0.device)
       self.full_times = times
     
     # Start integrating!
     y0 = self.y0
     j = 1
-    for k,(t0, t1) in tqdm(enumerate(zip(times[:-1], times[1:])), 
-        disable = not self.progress, total = len(times)-1, desc="Integrate"):
+    #for k,(t0, t1) in tqdm(enumerate(zip(times[:-1], times[1:])), 
+    #    disable = not self.progress, total = times.shape[0]-1, desc="Integrate"):
+    for k,(t0,t1) in enumerate(zip(times[:-1], times[1:])):
       y1, J = self._step(t0, t1, t1-t0, y0)
       
       # Save the full set of results and the Jacobian, if required for backward pass
@@ -325,8 +329,7 @@ class ImplicitSolver(FixedGridSolver):
     if self.solver_method == "diag":
       return b / torch.diagonal(A, dim1=-2, dim2=-1)
     elif self.solver_method == "lu":
-      s, _ = torch.solve(b[...,None], A)
-      return s[:,:,0]
+      return torch.linalg.solve(A, b)
     else:
       raise ValueError("Unknown solver method!")
 
@@ -354,7 +357,8 @@ class ImplicitSolver(FixedGridSolver):
     nR0 = nR
     i = 0
 
-    while (i < self.miter) and torch.any(nR > self.atol) and torch.any(nR / nR0 > self.rtol):
+    #while (i < self.miter) and torch.any(nR > self.atol) and torch.any(nR / nR0 > self.rtol):
+    while i < 10:
       x -= self._solve_linear_system(J, R)
       R, J = system(x)
       nR = torch.norm(R, dim = -1)
@@ -406,8 +410,7 @@ class BackwardEuler(ImplicitSolver):
                 for this method
         llast:  last value of the adjoint
     """
-    res, _ = torch.solve(llast[...,None], J.transpose(1,2))
-    return res[...,0]
+    return torch.linalg.solve(J.transpose(1,2), llast)
   
   def _accumulate(self, grad_results, partial):
     """
