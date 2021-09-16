@@ -232,7 +232,7 @@ class StatisticalModel(PyroModule):
     with pyro.plate("trials", times.shape[1]):
       with pyro.plate("time", times.shape[0]):
         return pyro.sample("obs", dist.Normal(stresses, self.eps), obs = true)
-    
+
 class HierarchicalStatisticalModel(PyroModule):
   """
     Wrap a material model to provide a hierarchical :py:mod:`pyro` statistical
@@ -272,7 +272,8 @@ class HierarchicalStatisticalModel(PyroModule):
   """
   def __init__(self, maker, names, loc_loc_priors, loc_scale_priors,
       scale_scale_priors, noise_prior, loc_suffix = "_loc",
-      scale_suffix = "_scale", param_suffix = "_param", include_noise = False):
+      scale_suffix = "_scale", param_suffix = "_param",
+      include_noise = False):
     super().__init__()
     
     # Store things we might later 
@@ -321,6 +322,10 @@ class HierarchicalStatisticalModel(PyroModule):
     # This annoyance is required to make the adjoint solver work
     self.extra_param_names = []
 
+  @property
+  def nparams(self):
+    return len(self.names)
+
   def sample_top(self):
     """
       Sample the top level variables
@@ -337,10 +342,6 @@ class HierarchicalStatisticalModel(PyroModule):
     """
       Make the guide and cache the extra parameter names the adjoint solver
       is going to need
-
-      Currently this uses a Delta distribution for both the top and
-      bottom level parameters.  This could be altered in the future
-      to have the bottom level use a normal.
     """
     def guide(times, strains, true_stresses = None):
       # Setup and sample the top-level loc and scale
@@ -364,11 +365,11 @@ class HierarchicalStatisticalModel(PyroModule):
 
       # Plate on experiments and sample individual values
       with pyro.plate("trials", times.shape[1]):
-        for name, loc, scale, dim in zip(self.names, top_loc_samples, top_scale_samples, self.dims):
-          param_value = pyro.sample(name, dist.Normal(loc, scale).to_event(dim))
+        for i,(name, val, dim) in enumerate(zip(self.names, self.loc_loc_priors, self.dims)):
+          ll_param = pyro.param(name + self.param_suffix, val.expand(times.shape[1])) # Probably needs fixing for vector/tensor properties
+          param_value = pyro.sample(name, dist.Delta(ll_param).to_event(dim))
     
-    self.extra_param_names = [var + self.loc_suffix + self.param_suffix for var in self.names] + [
-        var + self.scale_suffix + self.param_suffix for var in self.names]
+    self.extra_param_names = [var + self.param_suffix for var in self.names]
 
     return guide
 

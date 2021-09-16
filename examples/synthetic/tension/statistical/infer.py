@@ -46,14 +46,14 @@ if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
   scale = 0.05
-  nsamples = 25 # at each strain rate
+  nsamples = 50 # at each strain rate
   times, strains, true_stresses = load_data(scale, nsamples, device = device)
 
   # 2) Setup names for each parameter and the priors
   names = ["n", "eta", "s0", "R", "d"]
   loc_loc_priors = [torch.tensor(ra.uniform(0.25,0.75), device = device) for i in range(len(names))]
-  loc_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names))]
-  scale_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names))]
+  loc_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names))]
+  scale_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names))]
 
   eps = torch.tensor(1.0e-4, device = device)
 
@@ -72,13 +72,13 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 5.0e-3
-  niter = 500
-  num_samples = 2
+  lr = 5.0e-4
+  niter = 3000
+  num_samples = 1
   
-  optimizer = optim.Adam({"lr": lr})
+  optimizer = optim.ClippedAdam({"lr": lr})
   svi = SVI(model, guide, optimizer, 
-      loss = Trace_ELBO(num_particles = num_samples))
+      loss = pyro.infer.Trace_ELBO(num_particles = num_samples))
 
   # 6) Infer!
   t = tqdm(range(niter), total = niter, desc = "Loss:    ")
