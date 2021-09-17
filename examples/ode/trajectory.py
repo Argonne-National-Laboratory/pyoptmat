@@ -59,7 +59,7 @@ class Integrator(pyro.nn.PyroModule):
 
   def forward(self, times):
     return ode.odeint_adjoint(self.eqn, self.y0, times, 
-        jit_mode = jit_mode , extra_params = self.extra_params)
+        jit_mode = jit_mode , extra_params = self.extra_params, atol = 1e-4)
 
 class ODE(pyro.nn.PyroModule):
   def __init__(self, v, a):
@@ -197,7 +197,7 @@ if __name__ == "__main__":
   model = Model(maker, ["v", "a"], [v_loc_prior, a_loc_prior], [v_scale_prior, a_scale_prior])
 
   lr = 5.0e-3
-  niter = 500
+  niter = 250
   num_samples = 1
 
   guide = model.make_guide()
