@@ -34,11 +34,7 @@ a_scale_prior = 0.1
 
 eps_act = 0.05
 eps_prior = 0.1 # Just measure variance in data...
-
-pyro.enable_validation()
-
-# Use doubles
-torch.set_default_tensor_type(torch.DoubleTensor)
+jit_mode = False
 
 def model_act(times):
   """
@@ -62,7 +58,8 @@ class Integrator(pyro.nn.PyroModule):
     self.extra_params = extra_params
 
   def forward(self, times):
-    return ode.odeint_adjoint(self.eqn, self.y0, times, error_check = False, extra_params = self.extra_params)
+    return ode.odeint_adjoint(self.eqn, self.y0, times, 
+        jit_mode = jit_mode , extra_params = self.extra_params)
 
 class ODE(pyro.nn.PyroModule):
   def __init__(self, v, a):
@@ -209,8 +206,12 @@ if __name__ == "__main__":
   guide(times)
 
   optimizer = optim.ClippedAdam({"lr": lr})
-  svi = SVI(model, guide, optimizer, 
-      loss = JitTrace_ELBO(num_particles=num_samples))
+  if jit_mode:
+    l = JitTrace_ELBO(num_particles = num_samples)
+  else:
+    l = Trace_ELBO(num_particles = num_samples)
+
+  svi = SVI(model, guide, optimizer, loss = l)
   
   t = tqdm(range(niter))
   loss_hist = []

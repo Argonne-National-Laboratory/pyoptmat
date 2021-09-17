@@ -37,10 +37,12 @@ else:
 dev = "cpu"
 device = torch.device(dev)
 
+jit_mode = False
+
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
   return make_model(torch.tensor(0.5), n, eta, s0, R, d, device = device,
-      use_adjoint = True, **kwargs).to(device)
+      use_adjoint = True, jit_mode = jit_mode, **kwargs).to(device)
 
 if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
@@ -72,13 +74,17 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 5.0e-4
-  niter = 3000
+  lr = 5.0e-3
+  niter = 5
   num_samples = 1
   
   optimizer = optim.ClippedAdam({"lr": lr})
-  svi = SVI(model, guide, optimizer, 
-      loss = pyro.infer.Trace_ELBO(num_particles = num_samples))
+  if jit_mode:
+    ls = pyro.infer.JitTrace_ELBO(num_particles = num_samples)
+  else:
+    ls = pyro.infer.Trace_ELBO(num_particles = num_samples)
+
+  svi = SVI(model, guide, optimizer, loss = ls)
 
   # 6) Infer!
   t = tqdm(range(niter), total = niter, desc = "Loss:    ")

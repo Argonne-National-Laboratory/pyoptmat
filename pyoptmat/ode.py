@@ -30,14 +30,14 @@ class FixedGridSolver:
     Superclass of all solvers that use a fixed grid (versus an adaptive method)
 
     Args:
-      func:                         function returning the time rate of change and,
-                                    optionally, the jacobian
-      y0:                           initial condition
-      adjoint_params (optional):    additional named parameters to track in adjoint pass, beyond those
-                                    we can determine by introspection
-      error_check (optional, True): check errors, if False assume model is configured correctly
+      func:                 function returning the time rate of change and,
+                            optionally, the jacobian
+      y0:                   initial condition
+      substep (optional):   subdivide each provided timestep into some number
+                            of subdivisions for integration
+      jit_mode (optional):  if true do various dangerous things to fix the model structure
   """   
-  def __init__(self, func, y0, adjoint_params = None, error_check = True, **kwargs):
+  def __init__(self, func, y0, adjoint_params = None, **kwargs):
     # Store basic info about the system
     self.func = func
     self.y0 = y0
@@ -46,15 +46,15 @@ class FixedGridSolver:
     self.prob_size = self.y0.shape[1]
 
     self.substep = kwargs.pop('substep', None)
-    self.progress = kwargs.pop('progress', False)
+    self.jit_mode = kwargs.pop('jit_mode', False)
 
     # Store for later
     self.adjoint_params = adjoint_params
-    self.error_check = error_check
     
     # Sort out if the function is providing the jacobian
     self.has_jac = True
-    if self.error_check:
+
+    if not self.jit_mode:
       fake_time = torch.zeros(self.batch_size, device = y0.device)
       try:
         a, b = self.func(fake_time, self.y0)
@@ -125,7 +125,7 @@ class FixedGridSolver:
                                     adjoint pass
     """
     # Basic error checking
-    if self.error_check:
+    if not self.jit_mode:
       if t.dim() != 2 or t.shape[1] != self.batch_size:
         raise ValueError("Expected times to be a ntime x batch_size array!")
     
@@ -139,19 +139,17 @@ class FixedGridSolver:
     
     # Setup "cached" results, if required
     if cache_adjoint:
-      self.full_result = torch.empty(t.shape[0], *self.y0.shape, dtype = self.y0.dtype,
+      self.full_result = torch.empty(times.shape[0], *self.y0.shape, dtype = self.y0.dtype,
           device = self.y0.device)
       self.full_result[0] = self.y0
-      self.full_jacobian = torch.empty(t.shape[0], self.batch_size, self.prob_size, 
+      self.full_jacobian = torch.empty(times.shape[0], self.batch_size, self.prob_size, 
           self.prob_size, dtype = self.y0.dtype, device = self.y0.device)
       self.full_times = times
     
     # Start integrating!
     y0 = self.y0
     j = 1
-    #for k,(t0, t1) in tqdm(enumerate(zip(times[:-1], times[1:])), 
-    #    disable = not self.progress, total = times.shape[0]-1, desc="Integrate"):
-    for k,(t0,t1) in enumerate(zip(times[:-1], times[1:])):
+    for k,(t0, t1) in enumerate(zip(times[:-1], times[1:])):
       y1, J = self._step(t0, t1, t1-t0, y0)
       
       # Save the full set of results and the Jacobian, if required for backward pass
@@ -190,8 +188,7 @@ class FixedGridSolver:
     j = times.shape[0]-2
 
     # Run *backwards* through time
-    for curr in tqdm(range(nt-2,-1,-1), 
-        disable = not self.progress, total = nt-1, desc="Integrate"):
+    for curr in range(nt-2,-1,-1):
       # Setup all the state so I don't get confused
       last = curr + 1 # Very confusing lol
       tcurr = self.full_times[curr]
@@ -357,8 +354,7 @@ class ImplicitSolver(FixedGridSolver):
     nR0 = nR
     i = 0
 
-    #while (i < self.miter) and torch.any(nR > self.atol) and torch.any(nR / nR0 > self.rtol):
-    while i < 10:
+    while (i < self.miter) and torch.any(nR > self.atol) and torch.any(nR / nR0 > self.rtol):
       x -= self._solve_linear_system(J, R)
       R, J = system(x)
       nR = torch.norm(R, dim = -1)
