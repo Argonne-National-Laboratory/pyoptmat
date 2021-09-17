@@ -304,7 +304,7 @@ class HierarchicalStatisticalModel(PyroModule):
       setattr(self, self.top_vars[-1], PyroSample(dist.Normal(loc_loc,
         loc_scale).to_event(dim)))
       self.top_vars.append(var + scale_suffix)
-      setattr(self, self.top_vars[-1], PyroSample(dist.LogNormal(scale_scale, scale_scale,
+      setattr(self, self.top_vars[-1], PyroSample(dist.HalfNormal(scale_scale
         ).to_event(dim)))
       
       # The tricks are: 1) use lambda self and 2) remember how python binds...
@@ -315,7 +315,7 @@ class HierarchicalStatisticalModel(PyroModule):
 
     # Setup the noise
     if self.include_noise:
-      self.eps = PyroSample(dist.LogNormal(noise_prior, noise_prior))
+      self.eps = PyroSample(dist.HalfNormal(noise_prior))
     else:
       self.eps = torch.tensor(noise_prior)
 

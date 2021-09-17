@@ -359,7 +359,7 @@ class ImplicitSolver(FixedGridSolver):
       R, J = system(x)
       nR = torch.norm(R, dim = -1)
       i += 1
-
+    
     if i == self.miter:
       warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
 

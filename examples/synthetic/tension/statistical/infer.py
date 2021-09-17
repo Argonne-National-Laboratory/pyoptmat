@@ -75,7 +75,7 @@ if __name__ == "__main__":
   
   # 5) Setup the optimizer and loss
   lr = 5.0e-3
-  niter = 5
+  niter = 200
   num_samples = 1
   
   optimizer = optim.ClippedAdam({"lr": lr})

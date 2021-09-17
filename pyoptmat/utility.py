@@ -135,6 +135,7 @@ def differentiate(fn, x0, eps = 1.0e-6):
 
   return d
 
+@torch.jit.script
 def timeseries_interpolate_batch_times(times, values, t):
   """
     Interpolate the time series defined by X to the times defined by t
@@ -148,8 +149,13 @@ def timeseries_interpolate_batch_times(times, values, t):
       Interpolated values as a `(nbatch,)` array
   """
   gi = torch.remainder(torch.sum((times - t) <= 0,dim = 0), times.shape[0])
-  slopes = (values[gi] - values[gi-1])/(times[gi] - times[gi-1])
-  return torch.diagonal(values[gi-1] + slopes * (t - times[gi-1]))
+  y2 = torch.diagonal(values[gi])
+  y1 = torch.diagonal(values[gi-1])
+  t2 = torch.diagonal(times[gi])
+  t1 = torch.diagonal(times[gi-1])
+
+  slopes = (y2 - y1) / (t2 - t1)
+  return y1 + slopes * (t - t1)
 
 def timeseries_interpolate_single_times(times, values, t):
   """
@@ -179,6 +185,7 @@ def random_parameter(frange):
   else:
     return nn.Parameter(torch.Tensor(1).uniform_(*frange))
 
+@torch.jit.script
 def heaviside(X):
   """
     A pytorch-differentiable version of the Heaviside function
@@ -192,6 +199,7 @@ def heaviside(X):
   """
   return (torch.sign(X) + 1.0) / 2.0
 
+@torch.jit.script
 def macaulay(X):
   """
     A pytorch-differentiable version of the Macualay bracket

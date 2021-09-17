@@ -40,8 +40,8 @@ class InelasticModel(nn.Module):
   def __init__(self, E, flowrule, substeps = 1, method = 'backward-euler', 
       dmodel = damage.NoDamage(), E_scale = lambda x: x,
       rtol = 1.0e-6, atol = 1.0e-4, progress = False, 
-      miter = 100, d0 = 0, use_adjoint = False, extra_params = [],
-      jit_mode = False, jit_iters = 5):
+      miter = 100, d0 = 0, use_adjoint = True, extra_params = [],
+      jit_mode = False):
     super().__init__()
     self.E_param = E
     self.E_scale = E_scale
@@ -59,7 +59,6 @@ class InelasticModel(nn.Module):
     self.use_adjoint = use_adjoint
     self.extra_params = extra_params
     self.jit_mode = jit_mode
-    self.jit_iters = jit_iters
 
   def solve(self, t, strains):
     """
@@ -92,8 +91,7 @@ class InelasticModel(nn.Module):
     return imethod(self, init,  t,
         method = self.method, substep = self.substeps, rtol = self.rtol, 
         atol = self.atol, progress = self.progress, miter = self.miter,
-        extra_params = self.extra_params, jit_mode = self.jit_mode,
-        jit_iters = self.jit_iters)
+        extra_params = self.extra_params, jit_mode = self.jit_mode)
 
   def cache(self):
     """
