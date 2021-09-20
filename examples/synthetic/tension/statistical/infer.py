@@ -74,17 +74,21 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 5.0e-3
-  niter = 200
+  lr = 1.0e-2
+  g = 0.5
+  niter = 1000
+  lrd = g**(1.0 / niter)
   num_samples = 1
+  scale_factor = 1e-14
   
-  optimizer = optim.ClippedAdam({"lr": lr})
+  optimizer = optim.ClippedAdam({"lr": lr, 'lrd': lrd})
   if jit_mode:
     ls = pyro.infer.JitTrace_ELBO(num_particles = num_samples)
   else:
     ls = pyro.infer.Trace_ELBO(num_particles = num_samples)
 
-  svi = SVI(model, guide, optimizer, loss = ls)
+  svi = SVI(pyro.poutine.scale(model, scale_factor), 
+      pyro.poutine.scale(guide, scale_factor), optimizer, loss = ls)
 
   # 6) Infer!
   t = tqdm(range(niter), total = niter, desc = "Loss:    ")
@@ -93,15 +97,18 @@ if __name__ == "__main__":
     loss = svi.step(times, strains, true_stresses)
     loss_hist.append(loss)
     t.set_description("Loss %3.2e" % loss)
+  
+  s, m = torch.std_mean(pyro.param("d_param").data)
 
   # 7) Print out results
   print("")
   print("Inferred distributions:")
   print("\tloc\t\tscale")
   for n in names:
+    s, m = torch.std_mean(pyro.param(n + model.param_suffix).data)
     print("%s:\t%3.2f/0.50\t%3.2f/%3.2f" % (n,
-      pyro.param(n + model.loc_suffix + model.param_suffix).data,
-      pyro.param(n + model.scale_suffix + model.param_suffix).data,
+      m,
+      s,
       scale))
   print("")
 
@@ -109,7 +116,7 @@ if __name__ == "__main__":
   np.savetxt("loss-history.txt", loss_hist)
 
   plt.figure()
-  plt.plot(loss_hist)
+  plt.loglog(loss_hist)
   plt.xlabel("Iteration")
   plt.ylabel("Loss")
   plt.tight_layout()
