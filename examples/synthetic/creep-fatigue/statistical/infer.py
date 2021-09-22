@@ -59,10 +59,10 @@ if __name__ == "__main__":
     device = device), 
       torch.tensor(ra.uniform(0,1,size=nback), device = device)]
   loc_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names[:-2]))]
-  loc_scale_priors += [torch.ones(3, device = device)*0.5, torch.ones(3, device = device)*0.1]
+  loc_scale_priors += [torch.ones(3, device = device)*0.15, torch.ones(3, device = device)*0.15]
   scale_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names[:-2]))]
-  scale_scale_priors += [torch.ones(3, device = device)*0.5, torch.ones(3,
-    device = device)*0.5]
+  scale_scale_priors += [torch.ones(3, device = device)*0.15, torch.ones(3,
+    device = device)*0.15]
 
   eps = torch.tensor(1.0e-4, device = device)
 
