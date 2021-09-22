@@ -76,7 +76,7 @@ if __name__ == "__main__":
   # 5) Setup the optimizer and loss
   lr = 1.0e-2
   g = 1.0
-  niter = 1000
+  niter = 200
   lrd = g**(1.0 / niter)
   num_samples = 1
   
@@ -103,7 +103,8 @@ if __name__ == "__main__":
   print("Inferred distributions:")
   print("\tloc\t\tscale")
   for n in names:
-    s, m = torch.std_mean(pyro.param(n + model.param_suffix).data)
+    s = pyro.param(n + model.scale_suffix + model.param_suffix).data
+    m = pyro.param(n + model.loc_suffix + model.param_suffix).data
     print("%s:\t%3.2f/0.50\t%3.2f/%3.2f" % (n,
       m,
       s,

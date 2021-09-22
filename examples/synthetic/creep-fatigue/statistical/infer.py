@@ -53,16 +53,16 @@ if __name__ == "__main__":
 
   # 2) Setup names for each parameter and the priors
   names = ["n", "eta", "s0", "R", "d", "C", "g"]
-  loc_loc_priors = [torch.tensor(ra.uniform(0.25,0.75), device = device)
+  loc_loc_priors = [torch.tensor(ra.uniform(0,1), device = device)
       for i in range(len(names[:-2]))]
   loc_loc_priors += [torch.tensor(ra.uniform(0,1,size=(nback,)),
     device = device), 
       torch.tensor(ra.uniform(0,1,size=nback), device = device)]
-  loc_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names[:-2]))]
-  loc_scale_priors += [torch.ones(3, device = device)*0.1, torch.ones(3, device = device)*0.1]
-  scale_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names[:-2]))]
-  scale_scale_priors += [torch.ones(3, device = device)*0.1, torch.ones(3,
-    device = device)*0.1]
+  loc_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names[:-2]))]
+  loc_scale_priors += [torch.ones(3, device = device)*0.5, torch.ones(3, device = device)*0.1]
+  scale_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names[:-2]))]
+  scale_scale_priors += [torch.ones(3, device = device)*0.5, torch.ones(3,
+    device = device)*0.5]
 
   eps = torch.tensor(1.0e-4, device = device)
 
@@ -74,6 +74,9 @@ if __name__ == "__main__":
   for i in range(nback):
     print("%s%i:\t%3.2f\t\t%3.2f\t\t%3.2f" % (names[-2], i, loc_loc_priors[-2][i],
       loc_scale_priors[-2][i], scale_scale_priors[-2][i]))
+  for i in range(nback):
+    print("%s%i:\t%3.2f\t\t%3.2f\t\t%3.2f" % (names[-1], i, loc_loc_priors[-1][i],
+      loc_scale_priors[-1][i], scale_scale_priors[-1][i]))
   print("")
 
   # 3) Create the actual model
@@ -84,8 +87,8 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 5.0e-3
-  niter = 500
+  lr = 1e-3
+  niter = 400
   num_samples = 1
   
   optimizer = optim.Adam({"lr": lr})

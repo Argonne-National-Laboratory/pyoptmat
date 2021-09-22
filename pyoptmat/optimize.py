@@ -366,7 +366,7 @@ class HierarchicalStatisticalModel(PyroModule):
       # Plate on experiments and sample individual values
       with pyro.plate("trials", times.shape[1]):
         for i,(name, val, dim) in enumerate(zip(self.names, self.loc_loc_priors, self.dims)):
-          ll_param = pyro.param(name + self.param_suffix, torch.zeros(times.shape[1])) # Probably needs fixing for vector/tensor properties
+          ll_param = pyro.param(name + self.param_suffix, torch.zeros_like(val).unsqueeze(0).repeat((times.shape[1],) + (1,)*dim))
           param_value = pyro.sample(name, dist.Delta(ll_param).to_event(dim))
     
     self.extra_param_names = [var + self.param_suffix for var in self.names]
