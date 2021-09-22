@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
   # 2) Setup names for each parameter and the priors
   names = ["n", "eta", "s0", "R", "d"]
-  loc_loc_priors = [torch.tensor(ra.uniform(0.25,0.75), device = device) for i in range(len(names))]
+  loc_loc_priors = [torch.tensor(ra.random(), device = device) for i in range(len(names))]
   loc_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names))]
   scale_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names))]
 
@@ -75,11 +75,10 @@ if __name__ == "__main__":
   
   # 5) Setup the optimizer and loss
   lr = 1.0e-2
-  g = 0.5
+  g = 1.0
   niter = 1000
   lrd = g**(1.0 / niter)
   num_samples = 1
-  scale_factor = 1e-14
   
   optimizer = optim.ClippedAdam({"lr": lr, 'lrd': lrd})
   if jit_mode:
@@ -87,8 +86,7 @@ if __name__ == "__main__":
   else:
     ls = pyro.infer.Trace_ELBO(num_particles = num_samples)
 
-  svi = SVI(pyro.poutine.scale(model, scale_factor), 
-      pyro.poutine.scale(guide, scale_factor), optimizer, loss = ls)
+  svi = SVI(model, guide, optimizer, loss = ls)
 
   # 6) Infer!
   t = tqdm(range(niter), total = niter, desc = "Loss:    ")
