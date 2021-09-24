@@ -42,7 +42,8 @@ jit_mode = False
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
   return make_model(torch.tensor(0.5), n, eta, s0, R, d, device = device,
-      use_adjoint = True, jit_mode = jit_mode, **kwargs).to(device)
+      use_adjoint = True, jit_mode = jit_mode, 
+      **kwargs).to(device)
 
 if __name__ == "__main__":
   # 1) Load the data for the variance of interest,

@@ -47,7 +47,7 @@ if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
   scale = 0.05
-  nsamples = 20 # at each strain rate
+  nsamples = 50 # at each strain rate
   times, strains, true_stresses = load_data(scale, nsamples,
       device = device)
 
@@ -87,8 +87,8 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 1e-3
-  niter = 400
+  lr = 1e-2
+  niter = 500
   num_samples = 1
   
   optimizer = optim.Adam({"lr": lr})
@@ -128,7 +128,7 @@ if __name__ == "__main__":
   np.savetxt("loss-history.txt", loss_hist)
 
   plt.figure()
-  plt.plot(loss_hist)
+  plt.loglog(loss_hist)
   plt.xlabel("Iteration")
   plt.ylabel("Loss")
   plt.tight_layout()
