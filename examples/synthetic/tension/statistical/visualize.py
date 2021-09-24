@@ -41,15 +41,15 @@ if __name__ == "__main__":
   times, strains, true_stresses = load_data(scale, nsamples)
   
   # We can only easily plot one condition
-  condition = 1 # Choice of condition
+  condition = 5 # Choice of condition
   times = times[:,condition*nsamples:(condition)*nsamples+1]
   strains = strains[:,condition*nsamples:(condition)*nsamples+1]
   true_stresses = true_stresses[:,condition*nsamples:(condition+1)*nsamples]
   
   # Actual results
   names = ["n", "eta", "s0", "R", "d"]
-  loc = [0.47, 0.57, 0.47, 0.50, 0.50]
-  scale = [0.03, 0.03, 0.03, 0.05, 0.04]
+  loc = [0.65, 0.25, 0.60, 0.50, 0.50]
+  scale = [0.05, 0.06, 0.05, 0.05, 0.06]
 
   eps = torch.tensor(1.0e-4)
 

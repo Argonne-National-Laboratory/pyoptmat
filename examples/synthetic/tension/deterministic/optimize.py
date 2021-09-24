@@ -41,7 +41,7 @@ if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
   scale = 0.01
-  nsamples = 5 # at each strain rate
+  nsamples = 10 # at each strain rate
   times, strains, true_stresses = load_data(scale, nsamples, device = device)
 
   # 2) Setup names for each parameter and the initial conditions

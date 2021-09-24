@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 import pyro
 from pyro.infer import SVI, Trace_ELBO
+from pyro.contrib.easyguide import easy_guide
 import pyro.optim as optim
 
 import matplotlib.pyplot as plt
@@ -36,23 +37,26 @@ else:
 dev = "cpu"
 device = torch.device(dev)
 
+jit_mode = False
+
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
   return make_model(torch.tensor(0.5), n, eta, s0, R, d, device = device,
-      use_adjoint = True, **kwargs).to(device)
+      use_adjoint = True, jit_mode = jit_mode, 
+      **kwargs).to(device)
 
 if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
   scale = 0.05
-  nsamples = 25 # at each strain rate
+  nsamples = 50 # at each strain rate
   times, strains, true_stresses = load_data(scale, nsamples, device = device)
 
   # 2) Setup names for each parameter and the priors
   names = ["n", "eta", "s0", "R", "d"]
-  loc_loc_priors = [torch.tensor(ra.uniform(0.25,0.75), device = device) for i in range(len(names))]
-  loc_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names))]
-  scale_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names))]
+  loc_loc_priors = [torch.tensor(ra.random(), device = device) for i in range(len(names))]
+  loc_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names))]
+  scale_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names))]
 
   eps = torch.tensor(1.0e-4, device = device)
 
@@ -71,13 +75,19 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 5.0e-3
-  niter = 4000
+  lr = 1.0e-2
+  g = 1.0
+  niter = 200
+  lrd = g**(1.0 / niter)
   num_samples = 1
   
-  optimizer = optim.Adam({"lr": lr})
-  svi = SVI(model, guide, optimizer, 
-      loss = Trace_ELBO(num_particles = num_samples))
+  optimizer = optim.ClippedAdam({"lr": lr, 'lrd': lrd})
+  if jit_mode:
+    ls = pyro.infer.JitTrace_ELBO(num_particles = num_samples)
+  else:
+    ls = pyro.infer.Trace_ELBO(num_particles = num_samples)
+
+  svi = SVI(model, guide, optimizer, loss = ls)
 
   # 6) Infer!
   t = tqdm(range(niter), total = niter, desc = "Loss:    ")
@@ -86,15 +96,19 @@ if __name__ == "__main__":
     loss = svi.step(times, strains, true_stresses)
     loss_hist.append(loss)
     t.set_description("Loss %3.2e" % loss)
+  
+  s, m = torch.std_mean(pyro.param("d_param").data)
 
   # 7) Print out results
   print("")
   print("Inferred distributions:")
   print("\tloc\t\tscale")
   for n in names:
+    s = pyro.param(n + model.scale_suffix + model.param_suffix).data
+    m = pyro.param(n + model.loc_suffix + model.param_suffix).data
     print("%s:\t%3.2f/0.50\t%3.2f/%3.2f" % (n,
-      pyro.param("AutoDelta." + n + model.loc_suffix).data,
-      pyro.param("AutoDelta." + n + model.scale_suffix).data,
+      m,
+      s,
       scale))
   print("")
 
@@ -102,7 +116,7 @@ if __name__ == "__main__":
   np.savetxt("loss-history.txt", loss_hist)
 
   plt.figure()
-  plt.plot(loss_hist)
+  plt.loglog(loss_hist)
   plt.xlabel("Iteration")
   plt.ylabel("Loss")
   plt.tight_layout()

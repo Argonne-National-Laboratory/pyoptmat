@@ -135,6 +135,61 @@ def differentiate(fn, x0, eps = 1.0e-6):
 
   return d
 
+class BatchTimeSeriesInterpolator(nn.Module):
+  """
+    Precache a lot of the work required to interpolate in time vs
+    the timeseries_interpolate_batch_times function
+
+    Args:
+      times:    input time series as a `(ntime,nbatch)` array
+      values:   input values series as a `(ntime,nbatch)` array
+  """
+  def __init__(self, times, data):
+    super().__init__()
+    self.times = times
+    self.values = data
+
+    self.slopes = torch.diff(self.values, dim = 0) / torch.diff(self.times, 
+        dim = 0)
+
+  def forward(self, t):
+    """
+      Calculate the linearly-interpolated current values
+    """
+    gi = torch.remainder(torch.sum((self.times - t) <= 0, dim = 0), 
+      self.times.shape[0])
+    return torch.diagonal(self.values[gi-1]) + torch.diagonal(self.slopes[gi-1]) * (
+        t - torch.diagonal(self.times[gi-1]))
+
+class CheaterBatchTimeSeriesInterpolator(nn.Module):
+  """
+    Precache a lot of the work required to interpolate in time vs
+    the timeseries_interpolate_batch_times function
+
+    This is the cheater version specifically for our structured problems where
+    the batches will always be at the same indices in time
+
+    Args:
+      times:    input time series as a `(ntime,nbatch)` array
+      values:   input values series as a `(ntime,nbatch)` array
+  """
+  def __init__(self, times, data):
+    super().__init__()
+    self.times = times
+    self.values = data
+
+    self.slopes = torch.diff(self.values, dim = 0) / torch.diff(self.times, 
+        dim = 0)
+
+  def forward(self, t):
+    """
+      Calculate the linearly-interpolated current values
+    """
+    gi = torch.argmax((self.times[:,0] >= t[0]).type(torch.uint8))
+
+    return self.values[gi-1] + self.slopes[gi-1] * (t - self.times[gi-1])
+
+@torch.jit.script
 def timeseries_interpolate_batch_times(times, values, t):
   """
     Interpolate the time series defined by X to the times defined by t
@@ -148,8 +203,13 @@ def timeseries_interpolate_batch_times(times, values, t):
       Interpolated values as a `(nbatch,)` array
   """
   gi = torch.remainder(torch.sum((times - t) <= 0,dim = 0), times.shape[0])
-  slopes = (values[gi] - values[gi-1])/(times[gi] - times[gi-1])
-  return torch.diagonal(values[gi-1] + slopes * (t - times[gi-1]))
+  y2 = torch.diagonal(values[gi])
+  y1 = torch.diagonal(values[gi-1])
+  t2 = torch.diagonal(times[gi])
+  t1 = torch.diagonal(times[gi-1])
+
+  slopes = (y2 - y1) / (t2 - t1)
+  return y1 + slopes * (t - t1)
 
 def timeseries_interpolate_single_times(times, values, t):
   """
@@ -179,6 +239,7 @@ def random_parameter(frange):
   else:
     return nn.Parameter(torch.Tensor(1).uniform_(*frange))
 
+@torch.jit.script
 def heaviside(X):
   """
     A pytorch-differentiable version of the Heaviside function
@@ -192,6 +253,7 @@ def heaviside(X):
   """
   return (torch.sign(X) + 1.0) / 2.0
 
+@torch.jit.script
 def macaulay(X):
   """
     A pytorch-differentiable version of the Macualay bracket

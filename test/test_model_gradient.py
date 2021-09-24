@@ -70,7 +70,8 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonGradient):
     self.p = [self.E, self.n, self.eta]
 
     self.model_fn = lambda p: models.InelasticModel(p[0],
-        flowrules.PerfectViscoplasticity(p[1], p[2]))
+        flowrules.PerfectViscoplasticity(p[1], p[2]),
+        use_adjoint = False)
 
     self.extract_grad = lambda m: np.array(
         [m.E.grad.numpy(), m.flowrule.n.grad.numpy(), m.flowrule.eta.grad.numpy()])
@@ -97,7 +98,8 @@ class TestIsotropicOnly(unittest.TestCase, CommonGradient):
     self.model_fn = lambda p: models.InelasticModel(p[0],
         flowrules.IsoKinViscoplasticity(p[1], p[2], p[3],
           hardening.VoceIsotropicHardeningModel(p[4],p[5]),
-          hardening.NoKinematicHardeningModel()))
+          hardening.NoKinematicHardeningModel()),
+        use_adjoint = False)
 
     self.extract_grad = lambda m: np.array(
         [m.E.grad.numpy(), m.flowrule.n.grad.numpy(), m.flowrule.eta.grad.numpy(),
@@ -128,7 +130,8 @@ class TestHardeningViscoplasticity(unittest.TestCase, CommonGradient):
     self.model_fn = lambda p: models.InelasticModel(p[0],
         flowrules.IsoKinViscoplasticity(p[1], p[2], p[3],
           hardening.VoceIsotropicHardeningModel(p[4],p[5]),
-          hardening.FAKinematicHardeningModel(p[6],p[7])))
+          hardening.FAKinematicHardeningModel(p[6],p[7])),
+        use_adjoint = False)
 
     self.extract_grad = lambda m: np.array(
         [m.E.grad.numpy(), m.flowrule.n.grad.numpy(), m.flowrule.eta.grad.numpy(),
@@ -164,7 +167,8 @@ class TestHardeningViscoplasticityDamage(unittest.TestCase, CommonGradient):
         flowrules.IsoKinViscoplasticity(p[1], p[2], p[3],
           hardening.VoceIsotropicHardeningModel(p[4],p[5]),
           hardening.FAKinematicHardeningModel(p[6],p[7])),
-        dmodel = damage.HayhurstLeckie(p[8], p[9], p[10]))
+        dmodel = damage.HayhurstLeckie(p[8], p[9], p[10]),
+        use_adjoint = False)
 
     self.extract_grad = lambda m: np.array(
         [m.E.grad.numpy(), m.flowrule.n.grad.numpy(), m.flowrule.eta.grad.numpy(),
@@ -198,7 +202,8 @@ class TestChabocheViscoplasticity(unittest.TestCase, CommonGradient):
     self.model_fn = lambda p: models.InelasticModel(p[0],
         flowrules.IsoKinViscoplasticity(p[1], p[2], p[3],
           hardening.VoceIsotropicHardeningModel(p[4],p[5]),
-          hardening.ChabocheHardeningModel(p[6],p[7])))
+          hardening.ChabocheHardeningModel(p[6],p[7])),
+        use_adjoint = False)
 
     self.extract_grad = lambda m: np.array(
         [m.E.grad.numpy(), m.flowrule.n.grad.numpy(), m.flowrule.eta.grad.numpy(),

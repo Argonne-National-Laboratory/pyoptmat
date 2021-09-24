@@ -29,16 +29,21 @@ class InelasticModel(nn.Module):
       progress (optional):      print a progress bar for forward time integration
       miter (optional):         maximum nonlinear iterations for implicit time integration
       d0 (optional):            intitial value of damage
-      use_adjoint (optional):   if `True` use the adjoint approach to calculate 
-                                sensitivities, if `False` use pytroch automatic differentiation
-      extra_params (optional):  additional, external parameter to include in the
-                                adjoint calculation.  Used if not all the parameters
-                                can be determined by introspection
+      use_adjoint (optional):       if `True` use the adjoint approach to 
+                                    calculate sensitivities, if `False` use 
+                                    pytorch automatic differentiation
+      extra_params (optional):      additional, external parameter to include
+                                    in the adjoint calculation.  Used if not
+                                    all the parameters can be determined by
+                                    introspection
+      jit_mode (optional):          if true use the JIT mode which cuts out 
+                                    error checking and fixes sizes
   """
   def __init__(self, E, flowrule, substeps = 1, method = 'backward-euler', 
       dmodel = damage.NoDamage(), E_scale = lambda x: x,
       rtol = 1.0e-6, atol = 1.0e-4, progress = False, 
-      miter = 100, d0 = 0, use_adjoint = False, extra_params = []):
+      miter = 100, d0 = 0, use_adjoint = True, extra_params = [],
+      jit_mode = False):
     super().__init__()
     self.E_param = E
     self.E_scale = E_scale
@@ -55,6 +60,7 @@ class InelasticModel(nn.Module):
     self.d0 = d0
     self.use_adjoint = use_adjoint
     self.extra_params = extra_params
+    self.jit_mode = jit_mode
 
   def solve(self, t, strains):
     """
@@ -87,7 +93,7 @@ class InelasticModel(nn.Module):
     return imethod(self, init,  t,
         method = self.method, substep = self.substeps, rtol = self.rtol, 
         atol = self.atol, progress = self.progress, miter = self.miter,
-        extra_params = self.extra_params)
+        extra_params = self.extra_params, jit_mode = self.jit_mode)
 
   def cache(self):
     """
@@ -115,6 +121,9 @@ class InelasticModel(nn.Module):
     
     self.times = t
     self.strain_rates = strain_rates
+    
+    self.erate_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        self.times, self.strain_rates)
 
   def forward(self, t, states):
     """
@@ -133,8 +142,7 @@ class InelasticModel(nn.Module):
     h = states[:,1:1+self.flowrule.nhist].clone()
     d = states[:,-1].clone()
 
-    erate = utility.timeseries_interpolate_batch_times(
-        self.times, self.strain_rates, t)
+    erate = self.erate_interpolator(t)
     
     frate, dfrate = self.flowrule.flow_rate(stress/(1-d), h, t)
     hrate, dhrate = self.flowrule.history_rate(stress/(1-d), h, t)

@@ -47,26 +47,26 @@ if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
   scale = 0.05
-  nsamples = 20 # at each strain rate
+  nsamples = 50 # at each strain rate
   times, strains, true_stresses = load_data(scale, nsamples,
       device = device)
 
   # 2) Setup names for each parameter and the priors
   names = ["n", "eta", "s0", "R", "d", "C", "g"]
-  loc_loc_priors = [torch.tensor(ra.uniform(0.25,0.75), device = device)
+  loc_loc_priors = [torch.tensor(ra.uniform(0,1), device = device)
       for i in range(len(names[:-2]))]
   loc_loc_priors += [torch.tensor(ra.uniform(0,1,size=(nback,)),
     device = device), 
       torch.tensor(ra.uniform(0,1,size=nback), device = device)]
-  loc_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names[:-2]))]
-  loc_scale_priors += [torch.ones(3, device = device)*0.1, torch.ones(3, device = device)*0.1]
-  scale_scale_priors = [torch.tensor(0.10, device = device) for i in range(len(names[:-2]))]
-  scale_scale_priors += [torch.ones(3, device = device)*0.1, torch.ones(3,
-    device = device)*0.1]
+  loc_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names[:-2]))]
+  loc_scale_priors += [torch.ones(3, device = device)*0.15, torch.ones(3, device = device)*0.15]
+  scale_scale_priors = [torch.tensor(0.15, device = device) for i in range(len(names[:-2]))]
+  scale_scale_priors += [torch.ones(3, device = device)*0.15, torch.ones(3,
+    device = device)*0.15]
 
   eps = torch.tensor(1.0e-4, device = device)
 
-  print("Initial parameter values:")
+  print("Prior values:")
   print("\tloc loc\t\tloc scale\tscale scale")
   for n, llp, lsp, sp in zip(names[:-2], loc_loc_priors, loc_scale_priors, 
       scale_scale_priors):
@@ -74,6 +74,9 @@ if __name__ == "__main__":
   for i in range(nback):
     print("%s%i:\t%3.2f\t\t%3.2f\t\t%3.2f" % (names[-2], i, loc_loc_priors[-2][i],
       loc_scale_priors[-2][i], scale_scale_priors[-2][i]))
+  for i in range(nback):
+    print("%s%i:\t%3.2f\t\t%3.2f\t\t%3.2f" % (names[-1], i, loc_loc_priors[-1][i],
+      loc_scale_priors[-1][i], scale_scale_priors[-1][i]))
   print("")
 
   # 3) Create the actual model
@@ -84,8 +87,8 @@ if __name__ == "__main__":
   guide = model.make_guide()
   
   # 5) Setup the optimizer and loss
-  lr = 1.0e-3
-  niter = 3000
+  lr = 1e-2
+  niter = 500
   num_samples = 1
   
   optimizer = optim.Adam({"lr": lr})
@@ -106,18 +109,18 @@ if __name__ == "__main__":
   print("\tloc\t\tscale")
   for n in names[:-2]:
     print("%s:\t%3.2f/0.50\t%3.2f/%3.2f" % (n,
-      pyro.param("AutoDelta." + n + model.loc_suffix).data,
-      pyro.param("AutoDelta." + n + model.scale_suffix).data,
+      pyro.param(n + model.loc_suffix + model.param_suffix).data,
+      pyro.param(n + model.scale_suffix + model.param_suffix).data,
       scale))
   for i in range(nback):
     print("%s%i:\t%3.2f/0.50\t%3.2f/%3.2f" % (names[-2],i,
-      pyro.param("AutoDelta." + names[-2] + model.loc_suffix).data[i],
-      pyro.param("AutoDelta." + names[-2] + model.scale_suffix).data[i],
+      pyro.param(names[-2] + model.loc_suffix + model.param_suffix).data[i],
+      pyro.param(names[-2] + model.scale_suffix + model.param_suffix).data[i],
       scale))
   for i in range(nback):
     print("%s%i:\t%3.2f/0.50\t%3.2f/%3.2f" % (names[-1],i,
-      pyro.param("AutoDelta." + names[-1] + model.loc_suffix).data[i],
-      pyro.param("AutoDelta." + names[-1] + model.scale_suffix).data[i],
+      pyro.param(names[-1] + model.loc_suffix + model.param_suffix).data[i],
+      pyro.param(names[-1] + model.scale_suffix + model.param_suffix).data[i],
       scale))
   print("")
 
@@ -125,7 +128,7 @@ if __name__ == "__main__":
   np.savetxt("loss-history.txt", loss_hist)
 
   plt.figure()
-  plt.plot(loss_hist)
+  plt.loglog(loss_hist)
   plt.xlabel("Iteration")
   plt.ylabel("Loss")
   plt.tight_layout()

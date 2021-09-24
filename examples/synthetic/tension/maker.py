@@ -26,14 +26,6 @@ warnings.filterwarnings("ignore")
 # Use doubles
 torch.set_default_tensor_type(torch.DoubleTensor)
 
-# Run on GPU!
-if torch.cuda.is_available():
-    dev = "cuda:0"
-else:
-    dev = "cpu"
-#device = dev
-device = "cpu" # Override for home computer
-
 # Actual parameters
 E_true = 150000.0
 R_true = 200.0
@@ -45,7 +37,7 @@ s0_true = 50.0
 # Scale factor used in the model definition 
 sf = 0.5
 
-def make_model(E, n, eta, s0, R, d, device = device, **kwargs):
+def make_model(E, n, eta, s0, R, d, device = torch.device("cpu"), **kwargs):
   """
     Key function for the entire problem: given parameters generate the model
   """
@@ -75,7 +67,7 @@ def generate_input(erates, emax, ntime):
 
   return time, strain
 
-def load_data(scale, nsamples, device = device):
+def load_data(scale, nsamples, device = torch.device("cpu")):
   """
     Helper to load datafiles back in
   """
