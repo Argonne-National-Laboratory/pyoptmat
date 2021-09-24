@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
   eps = torch.tensor(1.0e-4, device = device)
 
-  print("Initial parameter values:")
+  print("Prior values:")
   print("\tloc loc\t\tloc scale\tscale scale")
   for n, llp, lsp, sp in zip(names[:-2], loc_loc_priors, loc_scale_priors, 
       scale_scale_priors):

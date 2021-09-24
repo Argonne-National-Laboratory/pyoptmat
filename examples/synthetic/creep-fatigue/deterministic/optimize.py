@@ -40,8 +40,8 @@ def make(n, eta, s0, R, d, C, g, **kwargs):
 if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
-  scale = 0.00
-  nsamples = 1 # at each condition
+  scale = 0.05
+  nsamples = 15 # at each condition
   times, strains, true_stresses = load_data(scale, nsamples,
       device = device)
 
