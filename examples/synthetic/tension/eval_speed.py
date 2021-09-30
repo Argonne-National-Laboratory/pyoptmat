@@ -44,7 +44,7 @@ if __name__ == "__main__":
   #    cut down to some number of samples, and flatten
   scale = 0.05
   nsamples = 20 # at each strain rate
-  times, strains, true_stresses = load_data(scale, nsamples, device = device)
+  times, strains, temps, true_stresses = load_data(scale, nsamples, device = device)
 
   # 2) Setup names for each parameter and the initial conditions
   names = ["n", "eta", "s0", "R", "d"]
@@ -60,7 +60,7 @@ if __name__ == "__main__":
   t = tqdm(range(niter), total = niter)
   for i in t:
     model.zero_grad()
-    pred = model(times, strains)
+    pred = model(times, strains, temps)
     lossv = loss(pred, true_stresses)
     lossv.backward()
 

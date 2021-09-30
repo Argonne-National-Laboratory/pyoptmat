@@ -42,7 +42,7 @@ if __name__ == "__main__":
   #    cut down to some number of samples, and flatten
   scale = 0.05
   nsamples = 15 # at each condition
-  times, strains, true_stresses = load_data(scale, nsamples,
+  times, strains, temperatures, true_stresses = load_data(scale, nsamples,
       device = device)
 
   # 2) Setup names for each parameter and the initial conditions
@@ -70,7 +70,7 @@ if __name__ == "__main__":
   # 6) Actually do the optimization!
   def closure():
     optim.zero_grad()
-    pred = model(times, strains)
+    pred = model(times, strains, temperatures)
     lossv = loss(pred, true_stresses)
     lossv.backward()
     return lossv

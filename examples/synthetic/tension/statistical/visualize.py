@@ -38,12 +38,13 @@ if __name__ == "__main__":
   # True data
   scale = 0.05
   nsamples = 50 # Use all the data
-  times, strains, true_stresses = load_data(scale, nsamples)
+  times, strains, temperatures, true_stresses = load_data(scale, nsamples)
   
   # We can only easily plot one condition
   condition = 5 # Choice of condition
   times = times[:,condition*nsamples:(condition)*nsamples+1]
   strains = strains[:,condition*nsamples:(condition)*nsamples+1]
+  temperatures = temperatures[:,condition*nsamples:(condition)*nsamples+1]
   true_stresses = true_stresses[:,condition*nsamples:(condition+1)*nsamples]
   
   # Actual results
@@ -58,6 +59,6 @@ if __name__ == "__main__":
   stress_res = torch.empty(times.shape[0], ntrials)
   
   for i in range(ntrials):
-    stress_res[:,i] = model.forward(times, strains)[:,0]
+    stress_res[:,i] = model.forward(times, strains, temperatures)[:,0]
 
   utility.visualize_variance(strains[:,0], true_stresses, stress_res)
