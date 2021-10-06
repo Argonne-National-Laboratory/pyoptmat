@@ -26,6 +26,30 @@ import numpy.random as ra
 
 import torch
 
+def make_tension_tests(rates, temperatures, elimits, nsteps):
+  """
+    Produce tension test (time,strain,temperature) history blocks
+    given tensor inputs for the strain rates, temperatures, and
+    maximum strain of each test
+
+    Args:
+      rates:            1D tensor giving the strain rate of each test
+      temperaturess:    1D tensor giving the constant temperature of each test
+      elimits:          1D tensor giving the maximum strain of each test
+      nsteps:           integer number of steps
+  """
+  nbatch = temperatures.shape[0]
+  times = torch.zeros(nsteps, nbatch)
+  strains = torch.zeros_like(times)
+  temps = torch.zeros_like(strains)
+  
+  for i in range(nbatch):
+    times[:,i] = torch.linspace(0, elimits[i]/rates[i], nsteps)
+    strains[:,i] = torch.linspace(0, elimits[i], nsteps)
+    temps[:,i] = temperatures[i]
+
+  return times, strains, temps
+
 def generate_random_tension(strain_rate = [1.0e-6,1.0e-2], 
     max_strain = 0.2):
   """
