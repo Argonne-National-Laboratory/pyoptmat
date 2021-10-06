@@ -46,7 +46,7 @@ if __name__ == "__main__":
   #    cut down to some number of samples, and flatten
   scale = 0.05
   nsamples = 20 # at each condition
-  times, strains, true_stresses = load_data(scale, nsamples, device = device)
+  times, strains, temperatures, true_stresses = load_data(scale, nsamples, device = device)
 
   sf = 0.1
   use = int(len(times)*sf)
@@ -54,6 +54,7 @@ if __name__ == "__main__":
   # Move to device and curtail to some number of steps
   times = times[:use]
   strains = strains[:use]
+  temperatures = temperatures[:use]
   true_stresses = true_stresses[:use]
 
   # 2) Setup names for each parameter and the initial conditions
@@ -71,7 +72,7 @@ if __name__ == "__main__":
   t = tqdm(range(niter), total = niter)
   for i in t:
     model.zero_grad()
-    pred = model(times, strains)
+    pred = model(times, strains, temperatures)
     lossv = loss(pred, true_stresses)
     lossv.backward()
   

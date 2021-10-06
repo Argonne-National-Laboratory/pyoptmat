@@ -13,6 +13,7 @@ import os.path
 
 import torch
 from pyoptmat import models, flowrules, hardening, optimize
+from pyoptmat.temperature import ConstantParameter as CP
 
 from tqdm import tqdm
 
@@ -42,19 +43,16 @@ def make_model(E, n, eta, s0, R, d, device = torch.device("cpu"), **kwargs):
     Key function for the entire problem: given parameters generate the model
   """
   isotropic = hardening.VoceIsotropicHardeningModel(
-      R, d, 
-      R_scale = optimize.bounded_scale_function((torch.tensor(R_true*(1-sf), device = device), torch.tensor(R_true*(1+sf), device = device))),
-      d_scale = optimize.bounded_scale_function((torch.tensor(d_true*(1-sf), device = device), torch.tensor(d_true*(1+sf), device = device))))
+      CP(R, scaling = optimize.bounded_scale_function((torch.tensor(R_true*(1-sf), device = device), torch.tensor(R_true*(1+sf), device = device)))),
+      CP(d, scaling = optimize.bounded_scale_function((torch.tensor(d_true*(1-sf), device = device), torch.tensor(d_true*(1+sf), device = device))))) 
   kinematic = hardening.NoKinematicHardeningModel()
   flowrule = flowrules.IsoKinViscoplasticity(
-      n, eta, s0,
-      isotropic, kinematic,
-      n_scale = optimize.bounded_scale_function((torch.tensor(n_true*(1-sf), device = device), torch.tensor(n_true*(1+sf), device = device))),
-      eta_scale = optimize.bounded_scale_function((torch.tensor(eta_true*(1-sf), device = device), torch.tensor(eta_true*(1+sf), device = device))),
-      s0_scale = optimize.bounded_scale_function((torch.tensor(s0_true*(1-sf), device = device), torch.tensor(s0_true*(1+sf), device = device))))
-  model = models.InelasticModel(E, flowrule, 
-      E_scale = optimize.bounded_scale_function((torch.tensor(E_true*(1-sf), device = device), torch.tensor(E_true*(1+sf), device = device))),
-      **kwargs)
+      CP(n, scaling = optimize.bounded_scale_function((torch.tensor(n_true*(1-sf), device = device), torch.tensor(n_true*(1+sf), device = device)))),
+      CP(eta, scaling = optimize.bounded_scale_function((torch.tensor(eta_true*(1-sf), device = device), torch.tensor(eta_true*(1+sf), device = device)))),
+      CP(s0, scaling = optimize.bounded_scale_function((torch.tensor(s0_true*(1-sf), device = device), torch.tensor(s0_true*(1+sf), device = device)))),
+      isotropic, kinematic)
+  model = models.InelasticModel(CP(E, scaling = optimize.bounded_scale_function((torch.tensor(E_true*(1-sf), device = device), torch.tensor(E_true*(1+sf), device = device)))),
+      flowrule, **kwargs)
 
   return model
 
@@ -74,10 +72,10 @@ def load_data(scale, nsamples, device = torch.device("cpu")):
   expdata = xr.open_dataset(os.path.join(os.path.dirname(__file__), "scale-%3.2f.nc" % scale))
   ntime = expdata.dims['time']
   times = expdata['times'].data[:,:,:nsamples].reshape((ntime,-1))
-  strains = expdata['strains'].data[:,:,:nsamples].reshape((ntime,-1))
+  strains = torch.tensor(expdata['strains'].data[:,:,:nsamples].reshape((ntime,-1)), device = device)
   stresses = expdata['stresses'].data[:,:,:nsamples].reshape((ntime,-1))
 
-  return torch.tensor(times, device = device), torch.tensor(strains, device = device), torch.tensor(stresses, device = device)
+  return torch.tensor(times, device = device), strains, torch.zeros_like(strains, device = device), torch.tensor(stresses, device = device)
 
 if __name__ == "__main__":
   # Running this script will regenerate the data

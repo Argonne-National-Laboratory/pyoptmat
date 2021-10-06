@@ -50,7 +50,7 @@ if __name__ == "__main__":
   #    cut down to some number of samples, and flatten
   scale = 0.05
   nsamples = 50 # at each strain rate
-  times, strains, true_stresses = load_data(scale, nsamples, device = device)
+  times, strains, temperatures, true_stresses = load_data(scale, nsamples, device = device)
 
   # 2) Setup names for each parameter and the priors
   names = ["n", "eta", "s0", "R", "d"]
@@ -93,7 +93,7 @@ if __name__ == "__main__":
   t = tqdm(range(niter), total = niter, desc = "Loss:    ")
   loss_hist = []
   for i in t:
-    loss = svi.step(times, strains, true_stresses)
+    loss = svi.step(times, strains, temperatures, true_stresses)
     loss_hist.append(loss)
     t.set_description("Loss %3.2e" % loss)
   

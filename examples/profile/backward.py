@@ -12,6 +12,7 @@ import torch.autograd.profiler as profiler
 from torch.nn import Parameter
 
 from pyoptmat import models, flowrules, hardening, experiments
+from pyoptmat.temperature import ConstantParameter as CP
 
 import time
 
@@ -43,10 +44,10 @@ if __name__ == "__main__":
 
   N = 10
 
-  model = models.InelasticModel(E, 
-      flowrules.IsoKinViscoplasticity(n, eta, s0,
-        hardening.VoceIsotropicHardeningModel(R, d),
-        hardening.ChabocheHardeningModel(C, g)), use_adjoint = True,
+  model = models.InelasticModel(CP(E), 
+      flowrules.IsoKinViscoplasticity(CP(n), CP(eta), CP(s0),
+        hardening.VoceIsotropicHardeningModel(CP(R), CP(d)),
+        hardening.ChabocheHardeningModel(CP(C), CP(g))), use_adjoint = True,
       substeps = substeps).to(device)
 
   time1, strain1 = experiments.sample_cycle_normalized_times({'max_strain': 0.005,
@@ -58,8 +59,10 @@ if __name__ == "__main__":
     times[:,i] = torch.tensor(time1)
     strains[:,i] = torch.tensor(strain1)
   
+  temperatures = torch.zeros_like(strains)
+
   t1 = time.time()
-  res = torch.norm(model.solve(times, strains))
+  res = torch.norm(model.solve(times, strains, temperatures))
   res.backward()
   tt = time.time() - t1
 

@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import torch.autograd.profiler as profiler
 
 from pyoptmat import models, flowrules, hardening, experiments
+from pyoptmat.temperature import ConstantParameter as CP
 
 import time
 
@@ -21,6 +22,7 @@ if __name__ == "__main__":
       dev = "cuda:0"
   else:
       dev = "cpu"
+  dev = "cpu"
   device = torch.device(dev)
 
   E = torch.tensor(100000.0, device = device)
@@ -50,17 +52,18 @@ if __name__ == "__main__":
   
   times = torch.tensor(times, device = device)
   strains = torch.tensor(strains, device = device)
+  temperatures = torch.zeros_like(strains)
 
-  iso = hardening.VoceIsotropicHardeningModel(R, d)
-  kin = hardening.FAKinematicHardeningModel(C, g)
+  iso = hardening.VoceIsotropicHardeningModel(CP(R), CP(d))
+  kin = hardening.FAKinematicHardeningModel(CP(C), CP(g))
 
-  model = models.InelasticModel(E,
-      flowrules.IsoKinViscoplasticity(n, eta,
-        s0, iso, kin), substeps = substeps, progress = True).to(device)
+  model = models.InelasticModel(CP(E),
+      flowrules.IsoKinViscoplasticity(CP(n), CP(eta),
+        CP(s0), iso, kin), substeps = substeps, progress = True).to(device)
   
   ts = time.time()
   with torch.no_grad():
-    res = model.solve(times, strains)
+    res = model.solve(times, strains, temperatures)
   tt = time.time() - ts
 
   print("Total time: %f" % tt)

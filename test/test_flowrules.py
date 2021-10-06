@@ -5,14 +5,15 @@ import numpy as np
 import torch
 
 from pyoptmat import flowrules, hardening, utility
+from pyoptmat.temperature import ConstantParameter as CP
 
 torch.set_default_dtype(torch.float64)
 
 class CommonFlowRule:
   def test_flow_rate(self):
-    exact = self.model.flow_rate(self.s, self.h, self.t)[1]
+    exact = self.model.flow_rate(self.s, self.h, self.t, self.T)[1]
     numer = utility.differentiate(lambda x: self.model.flow_rate(x,
-      self.h, self.t)[0], self.s)
+      self.h, self.t, self.T)[0], self.s)
 
     self.assertTrue(np.allclose(exact, numer, rtol = 1.0e-4))
 
@@ -20,9 +21,9 @@ class CommonFlowRule:
     if self.skip:
       return
 
-    test, exact = self.model.history_rate(self.s, self.h, self.t)
+    test, exact = self.model.history_rate(self.s, self.h, self.t, self.T)
     numer = utility.new_differentiate(lambda x: 
-        self.model.history_rate(self.s, x, self.t)[0], self.h)
+        self.model.history_rate(self.s, x, self.t, self.T)[0], self.h)
 
     self.assertTrue(np.allclose(exact, numer, rtol = 1.0e-4))
 
@@ -30,9 +31,9 @@ class CommonFlowRule:
     if self.skip:
       return
 
-    exact = self.model.dflow_dhist(self.s, self.h, self.t)
+    exact = self.model.dflow_dhist(self.s, self.h, self.t, self.T)
     numer = utility.new_differentiate(lambda x:
-        self.model.flow_rate(self.s, x, self.t)[0], self.h)
+        self.model.flow_rate(self.s, x, self.t, self.T)[0], self.h)
 
     self.assertTrue(np.allclose(exact, numer, rtol = 1.0e-4))
 
@@ -40,9 +41,9 @@ class CommonFlowRule:
     if self.skip:
       return
 
-    exact = self.model.dhist_dstress(self.s, self.h, self.t)
+    exact = self.model.dhist_dstress(self.s, self.h, self.t, self.T)
     numer = utility.new_differentiate(lambda x:
-        self.model.history_rate(x, self.h, self.t)[0], self.s)[...,0]
+        self.model.history_rate(x, self.h, self.t, self.T)[0], self.s)[...,0]
 
     self.assertTrue(np.allclose(exact, numer, rtol = 1.0e-4))
 
@@ -54,13 +55,14 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonFlowRule):
 
     self.nbatch = 10
 
-    self.model = flowrules.PerfectViscoplasticity(self.n, self.eta)
+    self.model = flowrules.PerfectViscoplasticity(CP(self.n), CP(self.eta))
 
     self.s = torch.linspace(90,100,self.nbatch)
     self.h = torch.reshape(torch.linspace(50,110,self.nbatch), 
         (self.nbatch,1))
     self.t = torch.ones(self.nbatch)
     self.skip = True
+    self.T = torch.zeros_like(self.t)
 
 class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
   def setUp(self):
@@ -72,14 +74,14 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
 
     self.R = torch.tensor(101.0)
     self.d = torch.tensor(1.3)
-    self.iso = hardening.VoceIsotropicHardeningModel(self.R, self.d)
+    self.iso = hardening.VoceIsotropicHardeningModel(CP(self.R), CP(self.d))
 
     self.C = torch.tensor(1200.0)
     self.g = torch.tensor(10.1)
-    self.kin = hardening.FAKinematicHardeningModel(self.C, self.g)
+    self.kin = hardening.FAKinematicHardeningModel(CP(self.C), CP(self.g))
 
-    self.model = flowrules.IsoKinViscoplasticity(self.n, self.eta, 
-        self.s0, self.iso, self.kin)
+    self.model = flowrules.IsoKinViscoplasticity(CP(self.n), CP(self.eta), 
+        CP(self.s0), self.iso, self.kin)
 
     self.s = torch.linspace(150,200,self.nbatch)
     self.h = torch.reshape(
@@ -89,6 +91,7 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
         (self.nbatch,2))
 
     self.t = torch.ones(self.nbatch)
+    self.T = torch.zeros_like(self.t)
 
     self.skip = False
 
@@ -96,20 +99,20 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
     def fn(i):
       hp = self.h.clone()
       hp[:,1] = i
-      return self.model.flow_rate(self.s, hp, self.t)[0]
+      return self.model.flow_rate(self.s, hp, self.t, self.T)[0]
     
     i1 = utility.differentiate(fn, self.h[:,1])
-    i2 = self.model.dflow_dkin(self.s, self.h, self.t)
+    i2 = self.model.dflow_dkin(self.s, self.h, self.t, self.T)
     self.assertTrue(np.allclose(i1,i2,rtol=1.0e-4))
 
   def test_iso(self):
     def fn(i):
       hp = self.h.clone()
       hp[:,0] = i
-      return self.model.flow_rate(self.s, hp, self.t)[0]
+      return self.model.flow_rate(self.s, hp, self.t, self.T)[0]
     
     i1 = utility.differentiate(fn, self.h[:,0])
-    i2 = self.model.dflow_diso(self.s, self.h, self.t)
+    i2 = self.model.dflow_diso(self.s, self.h, self.t, self.T)
 
     self.assertTrue(np.allclose(i1,i2,rtol=1.0e-4))
 
@@ -123,14 +126,14 @@ class TestIsoKinChabocheViscoplasticity(unittest.TestCase, CommonFlowRule):
 
     self.R = torch.tensor(101.0)
     self.d = torch.tensor(1.3)
-    self.iso = hardening.VoceIsotropicHardeningModel(self.R, self.d)
+    self.iso = hardening.VoceIsotropicHardeningModel(CP(self.R), CP(self.d))
 
     self.C = torch.tensor([100.0,1000,1500])
     self.g = torch.tensor([1.2,100,50])
-    self.kin = hardening.ChabocheHardeningModel(self.C, self.g)
+    self.kin = hardening.ChabocheHardeningModel(CP(self.C), CP(self.g))
 
-    self.model = flowrules.IsoKinViscoplasticity(self.n, self.eta, 
-        self.s0, self.iso, self.kin)
+    self.model = flowrules.IsoKinViscoplasticity(CP(self.n), CP(self.eta), 
+        CP(self.s0), self.iso, self.kin)
 
     self.s = torch.linspace(150,200,self.nbatch)
     self.h = torch.reshape(
@@ -141,6 +144,7 @@ class TestIsoKinChabocheViscoplasticity(unittest.TestCase, CommonFlowRule):
         np.linspace(-2,0,self.nbatch)]).T,
         (self.nbatch,4))
     self.t = torch.ones(self.nbatch)
+    self.T = torch.zeros_like(self.t)
 
     self.skip = False
 
@@ -148,19 +152,19 @@ class TestIsoKinChabocheViscoplasticity(unittest.TestCase, CommonFlowRule):
     def fn(i):
       hp = self.h.clone()
       hp[:,1] = i
-      return self.model.flow_rate(self.s, hp, self.t)[0]
+      return self.model.flow_rate(self.s, hp, self.t, self.T)[0]
     
     i1 = utility.differentiate(fn, self.h[:,1])
-    i2 = self.model.dflow_dkin(self.s, self.h, self.t)
+    i2 = self.model.dflow_dkin(self.s, self.h, self.t, self.T)
     self.assertTrue(np.allclose(i1,i2,rtol=1.0e-4))
 
   def test_iso(self):
     def fn(i):
       hp = self.h.clone()
       hp[:,0] = i
-      return self.model.flow_rate(self.s, hp, self.t)[0]
+      return self.model.flow_rate(self.s, hp, self.t, self.T)[0]
     
     i1 = utility.differentiate(fn, self.h[:,0])
-    i2 = self.model.dflow_diso(self.s, self.h, self.t)
+    i2 = self.model.dflow_diso(self.s, self.h, self.t, self.T)
 
     self.assertTrue(np.allclose(i1,i2,rtol=1.0e-4))

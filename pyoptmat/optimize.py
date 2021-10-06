@@ -46,7 +46,7 @@ def construct_weights(etypes, weights, normalize = True):
 
   return warray
 
-def grid_search(model, time, strain, stress, loss, bounds, 
+def grid_search(model, time, strain, temperatures, stress, loss, bounds, 
     ngrid, method = "lhs-maximin", save_grid = None,
     rbf_function = "inverse"):
   """
@@ -56,6 +56,7 @@ def grid_search(model, time, strain, stress, loss, bounds,
       model:                    forward model
       time:                     time data
       strain:                   strain data
+      temperature:              temperature data
       stress:                   stress data
       loss:                     loss function
       bounds:                   bounds on each parameter
@@ -102,7 +103,7 @@ def grid_search(model, time, strain, stress, loss, bounds,
     for k,(name, shp, sz) in enumerate(params):
       pdict[name].data = samples[i][offsets[k]:offsets[k+1]].reshape(shp)
     with torch.no_grad():
-      pred = model.solve(time, strain)
+      pred = model.solve(time, strain, temperature)
       lv = loss(pred[:,:,0], stress)
       results[i] = lv
 
@@ -169,17 +170,18 @@ class DeterministicModel(Module):
     """
     return [getattr(self, name) for name in self.params]
 
-  def forward(self, times, strains):
+  def forward(self, times, strains, temperatures):
     """
       Integrate forward and return the stress
 
       Args:
-        times:      time points to hit
-        strains:    input strain data
+        times:          time points to hit
+        strains:        input strain data
+        temperatures:   input temperature data
     """
     model = self.maker(*self.get_params())
     
-    return model.solve(times, strains)[:,:,0]
+    return model.solve(times, strains, temperatures)[:,:,0]
 
 class StatisticalModel(PyroModule):
   """
@@ -215,20 +217,21 @@ class StatisticalModel(PyroModule):
     """
     return [getattr(self, name) for name in self.params]
 
-  def forward(self, times, strains, true = None):
+  def forward(self, times, strains, temperatures, true = None):
     """
       Integrate forward and return the result
 
       Args:
-        times:      time points to hit in integration
-        strains:    input strains
+        times:          time points to hit in integration
+        strains:        input strains
+        temperatures:   input temperatures
 
       Additional Args:
         true:       true values of the stress, if we're using this
                     model in inference
     """
     model = self.maker(*self.get_params())
-    stresses = model.solve(times, strains)[:,:,0]
+    stresses = model.solve(times, strains, temperatures)[:,:,0]
     with pyro.plate("trials", times.shape[1]):
       with pyro.plate("time", times.shape[0]):
         return pyro.sample("obs", dist.Normal(stresses, self.eps), obs = true)
@@ -343,7 +346,7 @@ class HierarchicalStatisticalModel(PyroModule):
       Make the guide and cache the extra parameter names the adjoint solver
       is going to need
     """
-    def guide(times, strains, true_stresses = None):
+    def guide(times, strains, temperatures, true_stresses = None):
       # Setup and sample the top-level loc and scale
       top_loc_samples = []
       top_scale_samples = []
@@ -387,7 +390,7 @@ class HierarchicalStatisticalModel(PyroModule):
 
     return [pyro.param(name).unconstrained() for name in self.extra_param_names]
 
-  def forward(self, times, strains, true_stresses = None):
+  def forward(self, times, strains, temperatures, true_stresses = None):
     """
       Evaluate the forward model, conditioned by the true stresses if
       they are available
@@ -395,6 +398,7 @@ class HierarchicalStatisticalModel(PyroModule):
       Args:
         times:                      time points to hit
         strains:                    input strains
+        temperaturse:               input temperature data
         true_stresses (optional):   actual stress values, if we're conditioning
                                     for inference
     """
@@ -407,7 +411,7 @@ class HierarchicalStatisticalModel(PyroModule):
       bmodel = self.maker(*self.sample_bot(),
           extra_params = self.get_extra_params())
       # Generate the stresses
-      stresses = bmodel.solve(times, strains)[:,:,0]
+      stresses = bmodel.solve(times, strains, temperatures)[:,:,0]
       # Sample!
       with pyro.plate("time", times.shape[0]):
         pyro.sample("obs", dist.Normal(stresses, eps), obs = true_stresses)

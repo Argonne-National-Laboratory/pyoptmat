@@ -26,7 +26,7 @@ class NoDamage(DamageModel):
     """
     pass
 
-  def damage_rate(self, s, d, t):
+  def damage_rate(self, s, d, t, T):
     """
       The damage rate and the derivative wrt to the damage variable.
       Here it's just zero.
@@ -35,10 +35,11 @@ class NoDamage(DamageModel):
         s:      stress
         d:      current value of damage
         t:      current time
+        T:      current temperature
     """
     return torch.zeros_like(s), torch.zeros_like(s)
 
-  def d_damage_rate_d_s(self, s, d, t):
+  def d_damage_rate_d_s(self, s, d, t, T):
     """
       Derivative of the damage rate with respect to the stress.
 
@@ -48,6 +49,7 @@ class NoDamage(DamageModel):
         s:      stress
         d:      current value of damage
         t:      current time
+        T:      current temperature
     """
     return torch.zeros_like(s)
 
@@ -68,32 +70,15 @@ class HayhurstLeckie(DamageModel):
       A:                    Reference stress
       xi:                   Stress sensitivity
       phi:                  Damage sensitivity
-      A_scale (optional):   Scaling function for A
-      xi_scale (optional):  Scaling function for xi
-      phi_scale (optional): Scaling function for phi
   """
-  def __init__(self, A, xi, phi, A_scale = lambda x: x,
-      xi_scale = lambda x: x, phi_scale = lambda x: x):
+  def __init__(self, A, xi, phi):
     super().__init__()
 
-    self.A_param = A
-    self.A_scale = A_scale
-    self.xi_param = xi
-    self.xi_scale = xi_scale
-    self.phi_param = phi
-    self.phi_scale = phi_scale
+    self.A = A
+    self.xi = xi
+    self.phi = phi
 
-    self._setup()
-
-  def _setup(self):
-    """
-      Setup the model by precaching the unscaled parameters
-    """
-    self.A = self.A_scale(self.A_param)
-    self.xi = self.xi_scale(self.xi_param)
-    self.phi = self.phi_scale(self.phi_param)
-
-  def damage_rate(self, s, d, t):
+  def damage_rate(self, s, d, t, T):
     """
       Damage rate and the derivative of the rate with respect to the 
       damage variable
@@ -102,12 +87,13 @@ class HayhurstLeckie(DamageModel):
         s:      stress
         d:      damage variable
         t:      time
+        T:      temperature
     """
-    return (torch.abs(s)/self.A)**self.xi * (1 - d)**(
-        self.xi - self.phi), -(torch.abs(s)/self.A
-            )**self.xi * (1 - d)**(self.xi - self.phi - 1)
+    return (torch.abs(s)/self.A(T))**self.xi(T) * (1 - d)**(
+        self.xi(T) - self.phi(T)), -(torch.abs(s)/self.A(T)
+            )**self.xi(T) * (1 - d)**(self.xi(T) - self.phi(T) - 1)
 
-  def d_damage_rate_d_s(self, s, d, t):
+  def d_damage_rate_d_s(self, s, d, t, T):
     """
       Derivative of the damage rate with respect to the stress
 
@@ -115,7 +101,8 @@ class HayhurstLeckie(DamageModel):
         s:      stress
         d:      damage variable
         t:      time
+        T:      temperature
     """
-    return (torch.abs(s)/self.A)**(self.xi-1) * (1-d)**(
-        self.xi - self.phi) * torch.sign(s)
+    return (torch.abs(s)/self.A(T))**(self.xi(T)-1) * (1-d)**(
+        self.xi(T) - self.phi(T)) * torch.sign(s)
 
