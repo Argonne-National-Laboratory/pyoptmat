@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 import warnings
 
-from pyoptmat.utility import timeseries_interpolate_batch_times
+from pyoptmat import solvers
 
 def linear(t0, t1, y0, y1, t):
   """
@@ -310,25 +310,9 @@ class ImplicitSolver(FixedGridSolver):
         system:     function return R and J
         guess:      initial guess at solution
     """
-    if self.solver_method == "diag" or self.solver_method == "lu":
-      return self._solve_system_nr(system, guess)
-    else:
-      raise NotImplementedError("Unknown solver method!")
-
-  def _solve_linear_system(self, A, b):
-    """
-      Dispatch to solve a linear system of equations
-
-      Args:
-        A:      batched matrices
-        b:      batched right hand sides
-    """
-    if self.solver_method == "diag":
-      return b / torch.diagonal(A, dim1=-2, dim2=-1)
-    elif self.solver_method == "lu":
-      return torch.linalg.solve(A, b)
-    else:
-      raise ValueError("Unknown solver method!")
+    return solvers.newton_raphson(system, guess, 
+        linsolver = self.solver_method, rtol = self.rtol, atol = self.atol,
+        miter = self.miter)
 
   def _add_id(self, df):
     """
@@ -338,32 +322,6 @@ class ImplicitSolver(FixedGridSolver):
         df:     batched `(n,m,m)` tensor
     """
     return df + torch.eye(df.shape[1], device = df.device).reshape((1,)  + df.shape[1:]).repeat(df.shape[0],1,1)
-
-  def _solve_system_nr(self, system, x0):
-    """
-      Solve a system of nonlinear equations using Newton's method
-
-      Args:
-        system:     function that returns R,J = F(x)
-        x0:         initial guess at solution
-    """
-    x = x0
-    R, J = system(x)
-
-    nR = torch.norm(R, dim = -1)
-    nR0 = nR
-    i = 0
-
-    while (i < self.miter) and torch.any(nR > self.atol) and torch.any(nR / nR0 > self.rtol):
-      x -= self._solve_linear_system(J, R)
-      R, J = system(x)
-      nR = torch.norm(R, dim = -1)
-      i += 1
-    
-    if i == self.miter:
-      warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
-
-    return x, J
 
 class BackwardEuler(ImplicitSolver):
   """

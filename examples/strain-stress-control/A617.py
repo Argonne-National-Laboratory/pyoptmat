@@ -7,7 +7,7 @@ import torch
 
 import matplotlib.pyplot as plt
 
-from pyoptmat import models, flowrules, temperature, experiments
+from pyoptmat import models, flowrules, temperature, experiments, hardening
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
@@ -38,19 +38,30 @@ if __name__ == "__main__":
   E = temperature.PolynomialScaling(
       torch.tensor([-3.48056033e-02, -1.44398964e+01, 2.06464967e+05]))
 
+  
+  ih = hardening.VoceIsotropicHardeningModel(
+      temperature.ConstantParameter(torch.tensor(150.0)),
+      temperature.ConstantParameter(torch.tensor(10.0)))
+  kh = hardening.NoKinematicHardeningModel()
 
-  fr = flowrules.PerfectViscoplasticity(
+  fr = flowrules.IsoKinViscoplasticity(
       temperature.KMRateSensitivityScaling(A, mu, b, k),
-      temperature.KMViscosityScaling(A, B, mu, eps0, b, k))
+      temperature.KMViscosityScaling(A, B, mu, eps0, b, k),
+      temperature.ConstantParameter(0), 
+      ih, kh)
   model = models.InelasticModel(E, fr)
   integrator = models.ModelIntegrator(model)
 
   stresses = integrator.solve_strain(times, strains, temperatures)[:,:,0]
 
+  # Now do it backwards!
+  strains_prime = integrator.solve_stress(times, stresses, temperatures)[:,:,0]
+
   print("Temperature scaling")
-  for ei, Ti, si in zip(strains.T.numpy(), temperatures.T.numpy(), 
-      stresses.T.numpy()):
-    plt.plot(ei, si, label = "T = %3.0fK" % Ti[0])
+  for ei, epi, Ti, si in zip(strains.T.numpy(), strains_prime.T.numpy(),
+      temperatures.T.numpy(), stresses.T.numpy()):
+    l, = plt.plot(ei, si, label = "T = %3.0fK" % Ti[0])
+    plt.plot(epi, si, label = None, ls = '--', color = l.get_color())
   
   plt.legend(loc='best')
   plt.xlabel("Strain (mm/mm)")
