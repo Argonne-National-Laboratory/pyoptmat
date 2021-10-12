@@ -57,13 +57,13 @@ if __name__ == "__main__":
   iso = hardening.VoceIsotropicHardeningModel(CP(R), CP(d))
   kin = hardening.FAKinematicHardeningModel(CP(C), CP(g))
 
-  model = models.InelasticModel(CP(E),
+  model = models.ModelIntegrator(models.InelasticModel(CP(E),
       flowrules.IsoKinViscoplasticity(CP(n), CP(eta),
-        CP(s0), iso, kin), substeps = substeps, progress = True).to(device)
+        CP(s0), iso, kin)), substeps = substeps).to(device)
   
   ts = time.time()
   with torch.no_grad():
-    res = model.solve(times, strains, temperatures)
+    res = model.solve_strain(times, strains, temperatures)
   tt = time.time() - ts
 
   print("Total time: %f" % tt)

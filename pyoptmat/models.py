@@ -415,6 +415,10 @@ class StressBasedModel(nn.Module):
   def forward(self, t, y):
     """
       Stress rate as a function of t and state
+
+      Args:
+        t:      current batch time
+        y:      current batch state
     """
     csr = self.srate_fn(t)
     cs = self.stress_fn(t)

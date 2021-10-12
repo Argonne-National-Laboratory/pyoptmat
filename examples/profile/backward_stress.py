@@ -44,31 +44,37 @@ if __name__ == "__main__":
 
   N = 10
 
-  model = models.InelasticModel(CP(E), 
+  model = models.ModelIntegrator(models.InelasticModel(CP(E), 
       flowrules.IsoKinViscoplasticity(CP(n), CP(eta), CP(s0),
         hardening.VoceIsotropicHardeningModel(CP(R), CP(d)),
-        hardening.ChabocheHardeningModel(CP(C), CP(g))), use_adjoint = True,
+        hardening.ChabocheHardeningModel(CP(C), CP(g)))), use_adjoint = True,
       substeps = substeps).to(device)
 
-  time1, strain1 = experiments.sample_cycle_normalized_times({'max_strain': 0.005,
+  time1, stress1 = experiments.sample_cycle_normalized_times({'max_strain': 200.0,
     'R': -1.0, 'strain_rate': 1.0e-3, 'tension_hold': 600.0,
     'compression_hold': 1.0e-3}, N, nload = nload, nhold = nhold)
   times = torch.zeros(len(time1), nbatch)
-  strains = torch.zeros(len(time1), nbatch)
+  stresses = torch.zeros(len(time1), nbatch)
   for i in range(nbatch):
     times[:,i] = torch.tensor(time1)
-    strains[:,i] = torch.tensor(strain1)
+    stresses[:,i] = torch.tensor(stress1)
   
-  temperatures = torch.zeros_like(strains)
+  temperatures = torch.zeros_like(stresses)
 
   t1 = time.time()
-  res = torch.norm(model.solve(times, strains, temperatures))
+  result =  model.solve_stress(times, stresses, temperatures)
+  res = torch.norm(result)
   res.backward()
   tt = time.time() - t1
 
   ntime = times.shape[0] * substeps
 
+  strains = result[:,:,0].detach()
+
   print("Total time: %f s" % tt)
   print("Efficiency: %f steps/s" % (ntime * nbatch / tt))
+
+  #plt.plot(strains[:,0], stresses[:,0])
+  #plt.show()
 
 
