@@ -44,7 +44,7 @@ def simple_diff(fn, p0):
 
 
 class CommonGradient:
-  def test_gradient(self):
+  def test_gradient_strain(self):
     bmodel = self.model_fn([Variable(pi,
       requires_grad = True) for pi in self.p])
     res = torch.norm(bmodel.solve_strain(self.times, self.strains, self.temperatures))
@@ -53,6 +53,21 @@ class CommonGradient:
     
     ngrad = simple_diff(
         lambda p: torch.norm(self.model_fn(p).solve_strain(self.times, self.strains, self.temperatures)),
+        self.p)
+
+    for i,(p1, p2) in enumerate(zip(grad, ngrad)):
+      print(i,p1, p2)
+      self.assertTrue(np.allclose(p1, p2, rtol = 1e-4))
+
+  def test_gradient_stress(self):
+    bmodel = self.model_fn([Variable(pi,
+      requires_grad = True) for pi in self.p])
+    res = torch.norm(bmodel.solve_stress(self.times, self.stresses, self.temperatures))
+    res.backward()
+    grad = self.extract_grad(bmodel)
+    
+    ngrad = simple_diff(
+        lambda p: torch.norm(self.model_fn(p).solve_stress(self.times, self.stresses, self.temperatures)),
         self.p)
 
     for i,(p1, p2) in enumerate(zip(grad, ngrad)):
@@ -81,6 +96,8 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonGradient):
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,0.003,self.ntime) for i in range(self.nbatch)]), 1, 0)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,100.0,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.temperatures = torch.zeros_like(self.strains)
 
 class TestIsotropicOnly(unittest.TestCase, CommonGradient):
@@ -112,6 +129,8 @@ class TestIsotropicOnly(unittest.TestCase, CommonGradient):
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,0.003,self.ntime) for i in range(self.nbatch)]), 1, 0)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,200.0,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.temperatures = torch.zeros_like(self.strains)
 
 class TestHardeningViscoplasticity(unittest.TestCase, CommonGradient):
@@ -146,6 +165,8 @@ class TestHardeningViscoplasticity(unittest.TestCase, CommonGradient):
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,0.003,self.ntime) for i in range(self.nbatch)]), 1, 0)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,200.0,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.temperatures = torch.zeros_like(self.strains)
 
 class TestHardeningViscoplasticityDamage(unittest.TestCase, CommonGradient):
@@ -186,6 +207,8 @@ class TestHardeningViscoplasticityDamage(unittest.TestCase, CommonGradient):
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,0.03,self.ntime) for i in range(self.nbatch)]), 1, 0)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,200,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.temperatures = torch.zeros_like(self.strains)
    
 class TestChabocheViscoplasticity(unittest.TestCase, CommonGradient):
@@ -220,4 +243,6 @@ class TestChabocheViscoplasticity(unittest.TestCase, CommonGradient):
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,0.003,self.ntime) for i in range(self.nbatch)]), 1, 0)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,200.0,self.ntime) for i in range(self.nbatch)]), 1, 0)
     self.temperatures = torch.zeros_like(self.strains)

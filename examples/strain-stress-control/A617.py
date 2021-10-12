@@ -57,7 +57,6 @@ if __name__ == "__main__":
   # Now do it backwards!
   strains_prime = integrator.solve_stress(times, stresses, temperatures)[:,:,0]
 
-  print("Temperature scaling")
   for ei, epi, Ti, si in zip(strains.T.numpy(), strains_prime.T.numpy(),
       temperatures.T.numpy(), stresses.T.numpy()):
     l, = plt.plot(ei, si, label = "T = %3.0fK" % Ti[0])
