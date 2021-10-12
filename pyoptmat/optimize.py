@@ -103,7 +103,7 @@ def grid_search(model, time, strain, temperatures, stress, loss, bounds,
     for k,(name, shp, sz) in enumerate(params):
       pdict[name].data = samples[i][offsets[k]:offsets[k+1]].reshape(shp)
     with torch.no_grad():
-      pred = model.solve(time, strain, temperature)
+      pred = model.solve_strain(time, strain, temperature)
       lv = loss(pred[:,:,0], stress)
       results[i] = lv
 
@@ -181,7 +181,7 @@ class DeterministicModel(Module):
     """
     model = self.maker(*self.get_params())
     
-    return model.solve(times, strains, temperatures)[:,:,0]
+    return model.solve_strain(times, strains, temperatures)[:,:,0]
 
 class StatisticalModel(PyroModule):
   """
@@ -231,7 +231,7 @@ class StatisticalModel(PyroModule):
                     model in inference
     """
     model = self.maker(*self.get_params())
-    stresses = model.solve(times, strains, temperatures)[:,:,0]
+    stresses = model.solve_strain(times, strains, temperatures)[:,:,0]
     with pyro.plate("trials", times.shape[1]):
       with pyro.plate("time", times.shape[0]):
         return pyro.sample("obs", dist.Normal(stresses, self.eps), obs = true)
@@ -411,7 +411,7 @@ class HierarchicalStatisticalModel(PyroModule):
       bmodel = self.maker(*self.sample_bot(),
           extra_params = self.get_extra_params())
       # Generate the stresses
-      stresses = bmodel.solve(times, strains, temperatures)[:,:,0]
+      stresses = bmodel.solve_strain(times, strains, temperatures)[:,:,0]
       # Sample!
       with pyro.plate("time", times.shape[0]):
         pyro.sample("obs", dist.Normal(stresses, eps), obs = true_stresses)

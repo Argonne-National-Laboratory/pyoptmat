@@ -52,9 +52,9 @@ def make_model(E, n, eta, s0, R, d, device = torch.device("cpu"), **kwargs):
       CP(s0, scaling = optimize.bounded_scale_function((torch.tensor(s0_true*(1-sf), device = device), torch.tensor(s0_true*(1+sf), device = device)))),
       isotropic, kinematic)
   model = models.InelasticModel(CP(E, scaling = optimize.bounded_scale_function((torch.tensor(E_true*(1-sf), device = device), torch.tensor(E_true*(1+sf), device = device)))),
-      flowrule, **kwargs)
+      flowrule)
 
-  return model
+  return models.ModelIntegrator(model, **kwargs)
 
 def generate_input(erates, emax, ntime):
   """
