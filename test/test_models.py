@@ -12,7 +12,7 @@ from pyoptmat.temperature import ConstantParameter as CP
 torch.set_default_dtype(torch.float64)
 
 class CommonModel:
-  def test_derivs(self):
+  def test_derivs_strain(self):
     strain_rates = torch.cat((torch.zeros(1,self.strains.shape[1]),
       (self.strains[1:]-self.strains[:-1])/(self.times[1:]-self.times[:-1])))
     strain_rates[torch.isnan(strain_rates)] = 0
@@ -24,10 +24,31 @@ class CommonModel:
 
     use = models.StrainBasedModel(self.model, erate_interpolator, 
         temperature_interpolator)
-    v, dv = use.forward(self.t, self.state)
+    v, dv = use.forward(self.t, self.state_strain)
     ddv = utility.new_differentiate(lambda x: use.forward(self.t, x)[0], 
-        self.state)
+        self.state_strain)
     
+    self.assertTrue(np.allclose(dv,ddv, rtol = 1e-4,atol=1e-4))
+
+  def test_derivs_stress(self):
+    stress_rates = torch.cat((torch.zeros(1,self.stresses.shape[1]),
+      (self.stresses[1:]-self.stresses[:-1])/(self.times[1:]-self.times[:-1])))
+    stress_rates[torch.isnan(stress_rates)] = 0
+
+    stress_rate_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        self.times, stress_rates)
+    stress_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        self.times, self.stresses)
+    temperature_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        self.times, self.temperatures)
+
+    use = models.StressBasedModel(self.model, stress_rate_interpolator,
+      stress_interpolator, temperature_interpolator)
+
+    v, dv = use.forward(self.t, self.state_stress)
+    ddv = utility.new_differentiate(lambda x: use.forward(self.t, x)[0], 
+        self.state_stress)
+
     self.assertTrue(np.allclose(dv,ddv, rtol = 1e-4,atol=1e-4))
 
 class TestPerfectViscoplasticity(unittest.TestCase, CommonModel):
@@ -41,8 +62,11 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonModel):
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0) / 10.0
     self.temperatures = torch.zeros_like(self.strains)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0) * 0
 
-    self.state = torch.tensor([[90.0],[100.0],[101.0]])
+    self.state_strain = torch.tensor([[90.0],[100.0],[101.0]])
+    self.state_stress = torch.tensor([[0.0],[0.0],[0.0]])
     self.t = self.times[2]
 
     self.flowrule = flowrules.PerfectViscoplasticity(CP(self.n), CP(self.eta))
@@ -72,8 +96,11 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel):
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
     self.temperatures = torch.zeros_like(self.times)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0) * 200
 
-    self.state = torch.tensor([[90.0,30.0,10.0,0],[100.0,10.0,15.0,0],[101.0,50.0,60.0,0]])/3
+    self.state_strain = torch.tensor([[90.0,30.0,10.0,0],[100.0,10.0,15.0,0],[101.0,50.0,60.0,0]])/3
+    self.state_stress = torch.tensor([[0.05,30.0,10.0,0],[0.07,10.0,15.0,0],[0.08,50.0,60.0,0]])/3
 
     self.t = self.times[2]
 
@@ -106,8 +133,12 @@ class TestDamage(unittest.TestCase, CommonModel):
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
     self.temperatures = torch.zeros_like(self.strains)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0) * 200
 
-    self.state = torch.tensor([[90.0,30.0,10.0,0.05],[100.0,10.0,15.0,0.1],[20,-10.0,-10,0.2]])
+    self.state_strain = torch.tensor([[90.0,30.0,10.0,0.05],[100.0,10.0,15.0,0.1],[20,-10.0,-10,0.2]])
+    self.state_stress = torch.tensor([[0.1,30.0,10.0,0.05],[0.11,10.0,15.0,0.1],[0.12,-10.0,-10,0.2]])
+
     self.t = self.times[2]
 
 class TestAll(unittest.TestCase, CommonModel):
@@ -139,6 +170,10 @@ class TestAll(unittest.TestCase, CommonModel):
     self.strains = torch.transpose(
         torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
     self.temperatures = torch.zeros_like(self.strains)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0) * 200
 
-    self.state = torch.tensor([[90.0,30.0,10.0,10.0,-10.0,0.2],[100.0,10.0,15.0,5.0,-10.0,0.3],[101.0,50.0,60.0,-50.0,10.0,0.4]])
+    self.state_strain = torch.tensor([[90.0,30.0,10.0,10.0,-10.0,0.2],[100.0,10.0,15.0,5.0,-10.0,0.3],[101.0,50.0,60.0,-50.0,10.0,0.4]])
+    self.state_stress = torch.tensor([[0.05,30.0,10.0,10.0,-10.0,0.2],[0.08,10.0,15.0,5.0,-10.0,0.3],[0.07,50.0,60.0,-50.0,10.0,0.4]])
+
     self.t = self.times[2]

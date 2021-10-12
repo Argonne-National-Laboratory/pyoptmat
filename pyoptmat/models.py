@@ -437,9 +437,11 @@ class StressBasedModel(nn.Module):
     yp[:,0] = cs
     ydot, J, Je, JT = self.model(t, yp, erate[:,0], cT)
 
-    # This is wrong
-    J[:,0,:] = J[:,0,:] / Je[:,0][:,None]
-
+    # Rescale the jacobian
+    J[:,0,:] = -J[:,0,:] / Je[:,0][:,None]
+    J[:,:,0] = 0
+    
+    # Insert the strain rate
     ydot[:,0] = erate[:,0]
 
     return ydot, J
