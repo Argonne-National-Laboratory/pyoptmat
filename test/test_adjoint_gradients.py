@@ -82,7 +82,7 @@ class TestFallingSensitivities(unittest.TestCase):
   def test_implicit_substep(self):
     self.compare(method = "backward-euler", substep = 3)
 
-class TestFullModel(unittest.TestCase):
+class TestFullModelStrain(unittest.TestCase):
   def setUp(self):
     self.E = 100000.0
     self.n = 5.2
@@ -114,15 +114,14 @@ class TestFullModel(unittest.TestCase):
     g = CP(Parameter(torch.tensor(self.g).detach()))
     s0 = CP(Parameter(torch.tensor(self.s0).detach()))
 
-    return models.InelasticModel(E, 
+    return models.ModelIntegrator(models.InelasticModel(E, 
         flowrules.IsoKinViscoplasticity(n, eta, s0, 
           hardening.VoceIsotropicHardeningModel(R, d),
-          hardening.FAKinematicHardeningModel(C, g)),
-        **params), [E.pvalue, n.pvalue, eta.pvalue, R.pvalue, d.pvalue, C.pvalue, g.pvalue, s0.pvalue]
+          hardening.FAKinematicHardeningModel(C, g))), **params), [E.pvalue, n.pvalue, eta.pvalue, R.pvalue, d.pvalue, C.pvalue, g.pvalue, s0.pvalue]
 
   def compare(self, **params):
     model1, params1 = self.make_model(use_adjoint = False, **params)
-    res1 = model1.solve(self.times, self.strains, self.temperatures)
+    res1 = model1.solve_strain(self.times, self.strains, self.temperatures)
     loss1 = self.reduction(res1, torch.ones_like(res1))
     lr1 = loss1.detach().numpy()
     model1.zero_grad()
@@ -130,7 +129,7 @@ class TestFullModel(unittest.TestCase):
     gr1 = np.array([p.grad.numpy() for p in params1])
 
     model2, params2 = self.make_model(use_adjoint = True, **params)
-    res2 = model2.solve(self.times.detach().clone(), self.strains, self.temperatures)
+    res2 = model2.solve_strain(self.times.detach().clone(), self.strains, self.temperatures)
     loss2 = self.reduction(res2, torch.ones_like(res2))
     lr2 = loss2.detach().numpy()
     model2.zero_grad()
@@ -152,7 +151,7 @@ class TestFullModel(unittest.TestCase):
   def test_implicit_substep(self):
     self.compare(method = "backward-euler", substeps = 2)
 
-class TestFullerModel(unittest.TestCase):
+class TestFullerModelStrain(unittest.TestCase):
   def setUp(self):
     self.E = 100000.0
     self.n = 5.2
@@ -184,15 +183,15 @@ class TestFullerModel(unittest.TestCase):
     g = CP(Parameter(torch.tensor(self.g).detach()))
     s0 = CP(Parameter(torch.tensor(self.s0).detach()))
 
-    return models.InelasticModel(E, 
+    return models.ModelIntegrator(models.InelasticModel(E, 
         flowrules.IsoKinViscoplasticity(n, eta, s0, 
           hardening.VoceIsotropicHardeningModel(R, d),
-          hardening.ChabocheHardeningModel(C, g)),
+          hardening.ChabocheHardeningModel(C, g))),
         **params), [E.pvalue, n.pvalue, eta.pvalue, R.pvalue, d.pvalue, C.pvalue, g.pvalue, s0.pvalue]
 
   def compare(self, **params):
     model1, params1 = self.make_model(use_adjoint = False, **params)
-    res1 = model1.solve(self.times, self.strains, self.temperatures)
+    res1 = model1.solve_strain(self.times, self.strains, self.temperatures)
     loss1 = self.reduction(res1, torch.ones_like(res1))
     lr1 = loss1.detach().numpy()
     model1.zero_grad()
@@ -200,7 +199,7 @@ class TestFullerModel(unittest.TestCase):
     gr1 = [p.grad.numpy() for p in params1]
 
     model2, params2 = self.make_model(use_adjoint = True, **params)
-    res2 = model2.solve(self.times.detach().clone(), self.strains, self.temperatures)
+    res2 = model2.solve_strain(self.times.detach().clone(), self.strains, self.temperatures)
     loss2 = self.reduction(res2, torch.ones_like(res2))
     lr2 = loss2.detach().numpy()
     model2.zero_grad()

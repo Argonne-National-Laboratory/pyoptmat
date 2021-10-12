@@ -13,8 +13,19 @@ torch.set_default_dtype(torch.float64)
 
 class CommonModel:
   def test_derivs(self):
-    v, dv = self.model.forward(self.t, self.state)
-    ddv = utility.new_differentiate(lambda x: self.model.forward(self.t, x)[0], 
+    strain_rates = torch.cat((torch.zeros(1,self.strains.shape[1]),
+      (self.strains[1:]-self.strains[:-1])/(self.times[1:]-self.times[:-1])))
+    strain_rates[torch.isnan(strain_rates)] = 0
+
+    erate_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        self.times, strain_rates)
+    temperature_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        self.times, self.temperatures)    
+
+    use = models.StrainBasedModel(self.model, erate_interpolator, 
+        temperature_interpolator)
+    v, dv = use.forward(self.t, self.state)
+    ddv = utility.new_differentiate(lambda x: use.forward(self.t, x)[0], 
         self.state)
     
     self.assertTrue(np.allclose(dv,ddv, rtol = 1e-4,atol=1e-4))
@@ -35,10 +46,7 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonModel):
     self.t = self.times[2]
 
     self.flowrule = flowrules.PerfectViscoplasticity(CP(self.n), CP(self.eta))
-    self.model = models.InelasticModel(CP(self.E), self.flowrule, 
-        method = 'backward-euler')
-
-    self.model._setup(self.times, self.strains, self.temperatures)
+    self.model = models.InelasticModel(CP(self.E), self.flowrule)
 
 class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel):
   def setUp(self):
@@ -57,8 +65,7 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel):
 
     self.flowrule = flowrules.IsoKinViscoplasticity(CP(self.n), CP(self.eta), 
         CP(self.s0), self.iso, self.kin)
-    self.model = models.InelasticModel(CP(self.E), self.flowrule,
-        method = 'backward-euler')
+    self.model = models.InelasticModel(CP(self.E), self.flowrule)
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
@@ -69,8 +76,6 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel):
     self.state = torch.tensor([[90.0,30.0,10.0,0],[100.0,10.0,15.0,0],[101.0,50.0,60.0,0]])/3
 
     self.t = self.times[2]
-
-    self.model._setup(self.times, self.strains, self.temperatures)
 
 class TestDamage(unittest.TestCase, CommonModel):
   def setUp(self):
@@ -94,8 +99,7 @@ class TestDamage(unittest.TestCase, CommonModel):
 
     self.flowrule = flowrules.IsoKinViscoplasticity(CP(self.n), CP(self.eta), 
         CP(self.s0), self.iso, self.kin)
-    self.model = models.InelasticModel(CP(self.E), self.flowrule,
-        method = 'backward-euler', dmodel = self.dmodel)
+    self.model = models.InelasticModel(CP(self.E), self.flowrule, dmodel = self.dmodel)
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
@@ -105,8 +109,6 @@ class TestDamage(unittest.TestCase, CommonModel):
 
     self.state = torch.tensor([[90.0,30.0,10.0,0.05],[100.0,10.0,15.0,0.1],[20,-10.0,-10,0.2]])
     self.t = self.times[2]
-
-    self.model._setup(self.times, self.strains, self.temperatures)
 
 class TestAll(unittest.TestCase, CommonModel):
   def setUp(self):
@@ -130,8 +132,7 @@ class TestAll(unittest.TestCase, CommonModel):
 
     self.flowrule = flowrules.IsoKinViscoplasticity(CP(self.n), CP(self.eta), 
         CP(self.s0), self.iso, self.kin)
-    self.model = models.InelasticModel(CP(self.E), self.flowrule,
-        method = 'backward-euler', dmodel = self.dmodel)
+    self.model = models.InelasticModel(CP(self.E), self.flowrule, dmodel = self.dmodel)
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
@@ -141,5 +142,3 @@ class TestAll(unittest.TestCase, CommonModel):
 
     self.state = torch.tensor([[90.0,30.0,10.0,10.0,-10.0,0.2],[100.0,10.0,15.0,5.0,-10.0,0.3],[101.0,50.0,60.0,-50.0,10.0,0.4]])
     self.t = self.times[2]
-
-    self.model._setup(self.times, self.strains, self.temperatures)
