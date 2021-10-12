@@ -50,6 +50,42 @@ def make_tension_tests(rates, temperatures, elimits, nsteps):
 
   return times, strains, temps
 
+def make_creep_tests(stress, temperature, rate, hold_times,
+    nsteps_load, nsteps_hold, logspace = False):
+  """
+    Produce creep test input (time,stress,temperature) given tensor
+    inputs for the target stress, target temperature, loading rate
+
+    Args:
+      stress:               1D tensor of target stresses
+      temperature:          1D tensor of target temperature
+      rate:                 1D tensor of target rates
+      hold_times:           1D tensor of hold times
+      nsteps_load:          number of time steps to load up the sample
+      nsteps_hold:          number of time steps to hold the sample
+      logspace (optional):  log space the hold time steps
+  """
+  nbatch = stress.shape[0]
+  nsteps = nsteps_load + nsteps_hold
+  
+  stresses = torch.zeros(nsteps, nbatch)
+  times = torch.zeros_like(stresses)
+  temperatures = torch.zeros_like(stresses)
+  
+  for i, (s,t,lr,T) in enumerate(zip(stress,hold_times,rate,temperature)):
+    stresses[:nsteps_load,i] = torch.linspace(0, s, nsteps_load)
+    stresses[nsteps_load:,i] = s
+
+    times[:nsteps_load,i] = torch.linspace(0, s / lr, nsteps_load)
+    temperatures[:,i] = T
+    if logspace:
+      times[nsteps_load:,i] = torch.logspace(torch.log10(times[nsteps_load-1,i]),
+          torch.log10(t), nsteps_hold+1)[1:]
+    else:
+      times[nsteps_load:,i] = torch.linspace(times[nsteps_load-1,i], t, nsteps_hold+1)[1:]
+
+  return times, stresses, temperatures
+
 def generate_random_tension(strain_rate = [1.0e-6,1.0e-2], 
     max_strain = 0.2):
   """
