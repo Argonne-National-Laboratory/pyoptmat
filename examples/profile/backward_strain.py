@@ -55,6 +55,7 @@ if __name__ == "__main__":
     'compression_hold': 1.0e-3}, N, nload = nload, nhold = nhold)
   times = torch.zeros(len(time1), nbatch)
   strains = torch.zeros(len(time1), nbatch)
+
   for i in range(nbatch):
     times[:,i] = torch.tensor(time1)
     strains[:,i] = torch.tensor(strain1)
@@ -67,6 +68,8 @@ if __name__ == "__main__":
   tt = time.time() - t1
 
   ntime = times.shape[0] * substeps
+
+  print("Problem size: %i x %i" % (ntime, nbatch))
 
   print("Total time: %f s" % tt)
   print("Efficiency: %f steps/s" % (ntime * nbatch / tt))
