@@ -24,6 +24,8 @@ from pyro.contrib.autoguide import AutoDelta, init_to_mean
 
 from tqdm import tqdm
 
+from pyoptmat import experiments
+
 def construct_weights(etypes, weights, normalize = True):
   """
     Construct an array of weights 
@@ -46,18 +48,14 @@ def construct_weights(etypes, weights, normalize = True):
 
   return warray
 
-def grid_search(model, time, strain, temperatures, stress, loss, bounds, 
+def grid_search(model, idata, loss, bounds, 
     ngrid, method = "lhs-maximin", save_grid = None,
-    rbf_function = "inverse"):
+    rbf_function = "inverse", nan_v = 1e20):
   """
     Use a coarse grid search to find a good starting point
 
     Args:
       model:                    forward model
-      time:                     time data
-      strain:                   strain data
-      temperature:              temperature data
-      stress:                   stress data
       loss:                     loss function
       bounds:                   bounds on each parameter
       ngrid:                    number of points
@@ -65,17 +63,15 @@ def grid_search(model, time, strain, temperatures, stress, loss, bounds,
       save_grid (optional):     save the parameter grid to a file for future use
       rbf_function (optional):  kernel for radial basis interpolation
   """
-  # It's wasteful to do the adjoint propagation here, disable it
-  use_adjoint = model.use_adjoint
-  model.use_adjoint = False
-
-  # Helpful later
-  device = list(bounds.values())[0][0].device
+  # Extract the data from the tuple
+  strain_data, strain_cycles, strain_types, stress_data, stress_cycles, stress_types = idata
 
   # Parameter order
   params = [(n, p.shape, torch.flatten(p).shape[0]) for n, p
       in list(model.named_parameters())]
   offsets = [0] + list(np.cumsum([i[2] for i in params]))
+
+  device = strain_data.device
   
   # Generate the space
   # Need to do this on the cpu
@@ -96,24 +92,25 @@ def grid_search(model, time, strain, temperatures, stress, loss, bounds,
       device = device)
   results = torch.zeros(samples.shape[0], device = samples.device)
 
+  exp_result = experiments.setup_experiment_vector(strain_data, stress_data)
+
   # Here we go
-  pdict = {n:p for n,p in model.named_parameters()}
+  pdict = {n:p for n,p in zip(model.names, model.get_params())}
   for i,sample in tqdm(enumerate(samples), total = len(samples),
       desc = "Grid sampling"):
     for k,(name, shp, sz) in enumerate(params):
-      pdict[name].data = samples[i][offsets[k]:offsets[k+1]].reshape(shp)
+      getattr(model,name).data = samples[i][offsets[k]:offsets[k+1]].reshape(shp)
     with torch.no_grad():
-      pred = model.solve_strain(time, strain, temperature)
-      lv = loss(pred[:,:,0], stress)
+      res = model(strain_data, strain_cycles, strain_types, stress_data, stress_cycles, stress_types)
+      lv = loss(res, exp_result)
       results[i] = lv
+  
+  results = torch.nan_to_num(results, nan = nan_v)
 
   data = torch.hstack((samples, results[:,None]))
   # Store the results if we want
   if save_grid is not None:
     torch.save(data, save_grid)
-
-  # Uncache
-  model.use_adjoint = use_adjoint
 
   # We now need to do this on the CPU again
   data = data.cpu().numpy()
@@ -129,7 +126,7 @@ def grid_search(model, time, strain, temperatures, stress, loss, bounds,
   # Setup the parameter dict and alter the model
   result = {}
   for k, (name, shp, sz) in enumerate(params):
-    pdict[name].data = torch.tensor(res.x[offsets[k]:offsets[k+1]]).reshape(shp).to(device)
+    getattr(model, name).data = torch.tensor(res.x[offsets[k]:offsets[k+1]]).reshape(shp).to(device)
     result[name] = res.x[offsets[k]:offsets[k+1]].reshape(shp)
   
   return result
@@ -144,6 +141,67 @@ def bounded_scale_function(bounds):
   """
   return lambda x: torch.clamp(x, 0, 1)*(bounds[1]-bounds[0]) + bounds[0]
 
+def clamp_scale_function(bounds):
+  """
+    Just clamps
+
+    Args:
+      bounds:   tuple giving the parameter bounds
+  """
+  return lambda x: torch.clamp(x, bounds[0], bounds[1])
+
+class DeterministicModelExperiment(Module):
+  """
+    Wrap a material model to provide a :py:mod:`pytorch` deterministic model
+
+    Args:
+      maker:      function that returns a valid Module, given the 
+                  input parameters
+      names:      names to use for the parameters
+      ics:        initial conditions to use for each parameter
+  """
+  def __init__(self, maker, names, ics, scale = 1000.0):
+    super().__init__()
+
+    self.maker = maker
+
+    self.names = names
+    
+    # Add all the parameters
+    self.params = names
+    for name, ic in zip(names, ics):
+      setattr(self, name, Parameter(ic))
+    
+    self.scale = scale
+
+  def get_params(self):
+    """
+      Return the parameters for input to the model
+    """
+    return [getattr(self, name) for name in self.params]
+
+  def forward(self, strain_data, strain_cycles, strain_types,
+      stress_data, stress_cycles, stress_types):
+    """
+      Integrate forward and return the results
+
+      Args:
+
+    """
+    model = self.maker(*self.get_params())
+
+    pred_strain = model.solve_strain(strain_data[0], strain_data[1],
+        strain_data[2])[:,:,0]
+    pred_stress = model.solve_stress(stress_data[0], stress_data[1],
+        stress_data[2])[:,:,0]
+
+    sim_results = experiments.assemble_results(
+        strain_data, strain_cycles, strain_types, pred_strain,
+        stress_data, stress_cycles, stress_types, pred_stress,
+        stress_scale = self.scale)
+    
+    return sim_results
+
 class DeterministicModel(Module):
   """
     Wrap a material model to provide a :py:mod:`pytorch` deterministic model
@@ -154,7 +212,7 @@ class DeterministicModel(Module):
       names:      names to use for the parameters
       ics:        initial conditions to use for each parameter
   """
-  def __init__(self, maker, names, ics):
+  def __init__(self, maker, names, ics, mode = "strain"):
     super().__init__()
 
     self.maker = maker
@@ -170,18 +228,21 @@ class DeterministicModel(Module):
     """
     return [getattr(self, name) for name in self.params]
 
-  def forward(self, times, strains, temperatures):
+  def forward(self, times, input_data, temperatures, mode = "strain"):
     """
-      Integrate forward and return the stress
+      Integrate forward and return the results
 
       Args:
         times:          time points to hit
-        strains:        input strain data
+        input_data:     input data
         temperatures:   input temperature data
     """
     model = self.maker(*self.get_params())
     
-    return model.solve_strain(times, strains, temperatures)[:,:,0]
+    if mode == "strain":
+      return model.solve_strain(times, input_data, temperatures)[:,:,0]
+    else:
+      return model.solve_stress(times, input_data, temperatures)[:,:,0]
 
 class StatisticalModel(PyroModule):
   """

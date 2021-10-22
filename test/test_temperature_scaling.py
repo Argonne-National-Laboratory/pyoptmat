@@ -44,6 +44,79 @@ class TestPolynomialScaling(unittest.TestCase):
     
     self.assertTrue(np.allclose(y1.numpy(), y2))
 
+class TestShearModulusScaling(unittest.TestCase):
+  def setUp(self):
+    self.mu = temperature.PolynomialScaling(
+        torch.tensor([-1.34689305e-02,-5.18806776e+00,7.86708330e+04]))
+
+  def test_value(self):
+    self.A = 0.01
+
+    Ts = torch.linspace(25,950,50)+273.15
+
+    obj = temperature.ShearModulusScaling(self.A, self.mu)
+
+    v1 = obj.value(Ts)
+
+    v2 = self.A * self.mu(Ts)
+
+    self.assertTrue(np.allclose(v1.numpy(), v2))
+
+  def test_value_batch(self):
+    nbatch = 50
+    self.A = torch.linspace(0.01,0.1,nbatch)
+
+    Ts = torch.linspace(25,950,nbatch)+273.15
+
+    obj = temperature.ShearModulusScaling(self.A, self.mu)
+
+    v1 = obj.value(Ts)
+
+    v2 = self.A * self.mu(Ts)
+
+    self.assertTrue(np.allclose(v1.numpy(), v2))
+
+class TestMTSScaling(unittest.TestCase):
+  def setUp(self):
+    self.mu = temperature.PolynomialScaling(
+        torch.tensor([-1.34689305e-02,-5.18806776e+00,7.86708330e+04]))
+    self.b = 2.474e-7
+    self.k = 1.38064e-20
+
+  def test_value(self):
+    tau0 = 1000.0
+    g0 = 0.5
+    p = 2.0/3.0
+    q = 1.0/3.0
+
+    Ts = torch.linspace(25,950,50)+273.15
+
+    obj = temperature.MTSScaling(tau0, g0, q, p, self.k, self.b, self.mu)
+
+    v1 = obj.value(Ts)
+
+    v2 = tau0 * (1.0 - (self.k*Ts/(self.mu(Ts) * self.b**3.0 * g0))**(1/q))**(1/p)
+
+    self.assertTrue(np.allclose(v1,v2))
+
+  def test_batch(self):
+    nbatch = 50
+
+    tau0 = torch.linspace(100.0,1000.0,nbatch)
+    g0 = torch.linspace(0.5,1.0,nbatch)
+    p = torch.linspace(2.0/3.0,1.0,nbatch)
+    q = 1.0/3.0
+
+    Ts = torch.linspace(25,950,50)+273.15
+
+    obj = temperature.MTSScaling(tau0, g0, q, p, self.k, self.b, self.mu)
+
+    v1 = obj.value(Ts)
+
+    v2 = tau0 * (1.0 - (self.k*Ts/(self.mu(Ts) * self.b**3.0 * g0))**(1/q))**(1/p)
+
+    self.assertTrue(np.allclose(v1,v2))
+
 class TestKMRateSensitivityScaling(unittest.TestCase):
   def test_value(self):
     A = -8.679

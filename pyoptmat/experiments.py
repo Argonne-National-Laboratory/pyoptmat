@@ -26,6 +26,135 @@ import numpy.random as ra
 
 import torch
 
+exp_map_strain = {"tensile": 0, "relaxation": 1, "strain_cyclic": 3}
+exp_map_stress = {"creep": 4, "stress_cyclic": 5}
+
+def setup_experiment_vector(strain_data, stress_data, stress_scale = 100.0):
+
+  ntime = strain_data.shape[1]
+  nstrain = strain_data.shape[2]
+  nstress = stress_data.shape[2]
+  ntotal = nstrain + nstress
+
+  exp_result = torch.empty(ntime, ntotal)
+
+  exp_result[:,:nstrain] = strain_data[3]
+  exp_result[:,nstrain:] = stress_data[3] * stress_scale
+
+  return exp_result
+
+def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
+    stress_data, stress_cycles, stress_types, pred_stress, stress_scale = 100.0):
+  """
+
+  """
+  # Sizes
+  ntime = strain_data.shape[1]
+  nstrain = strain_data.shape[2]
+  nstress = stress_data.shape[2]
+  ntotal = nstrain + nstress
+
+  model_result = torch.empty(ntime, ntotal)
+
+  n = 0
+
+  # Tensile tests
+  tensile = strain_types == exp_map_strain["tensile"]
+  ni = torch.sum(tensile)
+
+  model_result[:,n:n+ni] = format_tensile(strain_data[:,:,tensile],
+      strain_cycles[:,tensile], pred_strain[:,tensile])
+  n += ni
+
+  # Relaxation tests
+  relaxation = strain_types == exp_map_strain["relaxation"]
+  ni = torch.sum(relaxation)
+
+  model_result[:,n:n+ni] = format_relaxation(strain_data[:,:,relaxation],
+      strain_cycles[:,relaxation], pred_strain[:,relaxation])
+  n += ni
+
+  # Strain-controlled cyclic
+  ecyclic = strain_types == exp_map_strain["strain_cyclic"]
+  ni = torch.sum(ecyclic)
+  
+  model_result[:,n:n+ni] = format_cyclic(strain_data[:,:,ecyclic],
+      strain_cycles[:,ecyclic], pred_strain[:,ecyclic])
+  n += ni
+
+  # Creep
+  creep = stress_types == exp_map_stress["creep"]
+  ni = torch.sum(creep)
+  
+  model_result[:,n:n+ni] = format_relaxation(stress_data[:,:,creep],
+      stress_cycles[:,creep], pred_stress[:,creep]) * stress_scale
+
+  n += ni
+
+  # Stress controlled cyclic
+  scyclic = stress_types == exp_map_stress["stress_cyclic"]
+  ni = torch.sum(scyclic)
+
+  model_result[:,n:n+ni] = format_cyclic(stress_data[:,:,scyclic],
+      stress_cycles[:,scyclic], pred_stress[:,scyclic]) * stress_scale
+  n += ni
+
+  return model_result
+
+def format_tensile(data, cycles, predictions):
+  """
+    Do nothing!
+  """
+  return predictions
+
+def format_relaxation(data, cycles, predictions):
+  """
+    Zero out the loading results, replace the relaxation results with the
+    normalized (subtract t=0) curve
+  """
+  result = torch.zeros_like(predictions)
+  rcurve = cycles[:,0] == 1 # This is right, but dangerous in the future
+
+  curve = predictions[rcurve]
+  curve = curve - curve[0]
+
+  result[rcurve] = curve
+
+  return result
+
+def format_cyclic(data, cycles, predictions):
+  # If this is slow we can probably remove the for loop
+  result = torch.zeros_like(predictions)
+  uc = cycles[:,0] # Correct but dangerous for future expansion
+  for i in range(uc[-1]+1):
+    curr = uc == i
+    vals, _ = torch.max(predictions[curr], axis = 0)
+    result[curr] = vals
+  
+  return result
+
+def format_strain_control(ds):
+  data = torch.stack((torch.tensor(ds["time"].values), 
+    torch.tensor(ds["strain"].values), 
+    torch.tensor(ds["temperature"].values),
+    torch.tensor(ds["stress"].values)))
+  cycle = torch.tensor(ds["cycle"].values)
+  
+  types = torch.tensor([exp_map_strain[t] for t in ds["type"].values])
+  
+  return data, cycle, types
+
+def format_stress_control(ds):
+  data = torch.stack((torch.tensor(ds["time"].values), 
+    torch.tensor(ds["stress"].values), 
+    torch.tensor(ds["temperature"].values),
+    torch.tensor(ds["strain"].values)))
+  cycle = torch.tensor(ds["cycle"].values)
+  
+  types = torch.tensor([exp_map_stress[t] for t in ds["type"].values])
+  
+  return data, cycle, types
+
 def make_tension_tests(rates, temperatures, elimits, nsteps):
   """
     Produce tension test (time,strain,temperature) history blocks
@@ -48,7 +177,7 @@ def make_tension_tests(rates, temperatures, elimits, nsteps):
     strains[:,i] = torch.linspace(0, elimits[i], nsteps)
     temps[:,i] = temperatures[i]
 
-  return times, strains, temps
+  return times, strains, temps, torch.zeros_like(times, dtype = int)
 
 def make_creep_tests(stress, temperature, rate, hold_times,
     nsteps_load, nsteps_hold, logspace = False):
@@ -83,8 +212,11 @@ def make_creep_tests(stress, temperature, rate, hold_times,
           torch.log10(t), nsteps_hold+1)[1:]
     else:
       times[nsteps_load:,i] = torch.linspace(times[nsteps_load-1,i], t, nsteps_hold+1)[1:]
+  
+  cycles = torch.ones_like(times, dtype = int)
+  cycles[:nsteps_load] = 0
 
-  return times, stresses, temperatures
+  return times, stresses, temperatures, cycles
 
 def generate_random_tension(strain_rate = [1.0e-6,1.0e-2], 
     max_strain = 0.2):
@@ -174,12 +306,14 @@ def sample_cycle_normalized_times(cycle, N, nload = 10, nhold = 10):
   Ntotal = nload * 4 + nhold * 2
 
   times = np.zeros((1+Ntotal*N,))
+  cycles = np.zeros(times.shape, dtype = int)
 
   n = 1
   tc = 0
   for k in range(N):
     for ti,ni in zip(divisions, timesteps):
       times[n:n+ni] = np.linspace(tc, tc + ti, ni+1)[1:]
+      cycles[n:n+ni] = k
       n += ni
       tc += ti
   
@@ -200,5 +334,5 @@ def sample_cycle_normalized_times(cycle, N, nload = 10, nhold = 10):
         lambda tt: emin - (tt - cdivisions[3]) / t5 * emin
       ])
 
-  return times, strains
+  return times, strains, cycles
 

@@ -52,13 +52,80 @@ class ConstantParameter(TemperatureParameter):
   def shape(self):
     return self.pvalue.shape
 
+class ShearModulusScaling(TemperatureParameter):
+  """
+    Parameter that scales as:
+
+      $A \\mu$
+
+      where $\\mu$ further depends on temperature
+
+    Args:
+      A:        actual parameter
+      mu:       scalar, temperature-dependent shear modulus
+      
+  """
+  def __init__(self, A, mu, *args, A_scale = lambda x: x, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.A = A
+    self.mu = mu
+    self.A_scale = A_scale
+
+  def value(self, T):
+    return self.A_scale(self.A) * self.mu(T)
+
+  @property
+  def shape(self):
+    return self.A.shape
+
+class MTSScaling(TemperatureParameter):
+  """
+    Parameter that scales as:
+      
+      $\hat{\tau}\left\{ 1 - \left[ \frac{kT}{\mu b^3 g_0} \right]^{1/q} \right\}^{1/p}
+
+    Args:
+      tau0:     threshold strength
+      g0:       activation energy
+      q:        shape parameter
+      p:        shape parameter
+      k:        Boltzmann constant
+      b:        burgers vector
+      mu:       shear modulus, temperature-dependent
+  """
+  def __init__(self, tau0, g0, q, p, k, b, mu, *args,
+      tau0_scale = lambda x: x, g0_scale = lambda x: x,
+      q_scale = lambda x: x, p_scale = lambda x: x, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.tau0 = tau0
+    self.g0 = g0
+    self.q = q
+    self.p = p
+    self.k = k
+    self.b = b
+    self.mu = mu
+
+    self.tau0_scale = tau0_scale
+    self.g0_scale = g0_scale
+    self.q_scale = q_scale
+    self.p_scale = p_scale
+
+  def value(self, T):
+    return self.tau0_scale(self.tau0) * (1 - 
+        (self.k*T/(self.mu(T) * self.b**3.0 * 
+      self.g0_scale(self.g0)))**(1/self.q_scale(self.q)))**(1/self.p_scale(self.p))
+
+  @property
+  def shape(self):
+    return self.tau0.shape
+
 class KMRateSensitivityScaling(TemperatureParameter):
   """
     Parameter that scales as:
 
-      $\frac{-\mu b^3}{kTA}
+      $\\frac{-\\mu b^3}{kTA}$
 
-    where $\mu$ further depends on temperature
+    where $\\mu$ further depends on temperature
 
     Args:
       A:        Kocks-Mecking slope parameter, sets shape
@@ -66,12 +133,14 @@ class KMRateSensitivityScaling(TemperatureParameter):
       b:        scalar, Burgers vector
       k:        scalar, Boltzmann constant
   """
-  def __init__(self, A, mu, b, k, *args, **kwargs):
+  def __init__(self, A, mu, b, k, *args, A_scale = lambda x: x, **kwargs):
     super().__init__(*args, **kwargs)
     self.A = A
     self.mu = mu
     self.b = b
     self.k = k
+
+    self.A_scale = A_scale
 
   def value(self, T):
     """
@@ -80,7 +149,7 @@ class KMRateSensitivityScaling(TemperatureParameter):
       Args:
         T:      current temperatures
     """
-    return -self.mu(T) * self.b**3.0 / (self.k * T * self.A)
+    return -self.mu(T) * self.b**3.0 / (self.k * T * self.A_scale(self.A))
 
   @property
   def shape(self):
@@ -107,7 +176,8 @@ class KMViscosityScaling(TemperatureParameter):
       b:        scalar, Burger's vector
       k:        scalar, Boltzmann constant
   """
-  def __init__(self, A, B, mu, eps0, b, k, *args, **kwargs):
+  def __init__(self, A, B, mu, eps0, b, k, *args, A_scale = lambda x: x,
+      B_scale = lambda x: x, **kwargs):
     super().__init__(*args, **kwargs)
     self.A = A
     self.B = B
@@ -116,7 +186,11 @@ class KMViscosityScaling(TemperatureParameter):
     self.b = b
     self.k = k
 
-    self.n = KMRateSensitivityScaling(self.A, self.mu, self.b, self.k)
+    self.A_scale = A_scale
+    self.B_scale = B_scale
+
+    self.n = KMRateSensitivityScaling(self.A, self.mu, self.b, self.k,
+        A_scale = self.A_scale)
 
   def value(self, T):
     """
@@ -126,7 +200,7 @@ class KMViscosityScaling(TemperatureParameter):
         T:      current temperatures
     """
     n = self.n(T)
-    return torch.exp(self.B) * self.mu(T) * self.eps0**(-1.0/n)
+    return torch.exp(self.B_scale(self.B)) * self.mu(T) * self.eps0**(-1.0/n)
 
   @property
   def shape(self):
@@ -139,13 +213,16 @@ class PolynomialScaling(TemperatureParameter):
     Args:
       coefs:        polynomial coefficients in the numpy convention (highest order 1st)
   """
-  def __init__(self, coefs, *args, **kwargs):
+  def __init__(self, coefs, *args, coef_scale_fn = lambda x: x, **kwargs):
     super().__init__(*args, **kwargs)
     self.coefs = coefs
+    self.scale_fn = coef_scale_fn
 
   def value(self, T):
-    res = torch.zeros_like(T) + self.coefs[0]
-    for c in self.coefs[1:]:
+    acoefs = self.scale_fn(self.coefs)
+
+    res = torch.zeros_like(T) + acoefs[0]
+    for c in acoefs[1:]:
       res *= T
       res += c
 

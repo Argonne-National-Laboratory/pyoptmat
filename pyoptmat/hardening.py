@@ -134,6 +134,106 @@ class KinematicHardeningModel(HardeningModel):
   def __init__(self):
     super().__init__()
 
+class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
+  """
+    Reparameterized Voce isotropic hardening, defined by
+    
+    .. math::
+
+      \\sigma_{iso} = h
+
+      \\dot{h} = \\theta_0 (1-h/\\tau) \\left|\\dot{\\varepsilon}_{in}\\right|
+
+    Args:
+      tau:                  saturated increase/decrease in flow stress
+      theta:                initial hardening rate
+  """
+  def __init__(self, tau, theta):
+    super().__init__()
+    self.tau = tau
+    self.theta = theta
+
+  def value(self, h):
+    """
+      Map from the vector of internal variables to the isotropic hardening
+      value
+
+      Args:
+        h:      the vector of internal variables for this model
+    """
+    return h[:,0]
+
+  def dvalue(self, h):
+    """
+      Derivative of the map with respect to the internal variables
+
+      Args:
+        h:      the vector of internal variables for this model
+    """
+    return torch.ones((h.shape[0],1), device = h.device)
+
+  @property
+  def nhist(self):
+    """
+      The number of internal variables: here just 1
+    """
+    return 1
+
+  def history_rate(self, s, h, t, ep, T):
+    """
+      The rate evolving the internal variables
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      the temperature
+    """
+    return torch.unsqueeze(self.theta(T) * (1.0 - h[:,0]/self.tau(T)) * torch.abs(ep), 1)
+
+  def dhistory_rate_dstress(self, s, h, t, ep, T):
+    """
+      The derivative of this history rate with respect to the stress
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      temperature
+    """
+    return torch.zeros_like(h)
+
+  def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    """
+      The derivative of the history rate with respect to the internal variables
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      temperature
+    """
+    return torch.unsqueeze(-torch.unsqueeze(self.theta(T)/self.tau(T),-1) * 
+        torch.ones_like(h) * torch.abs(ep)[:,None], 1)
+
+  def dhistory_rate_derate(self, s, h, t, ep, T):
+    """
+      The derivative of the history rate with respect to the inelastic
+      strain rate
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      temperature
+    """
+    return torch.unsqueeze(torch.unsqueeze(self.theta(T) * 
+      (1.0 - h[:,0]/self.tau(T)) * torch.sign(ep), 1),1)
+
 class NoKinematicHardeningModel(KinematicHardeningModel):
   """
     The simplest kinematic hardening model: a constant value of 0

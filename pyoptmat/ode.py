@@ -165,7 +165,7 @@ class FixedGridSolver:
       y0 = y1
     
     result[-1] = y1 # There may be a more elegant way of doing this...
-    
+
     return result
 
   def rewind_adjoint(self, times, output_grad):

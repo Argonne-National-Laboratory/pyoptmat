@@ -282,7 +282,6 @@ class ModelIntegrator(nn.Module):
                                     error checking and fixes sizes
   """
   def __init__(self, model, *args, substeps = 1, method = 'backward-euler', 
-      dmodel = damage.NoDamage(),
       rtol = 1.0e-6, atol = 1.0e-4, progress = False, 
       miter = 100, d0 = 0, use_adjoint = True, extra_params = [],
       jit_mode = False, **kwargs):
