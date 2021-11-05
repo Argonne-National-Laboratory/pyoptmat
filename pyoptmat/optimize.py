@@ -180,6 +180,20 @@ class DeterministicModelExperiment(Module):
     """
     return [getattr(self, name) for name in self.params]
 
+  def simulate_results(self, strain_data, strain_cycles, strain_types,
+      stress_data, stress_cycles, stress_types):
+    """
+
+    """
+    model = self.maker(*self.get_params())
+
+    pred_strain = model.solve_strain(strain_data[0], strain_data[1],
+        strain_data[2])
+    pred_stress = model.solve_stress(stress_data[0], stress_data[1],
+        stress_data[2])
+
+    return pred_strain, pred_stress
+
   def forward(self, strain_data, strain_cycles, strain_types,
       stress_data, stress_cycles, stress_types):
     """
@@ -188,16 +202,12 @@ class DeterministicModelExperiment(Module):
       Args:
 
     """
-    model = self.maker(*self.get_params())
-
-    pred_strain = model.solve_strain(strain_data[0], strain_data[1],
-        strain_data[2])[:,:,0]
-    pred_stress = model.solve_stress(stress_data[0], stress_data[1],
-        stress_data[2])[:,:,0]
+    pred_strain, pred_stress = self.simulate_results(strain_data, strain_cycles,
+        strain_types, stress_data, stress_cycles, stress_types)
 
     sim_results = experiments.assemble_results(
-        strain_data, strain_cycles, strain_types, pred_strain,
-        stress_data, stress_cycles, stress_types, pred_stress,
+        strain_data, strain_cycles, strain_types, pred_strain[:,:,0],
+        stress_data, stress_cycles, stress_types, pred_stress[:,:,0],
         stress_scale = self.scale)
     
     return sim_results

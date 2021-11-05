@@ -23,11 +23,14 @@
 
 import numpy as np
 import numpy.random as ra
+import itertools
 
 import torch
 
 exp_map_strain = {"tensile": 0, "relaxation": 1, "strain_cyclic": 3}
 exp_map_stress = {"creep": 4, "stress_cyclic": 5}
+exp_map = {v:k for k,v in itertools.chain(exp_map_strain.items(), 
+  exp_map_stress.items())}
 
 def setup_experiment_vector(strain_data, stress_data, stress_scale = 100.0):
 
@@ -62,7 +65,7 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   tensile = strain_types == exp_map_strain["tensile"]
   ni = torch.sum(tensile)
 
-  model_result[:,n:n+ni] = format_tensile(strain_data[:,:,tensile],
+  model_result[:,n:n+ni] = format_tensile(
       strain_cycles[:,tensile], pred_strain[:,tensile])
   n += ni
 
@@ -70,7 +73,7 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   relaxation = strain_types == exp_map_strain["relaxation"]
   ni = torch.sum(relaxation)
 
-  model_result[:,n:n+ni] = format_relaxation(strain_data[:,:,relaxation],
+  model_result[:,n:n+ni] = format_relaxation(
       strain_cycles[:,relaxation], pred_strain[:,relaxation])
   n += ni
 
@@ -78,7 +81,7 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   ecyclic = strain_types == exp_map_strain["strain_cyclic"]
   ni = torch.sum(ecyclic)
   
-  model_result[:,n:n+ni] = format_cyclic(strain_data[:,:,ecyclic],
+  model_result[:,n:n+ni] = format_cyclic(
       strain_cycles[:,ecyclic], pred_strain[:,ecyclic])
   n += ni
 
@@ -86,7 +89,7 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   creep = stress_types == exp_map_stress["creep"]
   ni = torch.sum(creep)
   
-  model_result[:,n:n+ni] = format_relaxation(stress_data[:,:,creep],
+  model_result[:,n:n+ni] = format_relaxation(
       stress_cycles[:,creep], pred_stress[:,creep]) * stress_scale
 
   n += ni
@@ -95,19 +98,19 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   scyclic = stress_types == exp_map_stress["stress_cyclic"]
   ni = torch.sum(scyclic)
 
-  model_result[:,n:n+ni] = format_cyclic(stress_data[:,:,scyclic],
+  model_result[:,n:n+ni] = format_cyclic(
       stress_cycles[:,scyclic], pred_stress[:,scyclic]) * stress_scale
   n += ni
 
   return model_result
 
-def format_tensile(data, cycles, predictions):
+def format_tensile(cycles, predictions):
   """
     Do nothing!
   """
   return predictions
 
-def format_relaxation(data, cycles, predictions):
+def format_relaxation(cycles, predictions):
   """
     Zero out the loading results, replace the relaxation results with the
     normalized (subtract t=0) curve
@@ -122,7 +125,7 @@ def format_relaxation(data, cycles, predictions):
 
   return result
 
-def format_cyclic(data, cycles, predictions):
+def format_cyclic(cycles, predictions):
   # If this is slow we can probably remove the for loop
   result = torch.zeros_like(predictions)
   uc = cycles[:,0] # Correct but dangerous for future expansion

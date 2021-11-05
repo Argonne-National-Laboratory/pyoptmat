@@ -132,13 +132,18 @@ class KMRateSensitivityScaling(TemperatureParameter):
       mu:       scalar, temperature-dependent shear modulus
       b:        scalar, Burgers vector
       k:        scalar, Boltzmann constant
+
+    Additional args:
+      cutoff:   don't let n go higher than this
   """
-  def __init__(self, A, mu, b, k, *args, A_scale = lambda x: x, **kwargs):
+  def __init__(self, A, mu, b, k, cutoff = 20.0,
+      *args, A_scale = lambda x: x, **kwargs):
     super().__init__(*args, **kwargs)
     self.A = A
     self.mu = mu
     self.b = b
     self.k = k
+    self.cutoff = cutoff
 
     self.A_scale = A_scale
 
@@ -149,7 +154,9 @@ class KMRateSensitivityScaling(TemperatureParameter):
       Args:
         T:      current temperatures
     """
-    return -self.mu(T) * self.b**3.0 / (self.k * T * self.A_scale(self.A))
+    return torch.clip(
+        -self.mu(T) * self.b**3.0 / (self.k * T * self.A_scale(self.A)), 
+        min = 1, max = self.cutoff)
 
   @property
   def shape(self):
@@ -201,6 +208,65 @@ class KMViscosityScaling(TemperatureParameter):
     """
     n = self.n(T)
     return torch.exp(self.B_scale(self.B)) * self.mu(T) * self.eps0**(-1.0/n)
+
+  @property
+  def shape(self):
+    return self.B.shape
+
+class KMViscosityScalingCutoff(TemperatureParameter):
+  """
+    Parameter that varies as
+
+      $\exp{B} \mu \dot{\varepsilon}_0^{-1/n}
+
+    where $B$ is the Kocks-Mecking intercept parameter and the
+    rest are defined in the `KMRateSensitivityScaling` object.
+
+    This variant cuts off the viscosity in the high rate/low temperature 
+    regime to limit it by C * \mu 
+    
+    $n$ is the rate sensitivity, again given by the `KMRateSensitivityScaling`
+    object
+
+    Args:
+      A:        Kocks-Mecking slope parameter
+      B:        Kocks-Mecking intercept parameter, sets shape, must be
+                same shape as A
+      C:        High rate/low temperature cutff
+      mu:       scalar, temperature-dependent shear modulus
+      eps0:     scalar, reference strain rate
+      b:        scalar, Burger's vector
+      k:        scalar, Boltzmann constant
+  """
+  def __init__(self, A, B, C, mu, eps0, b, k, *args, A_scale = lambda x: x,
+      B_scale = lambda x: x, C_scale = lambda x: x, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.A = A
+    self.B = B
+    self.C = C
+    self.mu = mu
+    self.eps0 = eps0
+    self.b = b
+    self.k = k
+
+    self.A_scale = A_scale
+    self.B_scale = B_scale
+    self.C_scale = C_scale
+
+    self.n = KMRateSensitivityScaling(self.A, self.mu, self.b, self.k,
+        A_scale = self.A_scale, cutoff = 1000)
+
+  def value(self, T):
+    """
+      Actual temperature-dependent value
+
+      Args:
+        T:      current temperatures
+    """
+    n = self.n(T)
+    return torch.minimum(
+        torch.exp(self.B_scale(self.B)) * self.mu(T) * self.eps0**(-1.0/n),
+        torch.exp(self.C_scale(self.C)) * self.mu(T))
 
   @property
   def shape(self):
