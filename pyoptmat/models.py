@@ -269,7 +269,7 @@ class BothBasedModel(nn.Module):
     actual_jacs = torch.zeros_like(strain_jacs)
     actual_jacs[self.indices[0]] = strain_jacs[self.indices[0]]
     actual_jacs[self.indices[1]] = stress_jacs[self.indices[1]]
-    
+
     return actual_rates, actual_jacs
 
 class StrainBasedModel(nn.Module):

@@ -14,7 +14,7 @@ import torch
 from torch.nn import Module, Parameter
 
 from skopt.space import Space
-from skopt.sampler import Lhs
+from skopt.sampler import Lhs, Halton
 
 import pyro
 from pyro.nn import PyroModule, PyroSample
@@ -100,9 +100,10 @@ def grid_search(model, idata, loss, bounds,
   
   samples = torch.tensor(sampler.generate(sspace.dimensions, ngrid),
       device = device)
+
   data = torch.zeros((samples.shape[0], samples.shape[1]+1), device = device)
   
-  exp_results = idata[3] 
+  exp_results = experiments.setup_experiment_vector(idata[:,:,inds[0]], idata[:,:,inds[1]])
   locs = torch.mean(exp_results, 0)
   scales = torch.std(exp_results, 0)
 
@@ -117,21 +118,21 @@ def grid_search(model, idata, loss, bounds,
     ncurr = csample.shape[0] 
 
     for k,(name, shp, sz) in enumerate(params):
-      getattr(model,name).data = torch.repeat_interleave(csample[:,offsets[k]:offsets[k+1]].reshape((ncurr,) + shp), ntotal, 0) 
-
+      getattr(model,name).data = torch.repeat_interleave(csample[:,offsets[k]:offsets[k+1]].reshape((ncurr,) + shp), ntotal, 0)
+    
     with torch.no_grad():
       res = model(idata.repeat(1,1,ncurr),
           cycles.repeat(1,ncurr),
           types.repeat(ncurr),
           (expand_indices(inds[0], ntotal, ncurr), expand_indices(inds[1], ntotal, ncurr)))
       
-      res = torch.permute(res.reshape(res.shape[0], ncurr, ntotal), (1, 0, 2))
-
+      res = res.reshape(res.shape[0], ncurr, ntotal)
+      
       for i,(pv, ind) in enumerate(zip(csample, indices)):
         data[ind,:-1] = csample[i]
-        lv = loss((res[i]-locs)/scales, (exp_results-locs)/scales)
+        lv = loss((res[:,i]-locs)/scales, (exp_results-locs)/scales)
         data[ind,-1] = torch.nan_to_num(lv, nan = nan_v)
-      
+
     # Store results if requested
     if save_grid is not None and i % save_every == 0:
       torch.save(data, save_grid)
@@ -145,7 +146,7 @@ def grid_search(model, idata, loss, bounds,
   
   # Scale data
   mean = np.mean(data, axis = 0)
-  std = np.mean(data, axis = 0)
+  std = np.std(data, axis = 0)
   scaled_input = (data[:,:-1] - mean[:-1]) / std[:-1]
   # Log fn seems to work best
   obj = np.log(data[:,-1])
@@ -227,13 +228,9 @@ class DeterministicModelExperiment(Module):
 
     predictions = model.solve_both(exp_data[0], exp_data[2],
         exp_data[1], exp_inds)
+  
+    return experiments.assemble_results_full(exp_data, exp_cycles, exp_types, predictions[:,:,0])
 
-    sim_results = experiments.assemble_results(
-        exp_data[:,:,exp_inds[0]], exp_cycles[:, exp_inds[0]], exp_types[exp_inds[0]], predictions[:,exp_inds[0],0],
-        exp_data[:,:,exp_inds[1]], exp_cycles[:, exp_inds[1]], exp_types[exp_inds[1]], predictions[:,exp_inds[1],0])
-    
-    return sim_results
-    
 class DeterministicModel(Module):
   """
     Wrap a material model to provide a :py:mod:`pytorch` deterministic model

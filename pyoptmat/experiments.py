@@ -46,6 +46,34 @@ def setup_experiment_vector(strain_data, stress_data):
 
   return exp_result
 
+def assemble_results_full(data, cycles, types, results):
+  """
+    Format results from a full simulation run into our standard format
+  """
+  model_result = torch.empty(data.shape[1:], device = data.device)
+  
+  tensile = types == exp_map_strain["tensile"]
+  model_result[:,tensile] = format_tensile(
+      cycles[:,tensile], results[:,tensile])
+
+  relaxation = types == exp_map_strain["relaxation"]
+  model_result[:,relaxation] = format_relaxation(
+      cycles[:,relaxation], results[:,relaxation])
+
+  ecyclic = types == exp_map_strain["strain_cyclic"]
+  model_result[:,ecyclic] = format_cyclic(
+      cycles[:,ecyclic], results[:,ecyclic])
+  
+  creep = types == exp_map_stress["creep"]
+  model_result[:,creep] = format_relaxation(
+      cycles[:,creep], results[:,creep])
+  
+  scyclic = types == exp_map_stress["stress_cyclic"]
+  model_result[:,scyclic] = format_cyclic(
+      cycles[:,scyclic], results[:,scyclic])
+
+  return model_result
+
 def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
     stress_data, stress_cycles, stress_types, pred_stress):
   """
