@@ -35,9 +35,10 @@ class ConstantParameter(TemperatureParameter):
     Args:
       pvalue:       the constant parameter value
   """
-  def __init__(self, pvalue, *args, **kwargs):
+  def __init__(self, pvalue, *args,  p_scale = lambda x: x, **kwargs):
     super().__init__(*args, **kwargs)
     self.pvalue = pvalue
+    self.p_scale = p_scale
 
   def value(self, T):
     """
@@ -46,7 +47,7 @@ class ConstantParameter(TemperatureParameter):
       Args:
         T:          current batch temperatures
     """
-    return self.pvalue
+    return self.p_scale(self.pvalue)
 
   @property
   def shape(self):

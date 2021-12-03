@@ -32,7 +32,7 @@ exp_map_stress = {"creep": 4, "stress_cyclic": 5}
 exp_map = {v:k for k,v in itertools.chain(exp_map_strain.items(), 
   exp_map_stress.items())}
 
-def setup_experiment_vector(strain_data, stress_data, stress_scale = 100.0):
+def setup_experiment_vector(strain_data, stress_data):
 
   ntime = strain_data.shape[1]
   nstrain = strain_data.shape[2]
@@ -42,12 +42,12 @@ def setup_experiment_vector(strain_data, stress_data, stress_scale = 100.0):
   exp_result = torch.empty(ntime, ntotal)
 
   exp_result[:,:nstrain] = strain_data[3]
-  exp_result[:,nstrain:] = stress_data[3] * stress_scale
+  exp_result[:,nstrain:] = stress_data[3]
 
   return exp_result
 
 def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
-    stress_data, stress_cycles, stress_types, pred_stress, stress_scale = 100.0):
+    stress_data, stress_cycles, stress_types, pred_stress):
   """
 
   """
@@ -57,7 +57,9 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   nstress = stress_data.shape[2]
   ntotal = nstrain + nstress
 
-  model_result = torch.empty(ntime, ntotal)
+  device = strain_data.device
+
+  model_result = torch.empty(ntime, ntotal, device = device)
 
   n = 0
 
@@ -90,7 +92,7 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   ni = torch.sum(creep)
   
   model_result[:,n:n+ni] = format_relaxation(
-      stress_cycles[:,creep], pred_stress[:,creep]) * stress_scale
+      stress_cycles[:,creep], pred_stress[:,creep])
 
   n += ni
 
@@ -99,7 +101,7 @@ def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
   ni = torch.sum(scyclic)
 
   model_result[:,n:n+ni] = format_cyclic(
-      stress_cycles[:,scyclic], pred_stress[:,scyclic]) * stress_scale
+      stress_cycles[:,scyclic], pred_stress[:,scyclic])
   n += ni
 
   return model_result

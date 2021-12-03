@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
   nsteps = 200
 
-  times, strains, temperatures = experiments.make_tension_tests(erates, temps, 
+  times, strains, temperatures, cycles = experiments.make_tension_tests(erates, temps, 
       elimits, nsteps)
 
   # Perfect viscoplastic model
@@ -56,7 +56,8 @@ if __name__ == "__main__":
 
   # Now do it backwards!
   strains_prime = integrator.solve_stress(times, stresses, temperatures)[:,:,0]
-
+  
+  plt.figure()
   for ei, epi, Ti, si in zip(strains.T.numpy(), strains_prime.T.numpy(),
       temperatures.T.numpy(), stresses.T.numpy()):
     l, = plt.plot(ei, si, label = "T = %3.0fK" % Ti[0])
@@ -67,3 +68,20 @@ if __name__ == "__main__":
   plt.ylabel("Stress (Mpa)")
   plt.show()
 
+  # Now do it both ways at once!
+  big_times = torch.cat((times,times), 1)
+  big_temperatures = torch.cat((temperatures, temperatures), 1)
+  big_data = torch.cat((strains, stresses), 1)
+
+  inds = (torch.arange(0, ntemps), torch.arange(ntemps, 2*ntemps))
+
+  both_results = integrator.solve_both(big_times, big_temperatures, big_data, inds)
+
+  plt.figure()
+  for i in range(ntemps):
+    l, = plt.plot(strains[:,i], both_results[:,i,0])
+    plt.plot(both_results[:,i+ntemps, 0], stresses[:,i], label = None, ls = '--', color = l.get_color())
+
+  plt.xlabel("Strain (mm/mm)")
+  plt.ylabel("Stress (MPa)")
+  plt.show()

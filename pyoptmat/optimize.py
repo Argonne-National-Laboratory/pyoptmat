@@ -48,9 +48,18 @@ def construct_weights(etypes, weights, normalize = True):
 
   return warray
 
+def expand_indices(base, total, ntimes):
+  l = base.shape[0]
+  new = base.repeat(ntimes)
+  for i in range(ntimes):
+    new[i*l:(i+1)*l] += i*total
+
+  return new
+
 def grid_search(model, idata, loss, bounds, 
     ngrid, method = "lhs-maximin", save_grid = None,
-    rbf_function = "inverse", nan_v = 1e20):
+    save_every = 1, rbf_function = "inverse", nan_v = 1e30,
+    nbatch = 1):
   """
     Use a coarse grid search to find a good starting point
 
@@ -64,14 +73,15 @@ def grid_search(model, idata, loss, bounds,
       rbf_function (optional):  kernel for radial basis interpolation
   """
   # Extract the data from the tuple
-  strain_data, strain_cycles, strain_types, stress_data, stress_cycles, stress_types = idata
+  idata, cycles, types, inds = idata
+  ntotal = idata.shape[-1]
 
   # Parameter order
   params = [(n, p.shape, torch.flatten(p).shape[0]) for n, p
       in list(model.named_parameters())]
   offsets = [0] + list(np.cumsum([i[2] for i in params]))
 
-  device = strain_data.device
+  device = idata.device
   
   # Generate the space
   # Need to do this on the cpu
@@ -90,44 +100,72 @@ def grid_search(model, idata, loss, bounds,
   
   samples = torch.tensor(sampler.generate(sspace.dimensions, ngrid),
       device = device)
-  results = torch.zeros(samples.shape[0], device = samples.device)
-
-  exp_result = experiments.setup_experiment_vector(strain_data, stress_data)
-
-  # Here we go
-  pdict = {n:p for n,p in zip(model.names, model.get_params())}
-  for i,sample in tqdm(enumerate(samples), total = len(samples),
-      desc = "Grid sampling"):
-    for k,(name, shp, sz) in enumerate(params):
-      getattr(model,name).data = samples[i][offsets[k]:offsets[k+1]].reshape(shp)
-    with torch.no_grad():
-      res = model(strain_data, strain_cycles, strain_types, stress_data, stress_cycles, stress_types)
-      lv = loss(res, exp_result)
-      results[i] = lv
+  data = torch.zeros((samples.shape[0], samples.shape[1]+1), device = device)
   
-  results = torch.nan_to_num(results, nan = nan_v)
+  exp_results = idata[3] 
+  locs = torch.mean(exp_results, 0)
+  scales = torch.std(exp_results, 0)
 
-  data = torch.hstack((samples, results[:,None]))
-  # Store the results if we want
-  if save_grid is not None:
-    torch.save(data, save_grid)
+  # Divide into blocks
+  pblocks = torch.split(samples, nbatch)
+  pindices = torch.split(torch.arange(samples.shape[0]), nbatch)
+  
+  # Here we go
+  t = tqdm(zip(pblocks, pindices), total = len(pblocks), 
+      desc = "Grid sampling")
+  for csample,indices in t:
+    ncurr = csample.shape[0] 
 
+    for k,(name, shp, sz) in enumerate(params):
+      getattr(model,name).data = torch.repeat_interleave(csample[:,offsets[k]:offsets[k+1]].reshape((ncurr,) + shp), ntotal, 0) 
+
+    with torch.no_grad():
+      res = model(idata.repeat(1,1,ncurr),
+          cycles.repeat(1,ncurr),
+          types.repeat(ncurr),
+          (expand_indices(inds[0], ntotal, ncurr), expand_indices(inds[1], ntotal, ncurr)))
+      
+      res = torch.permute(res.reshape(res.shape[0], ncurr, ntotal), (1, 0, 2))
+
+      for i,(pv, ind) in enumerate(zip(csample, indices)):
+        data[ind,:-1] = csample[i]
+        lv = loss((res[i]-locs)/scales, (exp_results-locs)/scales)
+        data[ind,-1] = torch.nan_to_num(lv, nan = nan_v)
+      
+    # Store results if requested
+    if save_grid is not None and i % save_every == 0:
+      torch.save(data, save_grid)
+  
   # We now need to do this on the CPU again
   data = data.cpu().numpy()
   
+  # Toss Nans
+  keep = data[:,-1] < nan_v
+  data = data[keep]
+  
+  # Scale data
+  mean = np.mean(data, axis = 0)
+  std = np.mean(data, axis = 0)
+  scaled_input = (data[:,:-1] - mean[:-1]) / std[:-1]
+  # Log fn seems to work best
+  obj = np.log(data[:,-1])
+  # Scale bounds
+  scaled_bounds = [sorted([(b[0]-m)/s,(b[1]-m)/s]) for b,m,s in zip(space, mean, std)]
+  
   # Get the surrogate and minimize it
-  ifn = inter.Rbf(*(data[:,i] for i in range(data.shape[1])), 
-      function = rbf_function)
-  res = opt.minimize(lambda x: ifn(*x), [(i+j)/2 for i,j in space],
-      method = 'L-BFGS-B', bounds = space)
+  ifn = inter.RBFInterpolator(scaled_input, obj)
+  res = opt.minimize(lambda x: ifn(x[None,:]), np.zeros((len(mean)-1,)),
+      method = 'L-BFGS-B', bounds = scaled_bounds)
   if not res.success:
     warnings.warn("Surrogate model minimization did not succeed!")
+
+  x = np.array([xi*s+m for xi,s,m in zip(res.x, mean, std)])
 
   # Setup the parameter dict and alter the model
   result = {}
   for k, (name, shp, sz) in enumerate(params):
-    getattr(model, name).data = torch.tensor(res.x[offsets[k]:offsets[k+1]]).reshape(shp).to(device)
-    result[name] = res.x[offsets[k]:offsets[k+1]].reshape(shp)
+    getattr(model, name).data = torch.tensor(x[offsets[k]:offsets[k+1]]).reshape(shp).to(device)
+    result[name] = x[offsets[k]:offsets[k+1]].reshape(shp)
   
   return result
 
@@ -160,7 +198,7 @@ class DeterministicModelExperiment(Module):
       names:      names to use for the parameters
       ics:        initial conditions to use for each parameter
   """
-  def __init__(self, maker, names, ics, scale = 1000.0):
+  def __init__(self, maker, names, ics):
     super().__init__()
 
     self.maker = maker
@@ -172,46 +210,30 @@ class DeterministicModelExperiment(Module):
     for name, ic in zip(names, ics):
       setattr(self, name, Parameter(ic))
     
-    self.scale = scale
-
   def get_params(self):
     """
       Return the parameters for input to the model
     """
     return [getattr(self, name) for name in self.params]
 
-  def simulate_results(self, strain_data, strain_cycles, strain_types,
-      stress_data, stress_cycles, stress_types):
-    """
-
-    """
-    model = self.maker(*self.get_params())
-
-    pred_strain = model.solve_strain(strain_data[0], strain_data[1],
-        strain_data[2])
-    pred_stress = model.solve_stress(stress_data[0], stress_data[1],
-        stress_data[2])
-
-    return pred_strain, pred_stress
-
-  def forward(self, strain_data, strain_cycles, strain_types,
-      stress_data, stress_cycles, stress_types):
+  def forward(self, exp_data, exp_cycles, exp_types, exp_inds):
     """
       Integrate forward and return the results
 
       Args:
 
     """
-    pred_strain, pred_stress = self.simulate_results(strain_data, strain_cycles,
-        strain_types, stress_data, stress_cycles, stress_types)
+    model = self.maker(*self.get_params())
+
+    predictions = model.solve_both(exp_data[0], exp_data[2],
+        exp_data[1], exp_inds)
 
     sim_results = experiments.assemble_results(
-        strain_data, strain_cycles, strain_types, pred_strain[:,:,0],
-        stress_data, stress_cycles, stress_types, pred_stress[:,:,0],
-        stress_scale = self.scale)
+        exp_data[:,:,exp_inds[0]], exp_cycles[:, exp_inds[0]], exp_types[exp_inds[0]], predictions[:,exp_inds[0],0],
+        exp_data[:,:,exp_inds[1]], exp_cycles[:, exp_inds[1]], exp_types[exp_inds[1]], predictions[:,exp_inds[1],0])
     
     return sim_results
-
+    
 class DeterministicModel(Module):
   """
     Wrap a material model to provide a :py:mod:`pytorch` deterministic model
