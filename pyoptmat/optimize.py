@@ -105,7 +105,8 @@ def grid_search(model, idata, loss, bounds,
   
   exp_results = experiments.setup_experiment_vector(idata[:,:,inds[0]], idata[:,:,inds[1]])
   locs = torch.mean(exp_results, 0)
-  scales = torch.std(exp_results, 0)
+  #scales = torch.std(exp_results, 0)
+  scales = torch.abs(locs)
 
   # Divide into blocks
   pblocks = torch.split(samples, nbatch)

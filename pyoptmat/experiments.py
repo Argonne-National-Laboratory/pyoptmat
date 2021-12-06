@@ -39,7 +39,7 @@ def setup_experiment_vector(strain_data, stress_data):
   nstress = stress_data.shape[2]
   ntotal = nstrain + nstress
 
-  exp_result = torch.empty(ntime, ntotal)
+  exp_result = torch.empty(ntime, ntotal, device = strain_data.device)
 
   exp_result[:,:nstrain] = strain_data[3]
   exp_result[:,nstrain:] = stress_data[3]

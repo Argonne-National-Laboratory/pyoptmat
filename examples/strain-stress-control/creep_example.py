@@ -28,7 +28,7 @@ if __name__ == "__main__":
   
   loading_rate = 1.0
 
-  times, stresses, temperatures = experiments.make_creep_tests(
+  times, stresses, temperatures, cycles = experiments.make_creep_tests(
       target_stresses, torch.ones_like(target_stresses) * target_temperature,
       torch.ones_like(target_stresses) * loading_rate, 
       target_times, nsteps_load, nsteps_hold)
