@@ -112,9 +112,9 @@ def grid_search(model, idata, loss, bounds,
   pindices = torch.split(torch.arange(samples.shape[0]), nbatch)
   
   # Here we go
-  t = tqdm(zip(pblocks, pindices), total = len(pblocks), 
+  t = tqdm(enumerate(zip(pblocks, pindices)), total = len(pblocks), 
       desc = "Grid sampling")
-  for csample,indices in t:
+  for i,(csample,indices) in t:
     ncurr = csample.shape[0] 
 
     for k,(name, shp, sz) in enumerate(params):
