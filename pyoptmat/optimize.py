@@ -59,7 +59,7 @@ def expand_indices(base, total, ntimes):
 def grid_search(model, idata, loss, bounds, 
     ngrid, method = "lhs-maximin", save_grid = None,
     save_every = 1, rbf_function = "inverse", nan_v = 1e30,
-    nbatch = 1):
+    nbatch = 1, log_transform = []):
   """
     Use a coarse grid search to find a good starting point
 
@@ -88,8 +88,12 @@ def grid_search(model, idata, loss, bounds,
   space = []
   for n, shp, sz in params:
     for i in range(sz):
-      space.append((bounds[n][0].cpu().numpy().flatten()[i],
-        bounds[n][1].cpu().numpy().flatten()[i]))
+      if n in log_transform:
+        space.append((np.log(bounds[n][0].cpu().numpy().flatten()[i]),
+          np.log(bounds[n][1].cpu().numpy().flatten()[i])))
+      else:
+        space.append((bounds[n][0].cpu().numpy().flatten()[i],
+          bounds[n][1].cpu().numpy().flatten()[i]))
   sspace = Space(space)
 
   # Actually sample
@@ -119,7 +123,10 @@ def grid_search(model, idata, loss, bounds,
     ncurr = csample.shape[0] 
 
     for k,(name, shp, sz) in enumerate(params):
-      getattr(model,name).data = torch.repeat_interleave(csample[:,offsets[k]:offsets[k+1]].reshape((ncurr,) + shp), ntotal, 0)
+      if name in log_transform:
+        getattr(model,name).data = torch.exp(torch.repeat_interleave(csample[:,offsets[k]:offsets[k+1]].reshape((ncurr,) + shp), ntotal, 0))
+      else:
+        getattr(model,name).data = torch.repeat_interleave(csample[:,offsets[k]:offsets[k+1]].reshape((ncurr,) + shp), ntotal, 0)
     
     with torch.no_grad():
       res = model(idata.repeat(1,1,ncurr),
@@ -166,8 +173,12 @@ def grid_search(model, idata, loss, bounds,
   # Setup the parameter dict and alter the model
   result = {}
   for k, (name, shp, sz) in enumerate(params):
-    getattr(model, name).data = torch.tensor(x[offsets[k]:offsets[k+1]]).reshape(shp).to(device)
-    result[name] = x[offsets[k]:offsets[k+1]].reshape(shp)
+    if name in log_transform:
+      getattr(model, name).data = torch.exp(torch.tensor(x[offsets[k]:offsets[k+1]]).reshape(shp).to(device))
+      result[name] = np.exp(x[offsets[k]:offsets[k+1]].reshape(shp))
+    else:
+      getattr(model, name).data = torch.tensor(x[offsets[k]:offsets[k+1]]).reshape(shp).to(device)
+      result[name] = x[offsets[k]:offsets[k+1]].reshape(shp)
   
   return result
 

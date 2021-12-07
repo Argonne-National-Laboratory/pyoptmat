@@ -298,3 +298,27 @@ class PolynomialScaling(TemperatureParameter):
   @property
   def shape(self):
     return self.coefs[0].shape
+
+class ArrheniusScaling(TemperatureParameter):
+  """
+    Simple Arrhenius scaling of the type A exp(-Q/T)
+
+    Args:
+      A:        Prefactor
+      Q:        Activation energy (times R)
+      A_scale:  Scaling for A
+      Q_scale:  Scaling for Q
+  """
+  def __init__(self, A, Q, *args, A_scale = lambda x: x, Q_scale = lambda x: x, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.A = A
+    self.Q = Q
+    self.A_scale = A_scale
+    self.Q_scale = Q_scale
+
+  def value(self, T):
+    return self.A_scale(self.A) * torch.exp(-self.Q_scale(self.Q) / T)
+
+  @property
+  def shape(self):
+    return self.A.shape

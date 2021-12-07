@@ -104,6 +104,44 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel):
 
     self.t = self.times[2]
 
+class TestIsoKinViscoplasticityRecovery(unittest.TestCase, CommonModel):
+  def setUp(self):
+    self.E = torch.tensor(100000.0)
+    self.n = torch.tensor(5.2)
+    self.eta = torch.tensor(110.0)
+    self.s0 = torch.tensor(0.0)
+
+    self.tau0 = torch.tensor(101.0)
+    self.theta0 = torch.tensor(1000.0)
+    self.R0 = torch.tensor(0.0)
+    self.r1 = torch.tensor(1.0e-6)
+    self.r2 = torch.tensor(2.0)
+    self.iso = hardening.Theta0RecoveryVoceIsotropicHardeningModel(
+        CP(self.tau0), CP(self.theta0), CP(self.R0), CP(self.r1),
+        CP(self.r2))
+
+    self.C = torch.tensor(12000.0)
+    self.g = torch.tensor(10.1)
+    self.kin = hardening.FAKinematicHardeningModel(CP(self.C), CP(self.g))
+
+    self.flowrule = flowrules.IsoKinViscoplasticity(CP(self.n), CP(self.eta), 
+        CP(self.s0), self.iso, self.kin)
+    self.model = models.InelasticModel(CP(self.E), self.flowrule)
+
+    self.times = torch.transpose(
+        torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
+    self.strains = torch.transpose(
+        torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0)
+    self.temperatures = torch.zeros_like(self.times)
+    self.stresses = torch.transpose(
+        torch.tensor([np.linspace(0,1,4) for i in range(3)]), 1, 0) * 200
+
+    self.state_strain = torch.tensor([[90.0,30.0,10.0,0],[100.0,10.0,15.0,0],[101.0,50.0,60.0,0]])/3
+    self.state_stress = torch.tensor([[0.05,30.0,10.0,0],[0.07,10.0,15.0,0],[0.08,50.0,60.0,0]])/3
+
+    self.t = self.times[2]
+
+
 class TestDamage(unittest.TestCase, CommonModel):
   def setUp(self):
     self.E = torch.tensor(100000.0)
