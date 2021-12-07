@@ -320,9 +320,9 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
         ep:     the inelastic strain rate
         T:      temperature
     """
+    recovery = (self.r2(T) * self.r1(T)*torch.abs(self.R0(T) - h[:,0])**(self.r2(T)-1.0))[:,None,None]
     return torch.unsqueeze(-torch.unsqueeze(self.theta(T)/self.tau(T),-1) * 
-        torch.ones_like(h) * torch.abs(ep)[:,None] - 
-        self.r2(T) * self.r1(T)*torch.abs(self.R0(T) - h[:,0:1])**(self.r2(T)-1.0), 1)
+        torch.ones_like(h) * torch.abs(ep)[:,None], 1) - recovery
 
   def dhistory_rate_derate(self, s, h, t, ep, T):
     """
