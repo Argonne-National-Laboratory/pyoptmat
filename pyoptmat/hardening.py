@@ -659,3 +659,123 @@ class ChabocheHardeningModel(KinematicHardeningModel):
     """
     return torch.unsqueeze(self.C(T)[None,...] * torch.ones_like(ep)[:,None] - 
         self.g(T)[None,:] * h * torch.sign(ep)[:,None],-1).reshape(h.shape + (1,))
+
+class ChabocheHardeningModelRecovery(KinematicHardeningModel):
+  """
+    Chaboche kinematic hardening, as defined by 
+
+    Chaboche, J. and D. Nouailhas. "A unified constitutive modmel for 
+    cyclic viscoplasticity and its applications to various stainless steels."
+    Journal of Engineering Materials and Technology: 111, pp. 424-430, 1989.
+
+    The model maintains n backstresses and sums them to provide the
+    total kinematic hardening
+    
+    .. math::
+
+      \\sigma_{kin}=\\sum_{i=1}^{n_{kin}}x_{i}
+
+    Each individual backstress evolves per the Frederick-Armstrong model
+
+    .. math::
+
+      \\dot{x}_{i}=\\frac{2}{3}C_{i}\\dot{\\varepsilon}_{in}-g_{i}x_{i}\\left|\\dot{\\varepsilon}_{in}\\right|
+
+    Args:
+      C:                    *vector* of hardening coefficients
+      g:                    *vector* of recovery coefficients
+  """
+  def __init__(self, C, g, b, r):
+    super().__init__()
+    self.C = C
+    self.g = g
+    self.b = b
+    self.r = r
+
+    self.nback = self.C.shape[-1]
+
+  def value(self, h):
+    """
+      The map between the internal variables and the kinematic hardening
+
+      Here :math:`\\sigma_{kin}=\\sum_{i=1}^{n_{kin}}x_{i}`
+
+      Args:
+        h:      vector of internal variables
+    """
+    return torch.sum(h, 1)
+
+  def dvalue(self, h):
+    """
+      Derivative of the map between the internal variables and the 
+      kinematic hardening with respect to the internal variables
+
+      Args:
+        h:      vector of internal variables
+    """
+    return torch.ones((h.shape[0],self.nback), device = h.device)
+
+  @property
+  def nhist(self):
+    """
+      Number of history variables, equal to the number of backstresses
+    """
+    return self.nback
+
+  def history_rate(self, s, h, t, ep, T):
+    """
+      The evolution rate for the internal variables
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      temperature
+    """
+    return (self.C(T)[None,...] * ep[:,None] - self.g(T)[None,...] * h * 
+        torch.abs(ep)[:,None] - self.b(T)[None,...] * torch.abs(h)**(self.r(T)[None,...]-1.0) * h).reshape(h.shape)
+
+  def dhistory_rate_dstress(self, s, h, t, ep, T):
+    """
+      The derivative of the history rate with respect to stress
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      the temperature
+    """
+    return torch.zeros_like(h)
+
+  def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    """
+      The derivative of the history rate with respect to the history
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      the temperature
+    """
+    return torch.diag_embed(-self.g(T)[None,...] * 
+        torch.abs(ep)[:,None]).reshape(h.shape+h.shape[1:]
+            ) + torch.diag_embed(-self.b(T)[None,...] * self.r(T)[None,...]*
+        torch.abs(h)**(self.r(T)[None,...]-1.0)).reshape(h.shape+h.shape[1:])
+
+  def dhistory_rate_derate(self, s, h, t, ep, T):
+    """
+      The derivative of the history rate with respect to the inelastic strain
+      rate
+
+      Args:
+        s:      stress
+        h:      history
+        t:      time
+        ep:     the inelastic strain rate
+        T:      the temperature
+    """
+    return torch.unsqueeze(self.C(T)[None,...] * torch.ones_like(ep)[:,None] - 
+        self.g(T)[None,:] * h * torch.sign(ep)[:,None],-1).reshape(h.shape + (1,))

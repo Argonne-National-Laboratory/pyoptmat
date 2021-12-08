@@ -117,3 +117,20 @@ class TestChabocheKinematicHardening(unittest.TestCase, HardeningBase):
     self.ep = torch.linspace(0.1,0.2,self.nbatch)
     self.T = torch.zeros_like(self.t)
 
+class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
+  def setUp(self):
+    self.C = torch.tensor([100.0,1000,1500])
+    self.g = torch.tensor([1.2,100,50])
+    self.b = torch.tensor([5e-4,4e-4,2e-4])
+    self.r = torch.tensor([3.0,3.2,3.5])
+    self.model = hardening.ChabocheHardeningModelRecovery(CP(self.C), CP(self.g),
+        CP(self.b), CP(self.r))
+
+    self.nbatch = 10
+
+    self.s = torch.linspace(90,100,self.nbatch)
+    self.h = torch.reshape(torch.linspace(50,110,self.nbatch*len(self.C)), 
+        (self.nbatch,len(self.C)))
+    self.t = torch.ones(self.nbatch)
+    self.ep = torch.linspace(0.1,0.2,self.nbatch)
+    self.T = torch.zeros_like(self.t)

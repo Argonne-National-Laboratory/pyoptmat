@@ -89,8 +89,7 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonGradient):
         flowrules.PerfectViscoplasticity(CP(p[1]), CP(p[2]))),
         use_adjoint = False)
 
-    self.extract_grad = lambda m: np.array(
-        [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy()])
+    self.extract_grad = lambda m: [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy()]
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
@@ -120,10 +119,9 @@ class TestIsotropicOnly(unittest.TestCase, CommonGradient):
           hardening.NoKinematicHardeningModel())),
         use_adjoint = False)
 
-    self.extract_grad = lambda m: np.array(
-        [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
+    self.extract_grad = lambda m: [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
           m.model.flowrule.s0.pvalue.grad.numpy(), m.model.flowrule.isotropic.R.pvalue.grad.numpy(),
-          m.model.flowrule.isotropic.d.pvalue.grad.numpy()])
+          m.model.flowrule.isotropic.d.pvalue.grad.numpy()]
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
@@ -155,11 +153,10 @@ class TestHardeningViscoplasticity(unittest.TestCase, CommonGradient):
           hardening.FAKinematicHardeningModel(CP(p[6]),CP(p[7])))),
         use_adjoint = False)
 
-    self.extract_grad = lambda m: np.array(
-        [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
+    self.extract_grad = lambda m: [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
           m.model.flowrule.s0.pvalue.grad.numpy(), m.model.flowrule.isotropic.R.pvalue.grad.numpy(),
           m.model.flowrule.isotropic.d.pvalue.grad.numpy(),
-          m.model.flowrule.kinematic.C.pvalue.grad.numpy(), m.model.flowrule.kinematic.g.pvalue.grad.numpy()])
+          m.model.flowrule.kinematic.C.pvalue.grad.numpy(), m.model.flowrule.kinematic.g.pvalue.grad.numpy()]
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
@@ -195,13 +192,12 @@ class TestHardeningViscoplasticityDamage(unittest.TestCase, CommonGradient):
         dmodel = damage.HayhurstLeckie(CP(p[8]), CP(p[9]), CP(p[10]))),
         use_adjoint = False)
 
-    self.extract_grad = lambda m: np.array(
-        [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
+    self.extract_grad = lambda m: [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
           m.model.flowrule.s0.pvalue.grad.numpy(), m.model.flowrule.isotropic.R.pvalue.grad.numpy(),
           m.model.flowrule.isotropic.d.pvalue.grad.numpy(),
           m.model.flowrule.kinematic.C.pvalue.grad.numpy(), m.model.flowrule.kinematic.g.pvalue.grad.numpy(),
           m.model.dmodel.A.pvalue.grad.numpy(), m.model.dmodel.xi.pvalue.grad.numpy(), 
-          m.model.dmodel.phi.pvalue.grad.numpy()])
+          m.model.dmodel.phi.pvalue.grad.numpy()]
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)
@@ -233,11 +229,10 @@ class TestChabocheViscoplasticity(unittest.TestCase, CommonGradient):
           hardening.ChabocheHardeningModel(CP(p[6]),CP(p[7])))),
         use_adjoint = False)
 
-    self.extract_grad = lambda m: np.array(
-        [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
+    self.extract_grad = lambda m: [m.model.E.pvalue.grad.numpy(), m.model.flowrule.n.pvalue.grad.numpy(), m.model.flowrule.eta.pvalue.grad.numpy(),
           m.model.flowrule.s0.pvalue.grad.numpy(), m.model.flowrule.isotropic.R.pvalue.grad.numpy(),
           m.model.flowrule.isotropic.d.pvalue.grad.numpy(),
-          m.model.flowrule.kinematic.C.pvalue.grad.numpy(), m.model.flowrule.kinematic.g.pvalue.grad.numpy()])
+          m.model.flowrule.kinematic.C.pvalue.grad.numpy(), m.model.flowrule.kinematic.g.pvalue.grad.numpy()]
 
     self.times = torch.transpose(
         torch.tensor([np.linspace(0,1,self.ntime) for i in range(self.nbatch)]), 1, 0)

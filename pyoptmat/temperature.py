@@ -198,7 +198,7 @@ class KMViscosityScaling(TemperatureParameter):
     self.B_scale = B_scale
 
     self.n = KMRateSensitivityScaling(self.A, self.mu, self.b, self.k,
-        A_scale = self.A_scale)
+        A_scale = self.A_scale, cutoff = 1000)
 
   def value(self, T):
     """
@@ -298,6 +298,41 @@ class PolynomialScaling(TemperatureParameter):
   @property
   def shape(self):
     return self.coefs[0].shape
+
+class PiecewiseScaling(TemperatureParameter):
+  """
+    Piecewise linear interpolation
+
+    Args:
+      control:  temperature control points (npoints,)
+      values:   values at control points (npoints, ) + param.shape
+  """
+  def __init__(self, control, values, *args, values_scale_fn = lambda x: x,
+      **kwargs):
+    super().__init__(*args, **kwargs)
+
+    self.control = control
+    self.values = values
+
+    self.values_scale_fn = values_scale_fn
+    
+    self.batch = values.dim() > 1
+
+  def value(self, T):
+    gi = torch.remainder(torch.sum((self.control[:,None] - T) <= 0, dim = 0),
+        self.control.shape[0]) - 1
+    
+    vcurr = self.values_scale_fn(self.values)
+    slopes = torch.diff(vcurr, dim = -1) / torch.diff(self.control, dim = 0)
+    
+    if self.batch:
+      return torch.gather(vcurr,-1,gi[:,None])[:,0] + torch.gather(slopes,-1,gi[:,None])[:,0] * (T - self.control[gi])
+    else:
+      return torch.gather(vcurr,-1,gi) + torch.gather(slopes,-1,gi) * (T - self.control[gi])
+
+  @property
+  def shape(self):
+    return self.values.shape[1:]
 
 class ArrheniusScaling(TemperatureParameter):
   """
