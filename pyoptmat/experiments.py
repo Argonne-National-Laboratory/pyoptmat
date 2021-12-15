@@ -53,24 +53,29 @@ def assemble_results_full(data, cycles, types, results):
   model_result = torch.empty(data.shape[1:], device = data.device)
   
   tensile = types == exp_map_strain["tensile"]
-  model_result[:,tensile] = format_tensile(
-      cycles[:,tensile], results[:,tensile])
+  if torch.sum(tensile) > 0:
+    model_result[:,tensile] = format_tensile(
+        cycles[:,tensile], results[:,tensile])
 
   relaxation = types == exp_map_strain["relaxation"]
-  model_result[:,relaxation] = format_relaxation(
-      cycles[:,relaxation], results[:,relaxation])
+  if torch.sum(relaxation) > 0:
+    model_result[:,relaxation] = format_relaxation(
+        cycles[:,relaxation], results[:,relaxation])
 
   ecyclic = types == exp_map_strain["strain_cyclic"]
-  model_result[:,ecyclic] = format_cyclic(
-      cycles[:,ecyclic], results[:,ecyclic])
+  if torch.sum(ecyclic) > 0:
+    model_result[:,ecyclic] = format_cyclic(
+        cycles[:,ecyclic], results[:,ecyclic])
   
   creep = types == exp_map_stress["creep"]
-  model_result[:,creep] = format_relaxation(
-      cycles[:,creep], results[:,creep])
+  if torch.sum(creep) > 0:
+    model_result[:,creep] = format_relaxation(
+        cycles[:,creep], results[:,creep])
   
   scyclic = types == exp_map_stress["stress_cyclic"]
-  model_result[:,scyclic] = format_cyclic(
-      cycles[:,scyclic], results[:,scyclic])
+  if torch.sum(scyclic) > 0:
+    model_result[:,scyclic] = format_cyclic(
+        cycles[:,scyclic], results[:,scyclic])
 
   return model_result
 

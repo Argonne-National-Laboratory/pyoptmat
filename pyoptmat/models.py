@@ -261,7 +261,7 @@ class BothBasedModel(nn.Module):
     """
     strain_rates, strain_jacs = self.emodel(t, y)
     stress_rates, stress_jacs = self.smodel(t, y)
-
+    
     actual_rates = torch.zeros_like(strain_rates)
     actual_rates[self.indices[0]] = strain_rates[self.indices[0]]
     actual_rates[self.indices[1]] = stress_rates[self.indices[1]]
