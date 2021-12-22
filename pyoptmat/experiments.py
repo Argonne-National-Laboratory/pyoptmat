@@ -27,126 +27,104 @@ import itertools
 
 import torch
 
-exp_map_strain = {"tensile": 0, "relaxation": 1, "strain_cyclic": 3}
-exp_map_stress = {"creep": 4, "stress_cyclic": 5}
-exp_map = {v:k for k,v in itertools.chain(exp_map_strain.items(), 
-  exp_map_stress.items())}
-
-def setup_experiment_vector(strain_data, stress_data):
-
-  ntime = strain_data.shape[1]
-  nstrain = strain_data.shape[2]
-  nstress = stress_data.shape[2]
-  ntotal = nstrain + nstress
-
-  exp_result = torch.empty(ntime, ntotal, device = strain_data.device)
-
-  exp_result[:,:nstrain] = strain_data[3]
-  exp_result[:,nstrain:] = stress_data[3]
-
-  return exp_result
-
-def assemble_results_full(data, cycles, types, results):
+def load_results(xdata, device = torch.device("cpu")):
   """
-    Format results from a full simulation run into our standard format
+    Load experimental data from xarray into torch tensors
+
+    Args:
+      xdata: xarray data structure
+
+    The output format is critical, this function returns 5 tensors:
+
+      data (3, ntime, nexperiment)
+
+        The initial index are the experimental (times, temperatures, idata)
+        For strain controlled tests idata is strain
+        For stress controlled tests idata is stress
+
+      results (ntime, nexperiment)
+
+        For strain controlled this is stress
+        For stress control this is strain
+
+      cycles (ntime, nexperiment)
+
+        Cycle count for all tests
+
+      types (nexperiment,)
+
+        Experiment types, converted to integers per the dicts above
+
+      control (nexperiment,)
+
+        Maps the string control type ("strain" or "stress") to an integer
+        using the dict above
   """
-  model_result = torch.empty(data.shape[1:], device = data.device)
-  
-  tensile = types == exp_map_strain["tensile"]
-  if torch.sum(tensile) > 0:
-    model_result[:,tensile] = format_tensile(
-        cycles[:,tensile], results[:,tensile])
+  time = torch.tensor(xdata["time"].values, device = device)
+  temp = torch.tensor(xdata["temperature"].values, device = device)
+  strain = torch.tensor(xdata["strain"].values, device = device)
+  stress = torch.tensor(xdata["stress"].values, device = device)
 
-  relaxation = types == exp_map_strain["relaxation"]
-  if torch.sum(relaxation) > 0:
-    model_result[:,relaxation] = format_relaxation(
-        cycles[:,relaxation], results[:,relaxation])
+  cycle = torch.tensor(xdata["cycle"].values, device = device)
+  types = torch.tensor([exp_map[t] for t in xdata["type"].values], device = device)
+  control = torch.tensor([control_map[t] for t in xdata["control"].values], device = device)
 
-  ecyclic = types == exp_map_strain["strain_cyclic"]
-  if torch.sum(ecyclic) > 0:
-    model_result[:,ecyclic] = format_cyclic(
-        cycles[:,ecyclic], results[:,ecyclic])
-  
-  creep = types == exp_map_stress["creep"]
-  if torch.sum(creep) > 0:
-    model_result[:,creep] = format_relaxation(
-        cycles[:,creep], results[:,creep])
-  
-  scyclic = types == exp_map_stress["stress_cyclic"]
-  if torch.sum(scyclic) > 0:
-    model_result[:,scyclic] = format_cyclic(
-        cycles[:,scyclic], results[:,scyclic])
+  data = torch.empty((4,) + time.shape, device = device)
 
-  return model_result
+  data[0] = time
+  data[1] = temp
+  data[2,:,control==0] = strain[:,control==0]
+  data[2,:,control==1] = stress[:,control==1]
 
-def assemble_results(strain_data, strain_cycles, strain_types, pred_strain,
-    stress_data, stress_cycles, stress_types, pred_stress):
+  results = torch.empty_like(time)
+  results[:,control==0] = stress[:,control==0]
+  results[:,control==1] = strain[:,control==1]
+
+  return data, results, cycle, types, control
+
+def convert_results(results, cycles, types):
   """
+    Process a raw results vector to our common format based on test type
 
+    Args:
+      results:      raw results data (ntime, nexperiment)
+      cycles:       cycle counts (ntime, nexperiment)
+      types:        etst types (nexperiment,)
   """
-  # Sizes
-  ntime = strain_data.shape[1]
-  nstrain = strain_data.shape[2]
-  nstress = stress_data.shape[2]
-  ntotal = nstrain + nstress
+  processed = torch.empty_like(results)
 
-  device = strain_data.device
+  for i, func in exp_fns_num.items():
+    current = types == i
+    if torch.sum(current) > 0:
+      processed[:,current] = func(cycles[:,current], results[:,current])
 
-  model_result = torch.empty(ntime, ntotal, device = device)
-
-  n = 0
-
-  # Tensile tests
-  tensile = strain_types == exp_map_strain["tensile"]
-  ni = torch.sum(tensile)
-
-  model_result[:,n:n+ni] = format_tensile(
-      strain_cycles[:,tensile], pred_strain[:,tensile])
-  n += ni
-
-  # Relaxation tests
-  relaxation = strain_types == exp_map_strain["relaxation"]
-  ni = torch.sum(relaxation)
-
-  model_result[:,n:n+ni] = format_relaxation(
-      strain_cycles[:,relaxation], pred_strain[:,relaxation])
-  n += ni
-
-  # Strain-controlled cyclic
-  ecyclic = strain_types == exp_map_strain["strain_cyclic"]
-  ni = torch.sum(ecyclic)
-  
-  model_result[:,n:n+ni] = format_cyclic(
-      strain_cycles[:,ecyclic], pred_strain[:,ecyclic])
-  n += ni
-
-  # Creep
-  creep = stress_types == exp_map_stress["creep"]
-  ni = torch.sum(creep)
-  
-  model_result[:,n:n+ni] = format_relaxation(
-      stress_cycles[:,creep], pred_stress[:,creep])
-
-  n += ni
-
-  # Stress controlled cyclic
-  scyclic = stress_types == exp_map_stress["stress_cyclic"]
-  ni = torch.sum(scyclic)
-
-  model_result[:,n:n+ni] = format_cyclic(
-      stress_cycles[:,scyclic], pred_stress[:,scyclic])
-  n += ni
-
-  return model_result
+  return processed
 
 def format_tensile(cycles, predictions):
   """
+    Format tension test data to our "post-processed" form for comparison
+
+    Args:
+      cycles:       cycle count/listing
+      predictions:  input data
+
+    Input data are stresses for this test type
+
     Do nothing!
   """
   return predictions
 
 def format_relaxation(cycles, predictions):
   """
+    Format stress relaxation test data to our "post-processed" form for comparison
+    This works for both creep and stress relaxation
+
+    Args:
+      cycles:       cycle count/listing
+      predictions:  input data
+
+    Input data are stresses for stress relaxation and strains for creep
+
     Zero out the loading results, replace the relaxation results with the
     normalized (subtract t=0) curve
   """
@@ -161,6 +139,18 @@ def format_relaxation(cycles, predictions):
   return result
 
 def format_cyclic(cycles, predictions):
+  """
+    Format a generic cyclic test -- works for both stress and strain control
+
+    Args:
+      cycles:       cycle count/listing
+      predictions:  input data
+
+    Input data are stresses for strain control and strains for stress control.
+
+    We format this as a "block" -- the values for each cycle are replaced
+    by the maximum value within the cycle
+  """
   # If this is slow we can probably remove the for loop
   result = torch.zeros_like(predictions)
   uc = cycles[:,0] # Correct but dangerous for future expansion
@@ -170,28 +160,6 @@ def format_cyclic(cycles, predictions):
     result[curr] = vals
   
   return result
-
-def format_strain_control(ds):
-  data = torch.stack((torch.tensor(ds["time"].values), 
-    torch.tensor(ds["strain"].values), 
-    torch.tensor(ds["temperature"].values),
-    torch.tensor(ds["stress"].values)))
-  cycle = torch.tensor(ds["cycle"].values)
-  
-  types = torch.tensor([exp_map_strain[t] for t in ds["type"].values])
-  
-  return data, cycle, types
-
-def format_stress_control(ds):
-  data = torch.stack((torch.tensor(ds["time"].values), 
-    torch.tensor(ds["stress"].values), 
-    torch.tensor(ds["temperature"].values),
-    torch.tensor(ds["strain"].values)))
-  cycle = torch.tensor(ds["cycle"].values)
-  
-  types = torch.tensor([exp_map_stress[t] for t in ds["type"].values])
-  
-  return data, cycle, types
 
 def make_tension_tests(rates, temperatures, elimits, nsteps):
   """
@@ -374,3 +342,15 @@ def sample_cycle_normalized_times(cycle, N, nload = 10, nhold = 10):
 
   return times, strains, cycles
 
+# Numerical codes for each test type
+exp_map = {"tensile": 0, "relaxation": 1, "strain_cyclic": 2, 
+    "creep": 3, "stress_cyclic": 4}
+# Function to use to process each test type
+exp_fns = {"tensile": format_tensile, "relaxation": format_relaxation,
+    "strain_cyclic": format_cyclic, "creep": format_relaxation,
+    "stress_cyclic": format_cyclic}
+# Map to numbers instead
+exp_fns_num = {exp_map[k]: v for k,v in exp_fns.items()}
+
+# Map control type to number
+control_map = {"strain": 0, "stress": 1}

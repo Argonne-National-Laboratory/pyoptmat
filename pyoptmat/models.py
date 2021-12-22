@@ -134,9 +134,15 @@ class ModelIntegrator(nn.Module):
     else:
       self.imethod = ode.odeint
 
-  def solve_both(self, times, temperatures, idata, indices):
+  def solve_both(self, times, temperatures, idata, control):
     """
       Solve for either strain or stress control at once
+
+      Args:
+        times:          input times, (ntime,nexp)
+        temperatures:   input temperatures (ntime,nexp)
+        idata:          input data (ntime,nexp)
+        control:        signal for stress/strain control (nexp,)
     """
     rates = torch.cat((torch.zeros(1,idata.shape[1], device = idata.device),
       (idata[1:]-idata[:-1])/(times[1:]-times[:-1])))
@@ -155,7 +161,7 @@ class ModelIntegrator(nn.Module):
     init[:,-1] = self.d0
 
     bmodel = BothBasedModel(self.model, rate_interpolator, base_interpolator,
-        temperature_interpolator, indices)
+        temperature_interpolator, control)
 
     return self.imethod(bmodel,
       init, times, method = self.method, substep = self.substeps, rtol = self.rtol, 
@@ -244,13 +250,13 @@ class BothBasedModel(nn.Module):
       T_fn:     temperature interpolator
       indices:  split into strain and stress control
   """
-  def __init__(self, model, rate_fn, base_fn, T_fn, indices, *args, **kwargs):
+  def __init__(self, model, rate_fn, base_fn, T_fn, control, *args, **kwargs):
     super().__init__(*args, **kwargs)
     self.model = model
     self.rate_fn = rate_fn
     self.base_fn = base_fn
     self.T_fn = T_fn
-    self.indices = indices
+    self.control = control
 
     self.emodel = StrainBasedModel(self.model, self.rate_fn, self.T_fn)
     self.smodel = StressBasedModel(self.model, self.rate_fn, self.base_fn, self.T_fn)
@@ -263,12 +269,16 @@ class BothBasedModel(nn.Module):
     stress_rates, stress_jacs = self.smodel(t, y)
     
     actual_rates = torch.zeros_like(strain_rates)
-    actual_rates[self.indices[0]] = strain_rates[self.indices[0]]
-    actual_rates[self.indices[1]] = stress_rates[self.indices[1]]
+
+    e_control = self.control == 0
+    s_control = self.control == 1
+
+    actual_rates[e_control] = strain_rates[e_control]
+    actual_rates[s_control] = stress_rates[s_control]
 
     actual_jacs = torch.zeros_like(strain_jacs)
-    actual_jacs[self.indices[0]] = strain_jacs[self.indices[0]]
-    actual_jacs[self.indices[1]] = stress_jacs[self.indices[1]]
+    actual_jacs[e_control] = strain_jacs[e_control]
+    actual_jacs[s_control] = stress_jacs[s_control]
 
     return actual_rates, actual_jacs
 
