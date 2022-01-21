@@ -100,6 +100,27 @@ def convert_results(results, cycles, types):
 
   return processed
 
+def format_abstract_tensile(cycles, predictions):
+  """
+    Replace the first half with the yield strength, replace the second half
+    with the tensile strength
+  """
+  result = torch.zeros_like(predictions)
+  
+  # cycles == 0 -> 0
+  result += torch.where(cycles==0, 0.0, 0.0)
+
+  # cycles == 1 -> first value in that region
+  _, index = torch.max(cycles==1, 0)
+  result += torch.where(cycles==1, 
+      predictions.gather(0, index.view(1,-1))[0], 0.0)
+
+  # cycles == 2 -> max value overall
+  mvalues, _ = torch.max(predictions, 0)
+  result += torch.where(cycles==2, mvalues, 0.0)
+
+  return result
+
 def format_tensile(cycles, predictions):
   """
     Format tension test data to our "post-processed" form for comparison
@@ -344,11 +365,11 @@ def sample_cycle_normalized_times(cycle, N, nload = 10, nhold = 10):
 
 # Numerical codes for each test type
 exp_map = {"tensile": 0, "relaxation": 1, "strain_cyclic": 2, 
-    "creep": 3, "stress_cyclic": 4}
+    "creep": 3, "stress_cyclic": 4, "abstract_tensile": 5}
 # Function to use to process each test type
 exp_fns = {"tensile": format_tensile, "relaxation": format_relaxation,
     "strain_cyclic": format_cyclic, "creep": format_relaxation,
-    "stress_cyclic": format_cyclic}
+    "stress_cyclic": format_cyclic, "abstract_tensile": format_abstract_tensile}
 # Map to numbers instead
 exp_fns_num = {exp_map[k]: v for k,v in exp_fns.items()}
 
