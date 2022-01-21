@@ -345,7 +345,7 @@ class HierarchicalStatisticalModelExperiment(PyroModule):
     
     # Setup the full noise, which can be type specific
     if self.type_noise:
-      full_noise = torch.empty(exp_data.shape[-1])
+      full_noise = torch.empty(exp_data.shape[-1], device = exp_data.device)
       for i in experiments.exp_map.values():
         full_noise[exp_types==i] = eps[i]
     else:
