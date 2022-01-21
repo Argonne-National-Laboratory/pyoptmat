@@ -18,11 +18,11 @@ sys.path.insert(0, '../../')
 # -- Project information -----------------------------------------------------
 
 project = 'pyoptmat'
-copyright = '2021, Argonne National Laboratory'
+copyright = '2022, Argonne National Laboratory'
 author = 'Argonne National Laboratory'
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.0'
+release = '1.1.0'
 
 
 # -- General configuration ---------------------------------------------------

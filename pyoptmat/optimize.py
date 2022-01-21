@@ -27,6 +27,17 @@ from tqdm import tqdm
 from pyoptmat import experiments
 
 def bound_factor(mean, factor, min_bound = None):
+  """
+    Apply the bounded_scale_function map but set the upper bound as mean*(1+factor)
+    and the lower bound as mean*(1-factor)
+
+    Args:
+      mean:         center value
+      factor:       bounds factor
+
+    Additional Args:
+      min_bound:    clip to avoid going lower than this value
+  """
   return bounded_scale_function((mean*(1.0-factor),mean*(1+factor)), min_bound = min_bound)
 
 def bounded_scale_function(bounds, min_bound = None):
@@ -36,6 +47,9 @@ def bounded_scale_function(bounds, min_bound = None):
 
     Args:
       bounds:   tuple giving the parameter bounds
+
+    Additional Args:
+      min_bounds:   clip to avoid going lower than this value
   """
   if min_bound is None:
     return lambda x: torch.clamp(x, 0, 1)*(bounds[1]-bounds[0]) + bounds[0]
@@ -44,7 +58,7 @@ def bounded_scale_function(bounds, min_bound = None):
 
 def clamp_scale_function(bounds):
   """
-    Just clamps
+    Just clamp to bounds
 
     Args:
       bounds:   tuple giving the parameter bounds
@@ -54,12 +68,20 @@ def clamp_scale_function(bounds):
 def bound_and_scale(scale, bounds):
   """
     Combination of scaling and bounding
+
+    Args:
+      scale:    divide input by this value
+      bounds:   tuple, clamp to (bounds[0], bounds[1])
   """
   return lambda x: torch.clamp(x / scale, bounds[0], bounds[1])
 
 def log_bound_and_scale(scale, bounds):
   """
     Scale, de-log, and bound
+
+    Args:
+      scale:    divide input by this value, then take exp
+      bounds:   tuple, clamp to (bounds[0], bounds[1])
   """
   return lambda x: torch.clamp(torch.exp(x / scale), bounds[0], bounds[1])
 
@@ -68,7 +90,7 @@ class DeterministicModelExperiment(Module):
     Wrap a material model to provide a :py:mod:`pytorch` deterministic model
 
     Args:
-      maker:      function that returns a valid Module, given the 
+      maker:      function that returns a valid model as a  Module, given the 
                   input parameters
       names:      names to use for the parameters
       ics:        initial conditions to use for each parameter
@@ -96,7 +118,10 @@ class DeterministicModelExperiment(Module):
       Integrate forward and return the results
 
       Args:
-
+        exp_data:       formatted input experimental data (see experiments module)
+        exp_cycles:     cycle counts for each test
+        exp_types:      experiment types, as integers
+        exp_control:    stress/strain control flag
     """
     model = self.maker(*self.get_params())
 
@@ -119,7 +144,9 @@ class StatisticalModelExperiment(PyroModule):
       names:      names to use for the parameters
       loc:        parameter location priors
       scales:     parameter scale priors
-      eps:        random noise, could be a constant value or a parameter
+      eps:        random noise, can be either a single scalar or a 1D tensor
+                  if it's a 1D tensor then each entry i represents the
+                  noise in test type i
   """
   def __init__(self, maker, names, locs, scales, eps):
     super().__init__()
@@ -144,6 +171,17 @@ class StatisticalModelExperiment(PyroModule):
   def forward(self, exp_data, exp_cycles, exp_types, exp_control, exp_results = None):
     """
       Integrate forward and return the result
+
+      Optionally condition on the actual data
+
+      Args:
+        exp_data:       formatted experimental data, see experiments module
+        exp_cycles:     cycle counts for each test
+        exp_types:      experiment types for each test
+        exp_control:    stress/strain control flag for each test
+
+      Additional Args:
+        exp_results:    true results for conditioning (ntime,nexp)
     """
     model = self.maker(*self.get_params())
     predictions = model.solve_both(exp_data[0], exp_data[1], exp_data[2], exp_control)
@@ -327,8 +365,8 @@ class HierarchicalStatisticalModelExperiment(PyroModule):
 
   def forward(self, exp_data, exp_cycles, exp_types, exp_control, exp_results = None):
     """
-      Evaluate the forward model, conditioned by the true stresses if
-      they are available
+      Evaluate the forward model, optionally conditioned by the experimental
+      data.
 
       Args:
         exp_data:       input data, (3,ntime,nexp)

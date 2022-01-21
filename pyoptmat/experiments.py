@@ -7,18 +7,53 @@
       histories that the models can use
     * Generate random experiments and the corresponding inputs
 
-  We define the various tests with a dictionary
+  The actual deterministic and statistical fitting routines expect data
+  in a common format.  There are a few conditions on the input test data:
 
-  Strain controlled load cycles are defined by a dictionary with:
-    * "max_strain" -- the maximum strain 
-    * "R" -- the ration between min_strain/max_strain
-    * "strain_rate" -- the loading rate
-    * "tension_hold" -- tensile hold time
-    * "compression_hold" -- compression hold time
+  1. You have to sample all tests with the same number of time points (ntime).
+  2. You have to provide the full, correct history of the input conditions.
+     For strain controlled experiments this is the full history of test
+     time, strain, and temperature.  For stress control it is the full
+     history of time, stress, and temperature.
+  3. You do not have to provide the full *results* history.  That is,
+     the fit routines can accommodate some types of abstracted test data,
+     like maximum stress as a function of cycles for strain-controlled cyclic
+     tests.  The convert_results function can then convert a full (simulated)
+     results history to the right abstracted format for comparison to the
+     test data.
 
-  Tension tests are defined by:
-    * "strain_rate" -- loading rate
-    * "max_strain" -- maximum strain
+  The fitting routines rely on five tensors with the following format:
+
+  * data (3, ntime, nexp): the input experimental conditions.  The first
+    index contains the experimental time, temperature, and strain history
+    for strain controlled tests and the experimental time, temperature
+    and stress history for stress controlled tests
+  * results (ntime, nexp): the (potentially abstracted) experimental results.
+    For example, this could be the stress history for a tensile test or
+    the strain history for a creep test.  The specific requirements for
+    certain tests types are described below.
+  * cycles (ntime, nexp): the cycle counts for cyclic  tests or an integer
+    used to indicate features of the experiment for other test types.
+    Specific requirements are given below.
+  * types (nexp,): an integer giving the test type (see list below)
+  * control (nexp,): 0 for strain control, 1 for stress control
+
+  The current test types are:
+  0: "tension" -- uniaxial, monotonic tension or compression test
+  1: "relaxation" -- stress relaxation test
+  2: "strain_cyclic" -- strain controlled cyclic (i.e. creep or creep-fatigue)
+  3: "creep" -- a creep test
+  4: "stress_cyclic" -- a stress controlled cyclic test
+  5: "abstract_tensile" -- tension tests where only the yield strength
+     and ultimate tensile strength are known
+  6: "direct_data" -- the full results history is known and provided
+
+  The load_results function provides a way to load data for this type
+  from an xarray format.  The same tensors are stored in the xarray 
+  structure, however the descriptive string names for the tests are used
+  and "strain" or "stress" is used instead of 0 and 1 to indicate the
+  control type.  Additional metadata can be stored in the xarray format with
+  source information, heat ID, etc.
 """
 
 import numpy as np
@@ -32,7 +67,10 @@ def load_results(xdata, device = torch.device("cpu")):
     Load experimental data from xarray into torch tensors
 
     Args:
-      xdata: xarray data structure
+      xdata:    xarray data structure
+
+    Additional Args:
+      device:   the device to dump the resulting arrays on
 
     The output format is critical, this function returns 5 tensors:
 
@@ -44,8 +82,8 @@ def load_results(xdata, device = torch.device("cpu")):
 
       results (ntime, nexperiment)
 
-        For strain controlled this is stress
-        For stress control this is strain
+        For strain controlled tests this is stress
+        For stress controlled tests this is strain
 
       cycles (ntime, nexperiment)
 
@@ -89,7 +127,7 @@ def convert_results(results, cycles, types):
     Args:
       results:      raw results data (ntime, nexperiment)
       cycles:       cycle counts (ntime, nexperiment)
-      types:        etst types (nexperiment,)
+      types:        test types (nexperiment,)
   """
   processed = torch.empty_like(results)
 
@@ -100,10 +138,39 @@ def convert_results(results, cycles, types):
 
   return processed
 
+def format_direct_data(cycles, predictions):
+  """
+    Format direct stress/strain results
+
+    Args:
+      cycles:       cycle count
+      predictions:  input to format
+    
+    For this test type cycles just equals 0 for all time steps
+
+    Do nothing, just return the predictions.
+  """
+  return predictions
+
 def format_abstract_tensile(cycles, predictions):
   """
-    Replace the first half with the yield strength, replace the second half
-    with the tensile strength
+    Format abstracted tensile test data, where only the yield strength
+    and ultimate tensile strength are available.
+
+    This method relies on the input cycles being:
+    * 0: in the elastic regime
+    * 1: for the first 1/2 of the remaining time points outside of the elastic
+         regime
+    * 2: for the second 1/2 of the remaining time points.
+
+    The inputs are the full stress history.  This function:
+    * Cycle 0: overwrite with zeros
+    * Cycle 1: overwrite with the first value in cycle 1
+    * Cycle 2: overwrite with the maximum stress
+
+    Args:
+      cycles:       cycle count
+      predictions:  input to format
   """
   result = torch.zeros_like(predictions)
   
@@ -125,29 +192,33 @@ def format_tensile(cycles, predictions):
   """
     Format tension test data to our "post-processed" form for comparison
 
+    Input data are stresses for this test type
+
+    Cycles are all 0
+
+    Do nothing!
+
     Args:
       cycles:       cycle count/listing
       predictions:  input data
-
-    Input data are stresses for this test type
-
-    Do nothing!
   """
   return predictions
 
 def format_relaxation(cycles, predictions):
   """
-    Format stress relaxation test data to our "post-processed" form for comparison
-    This works for both creep and stress relaxation
+    Format stress relaxation test data to our "post-processed" form for 
+    comparison. This works for both creep and stress relaxation tests.
+
+    Input data are stresses for stress relaxation and strains for creep
+
+    Cycle 0 indicates the loading part of the test, cycle 1 is the hold
+
+    Zero out the loading results, replace the relaxation results with the
+    normalized (subtract t=0) curve
 
     Args:
       cycles:       cycle count/listing
       predictions:  input data
-
-    Input data are stresses for stress relaxation and strains for creep
-
-    Zero out the loading results, replace the relaxation results with the
-    normalized (subtract t=0) curve
   """
   result = torch.zeros_like(predictions)
   rcurve = cycles[:,0] == 1 # This is right, but dangerous in the future
@@ -365,11 +436,12 @@ def sample_cycle_normalized_times(cycle, N, nload = 10, nhold = 10):
 
 # Numerical codes for each test type
 exp_map = {"tensile": 0, "relaxation": 1, "strain_cyclic": 2, 
-    "creep": 3, "stress_cyclic": 4, "abstract_tensile": 5}
+    "creep": 3, "stress_cyclic": 4, "abstract_tensile": 5, "direct_data": 6}
 # Function to use to process each test type
 exp_fns = {"tensile": format_tensile, "relaxation": format_relaxation,
     "strain_cyclic": format_cyclic, "creep": format_relaxation,
-    "stress_cyclic": format_cyclic, "abstract_tensile": format_abstract_tensile}
+    "stress_cyclic": format_cyclic, "abstract_tensile": format_abstract_tensile,
+    "direct_data": format_direct_data}
 # Map to numbers instead
 exp_fns_num = {exp_map[k]: v for k,v in exp_fns.items()}
 
