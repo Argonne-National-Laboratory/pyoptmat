@@ -1,5 +1,7 @@
 """
-  Various utility functions used in the tests and examples
+  Various utility functions used in the rest of the modules.  This includes
+  basic mathematical functions, routines used in the tests, and various
+  visualization routines.
 """
 
 import numpy as np
@@ -17,10 +19,12 @@ def visualize_variance(strain, stress_true, stress_calc, alpha = 0.05):
     Visualize variance for batched examples
 
     Args:
-      strain:           input strain
-      stress_true:      actual stress values
-      stress_calc:      simulated stress values
-      alpha (optional): alpha value for shading
+      strain (torch.tensor):        input strain
+      stress_true (torch.tensor):   actual stress values
+      stress_calc (torch.tensor):   simulated stress values
+
+    Keyword Args:
+      alpha (float): alpha value for shading
   """
   ntrue = stress_true.shape[1]
   max_true, _ = stress_true.kthvalue(int(ntrue*(1-alpha)), dim=1)
@@ -170,8 +174,10 @@ class CheaterBatchTimeSeriesInterpolator(nn.Module):
     the batches will always be at the same indices in time
 
     Args:
-      times:    input time series as a `(ntime,nbatch)` array
-      values:   input values series as a `(ntime,nbatch)` array
+      times (torch.tensor):     input time series as a :code:`(ntime,nbatch)`
+                                array
+      values (torch.tensor):    input values series as a :code:`(ntime,nbatch)`
+                                array
   """
   def __init__(self, times, data):
     super().__init__()
@@ -216,28 +222,17 @@ def timeseries_interpolate_single_times(times, values, t):
     Interpolate the time series defined by X to the times defined by t
 
     Args:
-      times     input time series as a `(ntime,)` array
-      values    input value series as a `(ntime,nbatch)` array
-      t         times as a scalar
+      times (torch.tensor):     input time series as a :math:`(ntime,)` array
+      values (torch.tensor):    input value series as a :math:`(ntime,nbatch)`
+                                array
+      t (torch.tensor):         times as a scalar
 
     Returns:
-      Interpolated values as a `(nbatch,)` array
+      torch.tensor:             interpolated values as a :code:`(nbatch,)` array
   """
   gi = torch.remainder(torch.sum((times - t) <= 0,dim = 0), times.shape[0])
   slopes = (values[gi] - values[gi-1])/(times[gi,None] - times[gi-1,None])
   return values[gi-1] + slopes * (t - times[gi-1])
-
-def random_parameter(frange):
-  """
-    Generate a random parameter value as a `(1,)` tensor
-
-    Parameter:
-      frange:       range to sample
-  """
-  if frange is None:
-    return nn.Parameter(torch.rand(1))
-  else:
-    return nn.Parameter(torch.Tensor(1).uniform_(*frange))
 
 @torch.jit.script
 def heaviside(X):
@@ -249,7 +244,10 @@ def heaviside(X):
       H\\left(x\\right) = \\frac{\\operatorname{sign}(x) + 1)}{2}
 
     Args:
-      X:        tensor input
+      X (torch.tensor): tensor input
+
+    Returns:
+      torch.tensor:     the Heaviside function of the input
   """
   return (torch.sign(X) + 1.0) / 2.0
 
@@ -263,6 +261,9 @@ def macaulay(X):
       M\\left(x\\right) = x H\\left(x\\right)
 
     Args:
-      X:        tensor input
+      X (torch.tensor): tensor input
+
+    Returns:
+      torch.tensor:     the Macaulay bracket applied to the input
   """
   return X * heaviside(X)

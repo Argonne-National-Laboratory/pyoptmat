@@ -1,6 +1,9 @@
 """
   Various damage models, which can be tacked onto a InelasticModel to
-  degrade the material response
+  degrade the material response over time or accumulated strain.
+
+  These are standard continuum damage mechanics models in the line of
+  :cite:`chaboche1988continuum`.
 """
 import torch
 import torch.nn as nn
@@ -32,10 +35,10 @@ class NoDamage(DamageModel):
       Here it's just zero.
 
       Args:
-        s:      stress
-        d:      current value of damage
-        t:      current time
-        T:      current temperature
+        s (torch.tensor):      stress
+        d (torch.tensor):      current value of damage
+        t (torch.tensor):      current time
+        T (torch.tensor):      current temperature
     """
     return torch.zeros_like(s), torch.zeros_like(s)
 
@@ -46,19 +49,17 @@ class NoDamage(DamageModel):
       Here again it's zero
 
       Args:
-        s:      stress
-        d:      current value of damage
-        t:      current time
-        T:      current temperature
+        s (torch.tensor):      stress
+        d (torch.tensor):      current value of damage
+        t (torch.tensor):      current time
+        T (torch.tensor):      current temperature
     """
     return torch.zeros_like(s)
 
 class HayhurstLeckie(DamageModel):
   """
     A Hayhurst-Leckie type damage model, as described in 
-
-    Hayhurst, D. R. and F. A. Leckie. "Constitutive equations for creep
-    rutpure." Acta Metallurgica, 25(9): pp. 1059-1070 (1977).
+    :cite:`leckie1977constitutive` 
 
     The model defines the damage rate as
     
@@ -67,9 +68,9 @@ class HayhurstLeckie(DamageModel):
       \\left(\\frac{\\left|\\sigma\\right|}{A}\\right)^{\\xi}\\left(1-d\\right)^{\\xi-\\phi}
 
     Args:
-      A:                    Reference stress
-      xi:                   Stress sensitivity
-      phi:                  Damage sensitivity
+      A (torch.tensor):     Reference stress
+      xi (torch.tensor):    Stress sensitivity
+      phi (torch.tensor):   Damage sensitivity
   """
   def __init__(self, A, xi, phi):
     super().__init__()
@@ -84,10 +85,10 @@ class HayhurstLeckie(DamageModel):
       damage variable
 
       Args:
-        s:      stress
-        d:      damage variable
-        t:      time
-        T:      temperature
+        s (torch.tensor):      stress
+        d (torch.tensor):      damage variable
+        t (torch.tensor):      time
+        T (torch.tensor):      temperature
     """
     return (torch.abs(s)/self.A(T))**self.xi(T) * (1 - d)**(
         self.xi(T) - self.phi(T)), -(torch.abs(s)/self.A(T)
@@ -98,11 +99,10 @@ class HayhurstLeckie(DamageModel):
       Derivative of the damage rate with respect to the stress
 
       Args:
-        s:      stress
-        d:      damage variable
-        t:      time
-        T:      temperature
+        s (torch.tensor):      stress
+        d (torch.tensor):      damage variable
+        t (torch.tensor):      time
+        T (torch.tensor):      temperature
     """
     return (torch.abs(s)/self.A(T))**(self.xi(T)-1) * (1-d)**(
         self.xi(T) - self.phi(T)) * torch.sign(s)
-
