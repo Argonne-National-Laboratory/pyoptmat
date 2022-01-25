@@ -85,9 +85,9 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
 
     self.s = torch.linspace(150,200,self.nbatch)
     self.h = torch.reshape(
-        torch.tensor([
+        torch.tensor(np.array([
         np.linspace(51,110,self.nbatch), 
-        np.linspace(-100,210,self.nbatch)[::-1]]).T,
+        np.linspace(-100,210,self.nbatch)[::-1]])).T,
         (self.nbatch,2))
 
     self.t = torch.ones(self.nbatch)
@@ -137,11 +137,11 @@ class TestIsoKinChabocheViscoplasticity(unittest.TestCase, CommonFlowRule):
 
     self.s = torch.linspace(150,200,self.nbatch)
     self.h = torch.reshape(
-        torch.tensor([
+        torch.tensor(np.array([
         np.linspace(51,110,self.nbatch), 
         np.linspace(-10,21,self.nbatch)[::-1],
         np.linspace(0,2,self.nbatch),
-        np.linspace(-2,0,self.nbatch)]).T,
+        np.linspace(-2,0,self.nbatch)])).T,
         (self.nbatch,4))
     self.t = torch.ones(self.nbatch)
     self.T = torch.zeros_like(self.t)

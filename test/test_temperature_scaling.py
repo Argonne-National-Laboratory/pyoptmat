@@ -65,11 +65,11 @@ class TestPiecewiseScaling(unittest.TestCase):
     nbatch = 50
     points = torch.tensor([0.0,10.0,20.0,30.0])
     
-    values = torch.tensor([
+    values = torch.tensor(np.array([
       np.linspace(0,1,nbatch),
       np.linspace(1,-1,nbatch),
       np.linspace(-1,3,nbatch),
-      np.linspace(3,4,nbatch)]).T
+      np.linspace(3,4,nbatch)])).T
 
     obj = temperature.PiecewiseScaling(points, values)
 

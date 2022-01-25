@@ -3,7 +3,6 @@ import unittest
 import numpy as np
 
 import torch
-from torch.autograd import Variable
 import torch.nn
 
 from pyoptmat import ode
@@ -135,9 +134,9 @@ class FallingParameterizedODE(torch.nn.Module):
   """
   def __init__(self, m, w, k):
     super().__init__()
-    self.m = Variable(torch.tensor(m), requires_grad = True)
-    self.w = Variable(torch.tensor(w), requires_grad = True)
-    self.k = Variable(torch.tensor(k), requires_grad = True)
+    self.m = torch.nn.Parameter(torch.tensor(m))
+    self.w = torch.nn.Parameter(torch.tensor(w))
+    self.k = torch.nn.Parameter(torch.tensor(k))
 
   def forward(self, t, y):
     f = torch.empty(y.shape)
@@ -161,7 +160,7 @@ def run_model(model, nbatch = 4, method = "forward-euler", nsteps = 10, substep 
 
     times = torch.tensor(np.array([np.linspace(0, 1.0, nsteps) for i in range(nbatch)]).T)
 
-    numerical = ode.odeint(model, y0, times, method = method, substep = substep, 
+    numerical = ode.odeint_adjoint(model, y0, times, method = method, substep = substep, 
         solver_method = solver_method) 
 
     return torch.norm(numerical)
