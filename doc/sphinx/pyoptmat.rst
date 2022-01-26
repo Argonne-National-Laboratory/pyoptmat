@@ -1,3 +1,5 @@
+.. include:: shortcuts.hrst
+
 pyoptmat package
 ================
 
@@ -56,6 +58,14 @@ pyoptmat.optimize module
 ------------------------
 
 .. automodule:: pyoptmat.optimize
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pyoptmat.temperature module
+---------------------------
+
+.. automodule:: pyoptmat.temperature
    :members:
    :undoc-members:
    :show-inheritance:

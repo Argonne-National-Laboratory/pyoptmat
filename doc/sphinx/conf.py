@@ -12,7 +12,7 @@
 #
 import os
 import sys
-sys.path.insert(0, '../../')
+sys.path.insert(0, os.path.abspath('../../'))
 
 
 # -- Project information -----------------------------------------------------
@@ -58,4 +58,6 @@ html_theme = 'haiku'
 html_static_path = ['_static']
 
 # -- Options for bibtex ------------------------------------------------------
+
+# Our bibliography file
 bibtex_bibfiles = ['refs.bib']
