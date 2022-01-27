@@ -81,8 +81,8 @@ class PerfectViscoplasticity(FlowRule):
       \\dot{h} = \\emptyset
 
     Args:
-      n (torch.tensor):     rate sensitivity
-      eta (torch.tensor):   flow viscosity
+      n (|TP|):     rate sensitivity
+      eta (|TP|):   flow viscosity
   """
   def __init__(self, n, eta):
     super().__init__()
@@ -156,11 +156,11 @@ class IsoKinViscoplasticity(FlowRule):
     the information this class needs to provide.
     
     Args:
-      n (torch.tensor):         rate sensitivity
-      eta (torch.tensor):       flow viscosity
-      s0 (torch.tensor):        initial value of flow stress (i.e. the threshold stress)
-      isotropic (torch.tensor): object providing the isotropic hardening model
-      kinematic (torch.tensor): object providing the kinematic hardening model
+      n (|TP|):         rate sensitivity
+      eta (|TP|):       flow viscosity
+      s0 (|TP|):        initial value of flow stress (i.e. the threshold stress)
+      isotropic (:py:class:`pyoptmat.hardening.IsotropicHardeningModel`): object providing the isotropic hardening model
+      kinematic (:py:class:`pyoptmat.hardening.IsotropicHardeningModel`): object providing the kinematic hardening model
   """
   def __init__(self, n, eta, s0, isotropic, kinematic):
     super().__init__()

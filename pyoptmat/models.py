@@ -1,3 +1,45 @@
+"""
+  This module contains objects to define and integrate full material models.
+
+  In our context a material model is a ODE that defines the stress rate and
+  an associated set of internal variables.  Mathematically, we can define
+  this as two ODEs:
+
+  .. math::
+
+    \\dot{\\sigma} = f(\\sigma, h, T, \dot{\\varepsilon}, t)
+
+    \\dot{h} = g(\\sigma, h, T, \dot{\\varepsilon}, t)
+
+  where :math:`\sigma` is the uniaxial stress, :math:`h` is some
+  arbitrary set of internal variables, :math:`T` is the temperature,
+  :math:`\dot{\\varepsilon}` is the strain rate, and :math:`t` is the time.
+  Note then that we mathematically define models as strain controlled: the input
+  is the strain rate and the output is the stress rate.  Currently there is
+  only one implemented full material model: :py:class:`pyoptmat.models.InelasticModel`,
+  which is a standard viscoplastic formulation.  However other types of
+  models, including rate-independent plasticity, could be defined with
+  the same basic form.
+
+  The model itself just defines a system of ODEs.  To solve for stress or
+  strain as a function of the experimental conditions we need to integrate
+  this model using the methods in :py:mod:`pyoptmat.ode`.  We could do this
+  in two ways, in strain control where we provide the strains and temperatures
+  as a function of time and integrate for the stress or provide the 
+  stresses and temperatures as a function of time and integrate for the
+  strains.  The :py:class:`pyoptmat.models.ModelIntegrator` provides both
+  options, where each experiment can either be strain or stress controlled.
+
+  The basic process of setting up a material model capable of simulating
+  experimental tests is to define the model form mathematically, using a
+  Model class and wrap that Model with an Integrator to provide actual
+  time series of stress or strain.  As the integrator class uses the
+  methods in :py:mod:`pyoptmat.ode` to actually do the integration, the 
+  results (and subsequent mathematical operations on the results) can be
+  differentiated using either PyTorch backpropogation AD or the adjoint
+  method.
+"""
+
 import torch
 import torch.nn as nn
 
