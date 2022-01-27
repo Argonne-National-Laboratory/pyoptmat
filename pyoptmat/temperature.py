@@ -102,10 +102,12 @@ class ConstantParameter(TemperatureParameter):
 class ShearModulusScaling(TemperatureParameter):
   """
     Parameter that scales as:
+    
+    .. math::
 
-      $A \\mu$
+      A \\mu
 
-      where $\\mu$ further depends on temperature
+    where :math:`\\mu` further depends on temperature
 
     Args:
       A (torch.tensor): actual parameter
@@ -202,10 +204,12 @@ class MTSScaling(TemperatureParameter):
 class KMRateSensitivityScaling(TemperatureParameter):
   """
     Parameter that scales as:
+    
+    .. math::
 
-      $\\frac{-\\mu b^3}{kTA}$
+      \\frac{-\\mu b^3}{kTA}
 
-    where $\\mu$ further depends on temperature
+    where :math:`\\mu` further depends on temperature
 
     Args:
       A (torch.tensor): Kocks-Mecking slope parameter, sets shape
@@ -256,10 +260,10 @@ class KMViscosityScaling(TemperatureParameter):
       \\exp{B} \\mu \\dot{\\varepsilon}_0^{-1/n}
 
     where :math:`B` is the Kocks-Mecking intercept parameter and the
-    rest are defined in the `KMRateSensitivityScaling` object.
+    rest are defined in the :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object.
     
     :math:`n` is the rate sensitivity, again given by the
-    `KMRateSensitivityScaling` object
+    :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object
 
     Args:
       A (torch.tensor):     Kocks-Mecking slope parameter
@@ -313,18 +317,18 @@ class KMViscosityScalingCutoff(TemperatureParameter):
   """
     Parameter that varies as
     
-    ..math::
+    .. math::
 
       \\exp{B} \\mu \\dot{\\varepsilon}_0^{-1/n}
 
     where :math:`B` is the Kocks-Mecking intercept parameter and the
-    rest are defined in the `KMRateSensitivityScaling` object.
+    rest are defined in the :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object.
 
     This variant cuts off the viscosity in the high rate/low temperature 
     regime to limit it by :math:`C * \\mu`
     
-    $n$ is the rate sensitivity, again given by the `KMRateSensitivityScaling`
-    object
+    :math:`n` is the rate sensitivity, again given by the 
+    :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object
 
     Args:
       A (torch.tensor):     Kocks-Mecking slope parameter

@@ -6,6 +6,14 @@ pyoptmat package
 Submodules
 ----------
 
+pyoptmat.solvers module
+-----------------------
+
+.. automodule:: pyoptmat.solvers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pyoptmat.damage module
 ----------------------
 
