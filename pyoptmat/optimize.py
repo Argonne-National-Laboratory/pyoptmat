@@ -1,6 +1,37 @@
 """
   Objects and helper functions to help with deterministic model calibration
   and statistical inference.
+
+  These include the key classes
+
+  - :py:class:`pyoptmat.optimize.DeterministicModel`
+  - :py:class:`pyoptmat.optimize.StatisticalModel`
+  - :py:class:`pyoptmat.optimize.HierarchicalStatisticalModel`
+
+  which implement
+
+  - deterministic model prediction and optimization
+  - single-level statistical model prediction and inference
+  - hierarchical statistical model prediction and inference
+
+  These three classes share some common features.  One input to all three is the
+  "model maker" function.  This is a function that takes as input as :code:`*args` a set of
+  parameters (which can be :py:mod:`torch` tensors, :py:mod:`torch` Parameters, or
+  :py:mod`:`pyro` samples as appropriate) and returns a valid :py:class:`torch.nn.Module`.
+  Calling this module in turn provides the integrated model predictions.
+  The maker function can also take :code:`**kwargs`, for example to provide values that
+  should not be optimized or hyperparameters describing how to integrate the model
+  results.
+
+  The classes also take a :code:`list` of :code:`str` names, one for each
+  parameter the :code:`maker` function takes as input.  These names are used
+  to describe the various :py:mod:`torch` :code:`Parameters` or :py:mod:`pyro`
+  :code:`samples` and :code:`parameters`.  The specific details of how these 
+  are used depends on the type of model.
+
+  Parameter values, for example as starting locations or descriptions of the priors,
+  are given as :code:`lists` of :py:class:`torch.tensor` objects, again one
+  for each model parameter.
 """
 
 from collections import defaultdict
@@ -32,11 +63,11 @@ def bound_factor(mean, factor, min_bound = None):
     and the lower bound as mean*(1-factor)
 
     Args:
-      mean:         center value
-      factor:       bounds factor
+      mean (torch.tensor):          center value
+      factor (torch.tensor):        bounds factor
 
-    Additional Args:
-      min_bound:    clip to avoid going lower than this value
+    Keyword Args:
+      min_bound (torch.tensor):     clip to avoid going lower than this value
   """
   return bounded_scale_function((mean*(1.0-factor),mean*(1+factor)), min_bound = min_bound)
 
@@ -46,10 +77,10 @@ def bounded_scale_function(bounds, min_bound = None):
     and clips the values to remain in that range
 
     Args:
-      bounds:   tuple giving the parameter bounds
+      bounds (tuple(torch.tensor,torch.tensor)):    tuple giving the parameter bounds
 
     Additional Args:
-      min_bounds:   clip to avoid going lower than this value
+      min_bounds (torch.tensor):                    clip to avoid going lower than this value
   """
   if min_bound is None:
     return lambda x: torch.clamp(x, 0, 1)*(bounds[1]-bounds[0]) + bounds[0]
@@ -61,7 +92,7 @@ def clamp_scale_function(bounds):
     Just clamp to bounds
 
     Args:
-      bounds:   tuple giving the parameter bounds
+      bounds (tuple(torch.tensor, torch.tensor)):   tuple giving the parameter bounds
   """
   return lambda x: torch.clamp(x, bounds[0], bounds[1])
 
@@ -70,8 +101,8 @@ def bound_and_scale(scale, bounds):
     Combination of scaling and bounding
 
     Args:
-      scale:    divide input by this value
-      bounds:   tuple, clamp to (bounds[0], bounds[1])
+      scale (torch.tensor):     divide input by this value
+      bounds (torch.tensor):    tuple, clamp to (bounds[0], bounds[1])
   """
   return lambda x: torch.clamp(x / scale, bounds[0], bounds[1])
 
@@ -80,20 +111,21 @@ def log_bound_and_scale(scale, bounds):
     Scale, de-log, and bound
 
     Args:
-      scale:    divide input by this value, then take exp
-      bounds:   tuple, clamp to (bounds[0], bounds[1])
+      scale (torch.tensor):     divide input by this value, then take exp
+      bounds (torch.tensor):    tuple, clamp to (bounds[0], bounds[1])
   """
   return lambda x: torch.clamp(torch.exp(x / scale), bounds[0], bounds[1])
 
-class DeterministicModelExperiment(Module):
+class DeterministicModel(Module):
   """
     Wrap a material model to provide a :py:mod:`pytorch` deterministic model
 
     Args:
-      maker:      function that returns a valid model as a  Module, given the 
-                  input parameters
-      names:      names to use for the parameters
-      ics:        initial conditions to use for each parameter
+      maker (function):         function that returns a valid model as a  
+                                :py:class:`pytorch.nn.Module`, 
+                                given the input parameters
+      names (list(str)):        names to use for the parameters
+      ics (list(torch.tensor)): initial conditions to use for each parameter
   """
   def __init__(self, maker, names, ics):
     super().__init__()
@@ -115,13 +147,16 @@ class DeterministicModelExperiment(Module):
 
   def forward(self, exp_data, exp_cycles, exp_types, exp_control):
     """
-      Integrate forward and return the results
+      Integrate forward and return the results.
+
+      See the :py:mod:`pyoptmat.experiments` module 
+      for detailed on how to format the input to this function
 
       Args:
-        exp_data:       formatted input experimental data (see experiments module)
-        exp_cycles:     cycle counts for each test
-        exp_types:      experiment types, as integers
-        exp_control:    stress/strain control flag
+        exp_data (torch.tensor):    formatted input experimental data
+        exp_cycles (torch.tensor):  cycle counts for each test
+        exp_types (torch.tensor):   experiment types, as integers
+        exp_control (torch.tensor): stress/strain control flag
     """
     model = self.maker(*self.get_params())
 
@@ -130,23 +165,29 @@ class DeterministicModelExperiment(Module):
 
     return experiments.convert_results(predictions[:,:,0], exp_cycles, exp_types)
 
-class StatisticalModelExperiment(PyroModule):
+class StatisticalModel(PyroModule):
   """
     Wrap a material model to provide a py:mod:`pyro` single-level 
     statistical model
 
     Single level means each parameter is sampled once before running
-    all the tests -- i.e. each test is run on the "heat" of material
+    all the tests -- i.e. each test is run on the same material properties.
+
+    Generally this is not appropriate for fitting models (see
+    :py:class:`pyoptmat.optimize.HierarchicalStatisticsModel`)
+    but can be a nice way to evaluate models (i.e. run all tests on a
+    single "heat" of material multiple times to sample heat-to-heat variation).
 
     Args:
-      maker:      function that returns a valid Module, given the 
-                  input parameters
-      names:      names to use for the parameters
-      loc:        parameter location priors
-      scales:     parameter scale priors
-      eps:        random noise, can be either a single scalar or a 1D tensor
-                  if it's a 1D tensor then each entry i represents the
-                  noise in test type i
+      maker (function):             function that returns a valid 
+                                    :py:class:`torch.nn.Module`, given the input 
+                                    parameters
+      names (list(str)):            names to use for the parameters
+      loc (list(torch.tensor)):     parameter location priors
+      scales (list(torch.tensor):   parameter scale priors
+      eps (list or scalar):         random noise, can be either a single scalar 
+                                    or a 1D tensor if it's a 1D tensor then each
+                                    entry i represents the noise in test type i
   """
   def __init__(self, maker, names, locs, scales, eps):
     super().__init__()
@@ -174,14 +215,17 @@ class StatisticalModelExperiment(PyroModule):
 
       Optionally condition on the actual data
 
-      Args:
-        exp_data:       formatted experimental data, see experiments module
-        exp_cycles:     cycle counts for each test
-        exp_types:      experiment types for each test
-        exp_control:    stress/strain control flag for each test
+      See the :py:mod:`pyoptmat.experiments` module 
+      for detailed on how to format the input to this function
 
-      Additional Args:
-        exp_results:    true results for conditioning (ntime,nexp)
+      Args:
+        exp_data (torch.tensor):    formatted input experimental data
+        exp_cycles (torch.tensor):  cycle counts for each test
+        exp_types (torch.tensor):   experiment types, as integers
+        exp_control (torch.tensor): stress/strain control flag
+
+      Keyword Args:
+        exp_results (torch.tensor): true results for conditioning
     """
     model = self.maker(*self.get_params())
     predictions = model.solve_both(exp_data[0], exp_data[1], exp_data[2], exp_control)
@@ -199,7 +243,7 @@ class StatisticalModelExperiment(PyroModule):
       with pyro.plate("time", exp_data.shape[1]):
         return pyro.sample("obs", dist.Normal(results, full_noise), obs = exp_results)
 
-class HierarchicalStatisticalModelExperiment(PyroModule):
+class HierarchicalStatisticalModel(PyroModule):
   """
     Wrap a material model to provide a hierarchical :py:mod:`pyro` statistical
     model
@@ -219,22 +263,43 @@ class HierarchicalStatisticalModelExperiment(PyroModule):
     distributions, and then each parameter population comes from a
     Normal distribution
 
+    Args:
+      maker (function):             function that returns a valid 
+                                    :py:class:`torch.nn.Module`, given the input 
+                                    parameters
+      names (list(str)):            names to use for the parameters
+      loc (list(torch.tensor)):     parameter location priors
+      scales (list(torch.tensor):   parameter scale priors
+      eps (list or scalar):         random noise, can be either a single scalar 
+                                    or a 1D tensor if it's a 1D tensor then each
+                                    entry i represents the noise in test type i
+
+
     Args: 
-      maker:                    function that returns a valid material Module, 
-                                given the input parameters
-      names:                    names to use for each parameter
-      loc_loc_priors:           location of the prior for the mean of each
-                                parameter
-      loc_scale_priors:         scale of the prior of the mean of each
-                                parameter
-      scale_scale_priors:       scale of the prior of the standard
-                                deviation of each parameter
-      noise_priors:             prior on the white noise
-      loc_suffix (optional):    append to the variable name to give the top
-                                level sample for the location
-      scale_suffix (optional):  append to the variable name to give the top
-                                level sample for the scale
-      include_noise (optional): if true include white noise in the inference
+      maker (function):                     function that returns a valid 
+                                            :py:class`torch.nn.Module`, given the input 
+                                            parameters
+      names (list(str)):                    names to use for the parameters
+      loc_loc_priors (list(tensor)):        location of the prior for the mean
+                                            of each parameter
+      loc_scale_priors (list(tensor)):      scale of the prior of the mean of each
+                                            parameter
+      scale_scale_priors (list(tensor)):    scale of the prior of the standard
+                                            deviation of each parameter
+      noise_priors (list or scalar):        random noise, can be either a single scalar 
+                                            or a 1D tensor if it's a 1D tensor then each
+                                            entry i represents the noise in test type i
+
+    Keyword Args:
+      loc_suffix (str):                     append to the variable name to give the top
+                                            level sample for the location, default :code:`"_loc"`
+      scale_suffix (str):                   append to the variable name to give the top
+                                            level sample for the scale, default :code:`"_scale"`
+      param_suffix (str):                   append to the variable name to give the corresponding
+                                            :py:mod:`pyro.param` name, default
+                                            :code:`"_param"`
+      include_noise (str):                  if :code:`True` include white noise in the inference,
+                                            default :code:`False`
   """
   def __init__(self, maker, names, loc_loc_priors, loc_scale_priors,
       scale_scale_priors, noise_prior, loc_suffix = "_loc",
@@ -368,14 +433,19 @@ class HierarchicalStatisticalModelExperiment(PyroModule):
       Evaluate the forward model, optionally conditioned by the experimental
       data.
 
-      Args:
-        exp_data:       input data, (3,ntime,nexp)
-        exp_cycles:     cycle labels (ntime,nexp)
-        exp_types:      experiment types (nexp,)
-        exp_control:    strain/stress control labels (nexp,)
+      Optionally condition on the actual data
 
-      Additional Args:
-        exp_results:    true results for conditioning (ntime,nexp)
+      See the :py:mod:`pyoptmat.experiments` module 
+      for detailed on how to format the input to this function
+
+      Args:
+        exp_data (torch.tensor):    formatted input experimental data
+        exp_cycles (torch.tensor):  cycle counts for each test
+        exp_types (torch.tensor):   experiment types, as integers
+        exp_control (torch.tensor): stress/strain control flag
+
+      Keyword Args:
+        exp_results (torch.tensor): true results for conditioning
     """
     # Sample the top level parameters
     curr = self.sample_top()
