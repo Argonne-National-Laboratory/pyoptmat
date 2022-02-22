@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
 
+"""
+  This example demonstrates the ability of pyoptmat to integrate material models under
+  strain control, stress control, or a combination of both.
+
+  The example first simulates standard, strain-rate controlled tensile curves
+  for a simple material model for Alloy 617 developed by Messner, Phan, and Sham.  These
+  simulations then take time, strain, and temperature as inputs and outputs the
+  resulting stresses.
+
+  Then, the example uses the stresses from the strain controlled simulations
+  to repeat the simulations under stress control.  These simulations therefore
+  take as input time, temperature, and stress and output strain.  The plot demonstrates that
+  the strain controlled and stress controlled simulations produce identical results.
+
+  Finally, the example integrates the model twice for each temperature, once in strain
+  control and once in stress control, but integrated all the experiments at once.
+  This example then demos the ability of pyoptmat to integrate both stress and strain
+  controlled tests in the same vectorized calculation.
+"""
+
 import sys
 sys.path.append('../..')
 
@@ -66,22 +86,25 @@ if __name__ == "__main__":
   plt.legend(loc='best')
   plt.xlabel("Strain (mm/mm)")
   plt.ylabel("Stress (Mpa)")
+  plt.title("Comparison between strain and stress control")
   plt.show()
 
   # Now do it both ways at once!
   big_times = torch.cat((times,times), 1)
   big_temperatures = torch.cat((temperatures, temperatures), 1)
   big_data = torch.cat((strains, stresses), 1)
+  big_types = torch.zeros(2*ntemps)
+  big_types[ntemps:] = 1
 
-  inds = (torch.arange(0, ntemps), torch.arange(ntemps, 2*ntemps))
-
-  both_results = integrator.solve_both(big_times, big_temperatures, big_data, inds)
+  both_results = integrator.solve_both(big_times, big_temperatures, big_data, big_types)
 
   plt.figure()
   for i in range(ntemps):
-    l, = plt.plot(strains[:,i], both_results[:,i,0])
+    l, = plt.plot(strains[:,i], both_results[:,i,0], label = "T = %3.0fK" % Ti[i])
     plt.plot(both_results[:,i+ntemps, 0], stresses[:,i], label = None, ls = '--', color = l.get_color())
 
   plt.xlabel("Strain (mm/mm)")
   plt.ylabel("Stress (MPa)")
+  plt.legend(loc='best')
+  plt.title("Running both strain and stress control at once")
   plt.show()

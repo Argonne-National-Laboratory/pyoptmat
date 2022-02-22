@@ -1,3 +1,5 @@
+.. include:: shortcuts.hrst
+
 pyoptmat.flowrules: inelastic flow rules for structural materials
 -----------------------------------------------------------------
 

@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+"""
+  This is a simple demonstration of how pyopmat models can vary with 
+  temperature.  The example simulates the response of a simple, temperature
+  dependent, viscoplastic model for Alloy 617 developed by 
+  Messner, Phan, and Sham under uniaxial, monotonic tensile strain
+  at several different temperatures.
+"""
+
 import sys
 sys.path.append('../..')
 
@@ -24,7 +32,7 @@ if __name__ == "__main__":
 
   nsteps = 200
 
-  times, strains, temperatures = experiments.make_tension_tests(erates, temps, 
+  times, strains, temperatures, cycles = experiments.make_tension_tests(erates, temps, 
       elimits, nsteps)
 
   # Perfect viscoplastic model

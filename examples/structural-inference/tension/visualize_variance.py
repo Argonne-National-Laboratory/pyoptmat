@@ -8,6 +8,7 @@ import xarray as xr
 import torch
 import matplotlib.pyplot as plt
 
+
 # Use doubles
 torch.set_default_tensor_type(torch.DoubleTensor)
 
@@ -25,4 +26,5 @@ if __name__ == "__main__":
     plt.xlabel("Strain (mm/mm)")
     plt.ylabel("Stress (MPa)")
     plt.tight_layout()
-    plt.savefig("visualize-%3.2f.pdf" % scale)
+    plt.title("Scale = %3.2f" % scale)
+    plt.show()

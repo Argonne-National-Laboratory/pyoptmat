@@ -9,3 +9,6 @@ pyro-ppl
 tqdm
 matplotlib
 scikit-optimize
+netCDF4
+pandas
+xarray

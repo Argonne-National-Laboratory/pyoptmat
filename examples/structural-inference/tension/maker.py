@@ -38,6 +38,13 @@ s0_true = 50.0
 # Scale factor used in the model definition 
 sf = 0.5
 
+# Select device to run on
+if torch.cuda.is_available():
+    dev = "cuda:0"
+else:
+    dev = "cpu"
+device = torch.device(dev)
+
 def make_model(E, n, eta, s0, R, d, device = torch.device("cpu"), **kwargs):
   """
     Key function for the entire problem: given parameters generate the model
@@ -94,28 +101,35 @@ if __name__ == "__main__":
     full_times = torch.empty((ntime, nrates, nsamples))
     full_strains = torch.empty_like(full_times)
     full_stresses = torch.empty_like(full_times)
-    full_erates = torch.empty((nrates, nsamples))
+    full_temperatures = torch.zeros_like(full_strains)
 
     for i in tqdm.tqdm(range(nsamples)):
       full_times[:,:,i] = times
       full_strains[:,:,i] = strains
-      full_erates[:,i] = erates
 
       # True values are 0.5 with our scaling so this is easy
       model = make_model(torch.tensor(0.5), 
           torch.tensor(ra.normal(0.5, scale)),
           torch.tensor(ra.normal(0.5, scale)), torch.tensor(ra.normal(0.5, scale)),
           torch.tensor(ra.normal(0.5, scale)), torch.tensor(ra.normal(0.5, scale)))
+
       with torch.no_grad():
-        full_stresses[:,:,i] = model.solve(times, strains)[:,:,0]
-
-
+        full_stresses[:,:,i] = model.solve_strain(times, strains, 
+            full_temperatures[:,:,i])[:,:,0]
+    
+    full_cycles = torch.zeros_like(full_times, dtype = int)
+    types = np.array(["tensile"] * (nsamples * len(erates)))
+    controls = np.array(["strain"] * (nsamples * len(erates)))
+    
     ds = xr.Dataset(
         {
-          "times": (["time", "trial", "repeat"], full_times.numpy()),
-          "strains": (["time", "trial", "repeat"], full_strains.numpy()),
-          "stresses": (["time", "trial", "repeat"], full_stresses.numpy()),
-          "rates": (["trial", "repeat"], full_erates.numpy())
-          }, attrs = {"scale": scale})
+          "time": (["ntime", "nexp"], full_times.flatten(-2,-1).numpy()),
+          "strain": (["ntime", "nexp"], full_strains.flatten(-2,-1).numpy()),
+          "stress": (["ntime", "nexp"], full_stresses.flatten(-2,-1).numpy()),
+          "temperature": (["ntime", "nexp"], full_temperatures.flatten(-2,-1).numpy()),
+          "cycle": (["ntime", "nexp"], full_cycles.flatten(-2,-1).numpy()),
+          "types": (["nexp"], types),
+          "control": (["nexp"], controls)
+          }, attrs = {"scale": scale, "nrates": nrates, "nsamples": nsamples})
 
     ds.to_netcdf("scale-%3.2f.nc" % scale)

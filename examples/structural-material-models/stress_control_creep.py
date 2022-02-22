@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 
+"""
+  An example of how to load a model in stress control.  The example
+  simulates the behavior of a simple viscoplastic model for the high
+  temperature deformation of Alloy 617 developed by Messner, Phan,
+  and Sham under creep conditions.  The simulations then load the
+  model up to a given stress and then hold the model at that stress
+  for a long period of time.  The experimental response is often
+  given as a creep curve -- a plot of strain versus time during 
+  the hold at constant stress.  This example plots a modification, giving
+  the total accumulated strain as a function of time, including the 
+  strain accumulated during the load up to the constant stress.
+"""
+
 import sys
 sys.path.append('../..')
 
