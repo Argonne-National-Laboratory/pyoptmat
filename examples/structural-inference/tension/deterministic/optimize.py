@@ -4,13 +4,15 @@ import sys
 sys.path.append('../../../..')
 sys.path.append('..')
 
+import os.path
+
 import numpy as np
 import numpy.random as ra
 
 import xarray as xr
 import torch
 
-from maker import make_model, load_data, sf
+from maker import make_model, downsample
 
 from pyoptmat import optimize, experiments
 from tqdm import tqdm
@@ -34,7 +36,7 @@ device = torch.device(dev)
 # Maker function returns the ODE model given the parameters
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
-  return make_model(torch.tensor(0.5), n, eta, s0, R, d, use_adjoint = True,
+  return make_model(torch.tensor(0.5), n, eta, s0, R, d,
       device = device, **kwargs).to(device)
 
 if __name__ == "__main__":
@@ -42,14 +44,10 @@ if __name__ == "__main__":
   #    cut down to some number of samples, and flatten
   scale = 0.01
   nsamples = 10 # at each strain rate
-  times, strains, temperatures, true_stresses = load_data(scale, nsamples, device = device)
-
-  # Assemble the results into the data arrays required for the optimization routines
-  exp_data = torch.stack([times,temperatures,strains])
-  exp_results = true_stresses
-  exp_cycles = torch.zeros_like(exp_results, dtype = int) # Just 0 for tension tests
-  exp_types = torch.ones(times.shape[1], dtype = int) * experiments.exp_map["tensile"]
-  exp_control = torch.ones(times.shape[1], dtype = int) * 0 # 0 = strain control
+  input_data = xr.open_dataset(os.path.join('..', "scale-%3.2f.nc" % scale))
+  data, results, cycles, types, control = downsample(experiments.load_results(
+      input_data, device = device),
+      nsamples, input_data.nrates, input_data.nsamples)
   
   # 2) Setup names for each parameter and the initial conditions
   names = ["n", "eta", "s0", "R", "d"]
@@ -61,7 +59,7 @@ if __name__ == "__main__":
   print("")
   
   # 3) Create the actual model
-  model = optimize.DeterministicModelExperiment(make, names, ics)
+  model = optimize.DeterministicModel(make, names, ics)
 
   # 4) Setup the optimizer
   niter = 10
@@ -73,8 +71,8 @@ if __name__ == "__main__":
   # 6) Actually do the optimization!
   def closure():
     optim.zero_grad()
-    pred = model(exp_data, exp_cycles, exp_types, exp_control)
-    lossv = loss(pred, exp_results)
+    pred = model(data, cycles, types, control)
+    lossv = loss(pred, results)
     lossv.backward()
     return lossv
 
@@ -91,12 +89,10 @@ if __name__ == "__main__":
   for n in names:
     print("%s:\t%3.2f/0.50" % (n, getattr(model, n).data))
 
-  # 8) Save the convergence history
-  np.savetxt("loss-history.txt", loss_history)
-
+  # 8) Plot the convergence history
   plt.figure()
   plt.plot(loss_history)
   plt.xlabel("Iteration")
   plt.ylabel("Loss")
   plt.tight_layout()
-  plt.savefig("convergence.pdf")
+  plt.show()

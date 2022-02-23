@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import os.path
 sys.path.append('../../../..')
 sys.path.append('..')
 
@@ -10,14 +11,13 @@ import numpy.random as ra
 import xarray as xr
 import torch
 
-from maker import make_model, load_data, sf
+from maker import make_model, downsample
 
-from pyoptmat import optimize
+from pyoptmat import optimize, experiments
 from tqdm import tqdm
 
 import pyro
 from pyro.infer import SVI, Trace_ELBO
-from pyro.contrib.easyguide import easy_guide
 import pyro.optim as optim
 
 import matplotlib.pyplot as plt
@@ -33,24 +33,23 @@ if torch.cuda.is_available():
     dev = "cuda:0"
 else:
     dev = "cpu"
-# Run on CPU (home machine GPU is eh)
 dev = "cpu"
 device = torch.device(dev)
 
-jit_mode = False
-
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
-  return make_model(torch.tensor(0.5), n, eta, s0, R, d, device = device,
-      use_adjoint = True, jit_mode = jit_mode, 
-      **kwargs).to(device)
+  return make_model(torch.tensor(0.5), n, eta, s0, R, d, 
+      device = device, **kwargs).to(device)
 
 if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
   scale = 0.05
   nsamples = 50 # at each strain rate
-  times, strains, temperatures, true_stresses = load_data(scale, nsamples, device = device)
+  input_data = xr.open_dataset(os.path.join('..', "scale-%3.2f.nc" % scale))
+  data, results, cycles, types, control = downsample(experiments.load_results(
+      input_data, device = device),
+      nsamples, input_data.nrates, input_data.nsamples)
 
   # 2) Setup names for each parameter and the priors
   names = ["n", "eta", "s0", "R", "d"]
@@ -82,10 +81,7 @@ if __name__ == "__main__":
   num_samples = 1
   
   optimizer = optim.ClippedAdam({"lr": lr, 'lrd': lrd})
-  if jit_mode:
-    ls = pyro.infer.JitTrace_ELBO(num_particles = num_samples)
-  else:
-    ls = pyro.infer.Trace_ELBO(num_particles = num_samples)
+  ls = pyro.infer.Trace_ELBO(num_particles = num_samples)
 
   svi = SVI(model, guide, optimizer, loss = ls)
 
@@ -93,12 +89,10 @@ if __name__ == "__main__":
   t = tqdm(range(niter), total = niter, desc = "Loss:    ")
   loss_hist = []
   for i in t:
-    loss = svi.step(times, strains, temperatures, true_stresses)
+    loss = svi.step(data, cycles, types, control, results)
     loss_hist.append(loss)
     t.set_description("Loss %3.2e" % loss)
   
-  s, m = torch.std_mean(pyro.param("d_param").data)
-
   # 7) Print out results
   print("")
   print("Inferred distributions:")
@@ -112,12 +106,10 @@ if __name__ == "__main__":
       scale))
   print("")
 
-  # 8) Save some info
-  np.savetxt("loss-history.txt", loss_hist)
-
+  # 8) Plot convergence
   plt.figure()
   plt.loglog(loss_hist)
   plt.xlabel("Iteration")
   plt.ylabel("Loss")
   plt.tight_layout()
-  plt.savefig("convergence.pdf")
+  plt.show()

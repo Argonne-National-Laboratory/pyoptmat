@@ -263,18 +263,6 @@ class HierarchicalStatisticalModel(PyroModule):
     distributions, and then each parameter population comes from a
     Normal distribution
 
-    Args:
-      maker (function):             function that returns a valid 
-                                    :py:class:`torch.nn.Module`, given the input 
-                                    parameters
-      names (list(str)):            names to use for the parameters
-      loc (list(torch.tensor)):     parameter location priors
-      scales (list(torch.tensor):   parameter scale priors
-      eps (list or scalar):         random noise, can be either a single scalar 
-                                    or a 1D tensor if it's a 1D tensor then each
-                                    entry i represents the noise in test type i
-
-
     Args: 
       maker (function):                     function that returns a valid 
                                             :py:class`torch.nn.Module`, given the input 

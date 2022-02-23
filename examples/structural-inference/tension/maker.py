@@ -67,28 +67,24 @@ def generate_input(erates, emax, ntime):
   """
     Generate the times and strains given the strain rates, maximum strain, and number of time steps
   """
-  strain = torch.repeat_interleave(torch.linspace(0, emax, ntime)[None,:], len(erates), 0).T.to(device)
+  strain = torch.repeat_interleave(torch.linspace(0, emax, ntime, device = device)[None,:], len(erates), 0).T.to(device)
   time = strain / erates
 
   return time, strain
 
-def load_data(scale, nsamples, device = torch.device("cpu")):
+def downsample(rawdata, nkeep, nrates, nsamples):
   """
-    Helper to load datafiles back in
+    Return fewer than the whole number of samples for each strain rate
   """
-  expdata = xr.open_dataset(os.path.join(os.path.dirname(__file__), "scale-%3.2f.nc" % scale))
-  ntime = expdata.dims['time']
-  times = expdata['times'].data[:,:,:nsamples].reshape((ntime,-1))
-  strains = torch.tensor(expdata['strains'].data[:,:,:nsamples].reshape((ntime,-1)), device = device)
-  stresses = expdata['stresses'].data[:,:,:nsamples].reshape((ntime,-1))
-
-  return torch.tensor(times, device = device), strains, torch.zeros_like(strains, device = device), torch.tensor(stresses, device = device)
+  ntime = rawdata[0].shape[1]
+  return tuple(data.reshape(data.shape[:-1] + (nrates, nsamples))[...,:nkeep].reshape(data.shape[:-1]+(-1,))
+      for data in rawdata)
 
 if __name__ == "__main__":
   # Running this script will regenerate the data
   ntime = 200
   emax = 0.5
-  erates = torch.logspace(-2,-8,7)
+  erates = torch.logspace(-2,-8,7, device = device)
   nrates = len(erates)
   nsamples = 50
 
@@ -98,7 +94,7 @@ if __name__ == "__main__":
 
   for scale in scales:
     print("Generating data for scale = %3.2f" % scale)
-    full_times = torch.empty((ntime, nrates, nsamples))
+    full_times = torch.empty((ntime, nrates, nsamples), device = device)
     full_strains = torch.empty_like(full_times)
     full_stresses = torch.empty_like(full_times)
     full_temperatures = torch.zeros_like(full_strains)
@@ -108,27 +104,27 @@ if __name__ == "__main__":
       full_strains[:,:,i] = strains
 
       # True values are 0.5 with our scaling so this is easy
-      model = make_model(torch.tensor(0.5), 
-          torch.tensor(ra.normal(0.5, scale)),
-          torch.tensor(ra.normal(0.5, scale)), torch.tensor(ra.normal(0.5, scale)),
-          torch.tensor(ra.normal(0.5, scale)), torch.tensor(ra.normal(0.5, scale)))
+      model = make_model(torch.tensor(0.5, device = device), 
+          torch.tensor(ra.normal(0.5, scale), device = device),
+          torch.tensor(ra.normal(0.5, scale), device = device), torch.tensor(ra.normal(0.5, scale), device = device),
+          torch.tensor(ra.normal(0.5, scale), device = device), torch.tensor(ra.normal(0.5, scale), device = device))
 
       with torch.no_grad():
         full_stresses[:,:,i] = model.solve_strain(times, strains, 
             full_temperatures[:,:,i])[:,:,0]
     
-    full_cycles = torch.zeros_like(full_times, dtype = int)
+    full_cycles = torch.zeros_like(full_times, dtype = int, device = device)
     types = np.array(["tensile"] * (nsamples * len(erates)))
     controls = np.array(["strain"] * (nsamples * len(erates)))
     
     ds = xr.Dataset(
         {
-          "time": (["ntime", "nexp"], full_times.flatten(-2,-1).numpy()),
-          "strain": (["ntime", "nexp"], full_strains.flatten(-2,-1).numpy()),
-          "stress": (["ntime", "nexp"], full_stresses.flatten(-2,-1).numpy()),
-          "temperature": (["ntime", "nexp"], full_temperatures.flatten(-2,-1).numpy()),
-          "cycle": (["ntime", "nexp"], full_cycles.flatten(-2,-1).numpy()),
-          "types": (["nexp"], types),
+          "time": (["ntime", "nexp"], full_times.flatten(-2,-1).cpu().numpy()),
+          "strain": (["ntime", "nexp"], full_strains.flatten(-2,-1).cpu().numpy()),
+          "stress": (["ntime", "nexp"], full_stresses.flatten(-2,-1).cpu().numpy()),
+          "temperature": (["ntime", "nexp"], full_temperatures.cpu().flatten(-2,-1).numpy()),
+          "cycle": (["ntime", "nexp"], full_cycles.flatten(-2,-1).cpu().numpy()),
+          "type": (["nexp"], types),
           "control": (["nexp"], controls)
           }, attrs = {"scale": scale, "nrates": nrates, "nsamples": nsamples})
 
