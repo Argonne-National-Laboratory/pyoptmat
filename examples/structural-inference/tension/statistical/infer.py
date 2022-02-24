@@ -33,7 +33,6 @@ if torch.cuda.is_available():
     dev = "cuda:0"
 else:
     dev = "cpu"
-dev = "cpu"
 device = torch.device(dev)
 
 # Don't try to optimize for the Young's modulus
