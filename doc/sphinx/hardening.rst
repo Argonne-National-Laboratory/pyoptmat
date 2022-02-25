@@ -1,3 +1,5 @@
+.. include:: shortcuts.hrst
+
 pyoptmat.hardening: inelastic flow hardening models for structural materials
 ----------------------------------------------------------------------------
 

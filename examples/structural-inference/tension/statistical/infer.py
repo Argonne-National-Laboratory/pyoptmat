@@ -33,6 +33,7 @@ if torch.cuda.is_available():
     dev = "cuda:0"
 else:
     dev = "cpu"
+dev = "cpu"
 device = torch.device(dev)
 
 # Don't try to optimize for the Young's modulus
@@ -44,7 +45,7 @@ if __name__ == "__main__":
   # 1) Load the data for the variance of interest,
   #    cut down to some number of samples, and flatten
   scale = 0.05
-  nsamples = 50 # at each strain rate
+  nsamples = 10 # at each strain rate
   input_data = xr.open_dataset(os.path.join('..', "scale-%3.2f.nc" % scale))
   data, results, cycles, types, control = downsample(experiments.load_results(
       input_data, device = device),
@@ -80,6 +81,7 @@ if __name__ == "__main__":
   num_samples = 1
   
   optimizer = optim.ClippedAdam({"lr": lr, 'lrd': lrd})
+
   ls = pyro.infer.Trace_ELBO(num_particles = num_samples)
 
   svi = SVI(model, guide, optimizer, loss = ls)
