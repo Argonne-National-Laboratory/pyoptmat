@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 
-import sys
-sys.path.append('../../..')
+"""
+    Simple helper to make a plot illustrating the variation in the
+    synthetic experimental data.
+"""
 
-import numpy as np
+import sys
+
+sys.path.append("../../..")
+
 import xarray as xr
 import torch
 import matplotlib.pyplot as plt
@@ -13,17 +18,17 @@ import matplotlib.pyplot as plt
 torch.set_default_tensor_type(torch.DoubleTensor)
 
 if __name__ == "__main__":
-  scales = [0.0,0.01,0.05,0.1,0.15]
-  
-  for scale in scales:
-    data = xr.load_dataset("scale-%3.2f.nc" % scale)
+    scales = [0.0, 0.01, 0.05, 0.1, 0.15]
 
-    strain = data.strain.data.reshape(-1,data.nrates,data.nsamples)
-    stress = data.stress.data.reshape(-1,data.nrates,data.nsamples)
+    for scale in scales:
+        data = xr.load_dataset("scale-%3.2f.nc" % scale)
 
-    plt.plot(strain[:,0], stress[:,0])
-    plt.xlabel("Strain (mm/mm)")
-    plt.ylabel("Stress (MPa)")
-    plt.title("Scale = %3.2f" % scale)
-    plt.tight_layout()
-    plt.show()
+        strain = data.strain.data.reshape(-1, data.nrates, data.nsamples)
+        stress = data.stress.data.reshape(-1, data.nrates, data.nsamples)
+
+        plt.plot(strain[:, 0], stress[:, 0])
+        plt.xlabel("Strain (mm/mm)")
+        plt.ylabel("Stress (MPa)")
+        plt.title("Scale = %3.2f" % scale)
+        plt.tight_layout()
+        plt.show()
