@@ -1,0 +1,11 @@
+name: tests
+on: [push, pull_request]
+jobs:
+      check-formatting:
+            runs-on: ubuntu-latest
+            steps:
+            - uses: actions/checkout@v2
+            - run: sudo apt-get install python3-setuptools python3-pip python3-nose pylint3
+            - run: pip3 install --user -r requirements.txt
+            - run: pylint pyoptmat
+            - run: black --check pyoptmat
