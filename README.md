@@ -1,5 +1,7 @@
 # pyoptmat: statistical inference for material models 
 
+[![Documentation Status](https://readthedocs.org/projects/neml/badge/?version=stable)](https://neml.readthedocs.io/en/stable/)
+
 pyoptmat is a package for calibrating statistical material
 models to data.  The package is based on [pytorch](https://pytorch.org/)
 and [pyro](https://pyro.ai/) and provides a framework for using machine-learning
@@ -18,6 +20,8 @@ of a material. The test measurements have some variation caused by
 manufacturing variability and uncertainty in the experimental controls and 
 measurements.
 
+![Example of fitting a statistical model to data](doc/sphinx/figures/demonstration.png)
+
 pyoptmat aims to make training a statistical model to capture these 
 variations easy. The image shows the results of training a simple material 
 model to the test data. The trained statistical model captures the 
@@ -28,4 +32,4 @@ uncertainty in engineering applications is the main reason pyoptmat was
 developed.
 
 The software is provided under an [MIT license](LICENSE).  Full
-documentation is available here.
+documentation is available [here](https://pyoptmat.readthedocs.io).
