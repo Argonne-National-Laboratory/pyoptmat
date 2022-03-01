@@ -1,6 +1,37 @@
 """
   Objects and helper functions to help with deterministic model calibration
   and statistical inference.
+
+  These include the key classes
+
+  - :py:class:`pyoptmat.optimize.DeterministicModel`
+  - :py:class:`pyoptmat.optimize.StatisticalModel`
+  - :py:class:`pyoptmat.optimize.HierarchicalStatisticalModel`
+
+  which implement
+
+  - deterministic model prediction and optimization
+  - single-level statistical model prediction and inference
+  - hierarchical statistical model prediction and inference
+
+  These three classes share some common features.  One input to all three is the
+  "model maker" function.  This is a function that takes as input as :code:`*args` a set of
+  parameters (which can be :py:mod:`torch` tensors, :py:mod:`torch` Parameters, or
+  :py:mod`:`pyro` samples as appropriate) and returns a valid :py:class:`torch.nn.Module`.
+  Calling this module in turn provides the integrated model predictions.
+  The maker function can also take :code:`**kwargs`, for example to provide values that
+  should not be optimized or hyperparameters describing how to integrate the model
+  results.
+
+  The classes also take a :code:`list` of :code:`str` names, one for each
+  parameter the :code:`maker` function takes as input.  These names are used
+  to describe the various :py:mod:`torch` :code:`Parameters` or :py:mod:`pyro`
+  :code:`samples` and :code:`parameters`.  The specific details of how these 
+  are used depends on the type of model.
+
+  Parameter values, for example as starting locations or descriptions of the priors,
+  are given as :code:`lists` of :py:class:`torch.tensor` objects, again one
+  for each model parameter.
 """
 
 from collections import defaultdict
@@ -14,7 +45,7 @@ import torch
 from torch.nn import Module, Parameter
 
 from skopt.space import Space
-from skopt.sampler import Lhs
+from skopt.sampler import Lhs, Halton
 
 import pyro
 from pyro.nn import PyroModule, PyroSample
@@ -24,164 +55,115 @@ from pyro.contrib.autoguide import AutoDelta, init_to_mean
 
 from tqdm import tqdm
 
-def construct_weights(etypes, weights, normalize = True):
+from pyoptmat import experiments
+
+def bound_factor(mean, factor, min_bound = None):
   """
-    Construct an array of weights 
+    Apply the bounded_scale_function map but set the upper bound as mean*(1+factor)
+    and the lower bound as mean*(1-factor)
 
     Args:
-      etypes:               strings giving the experiment type
-      weights:              dictionary mapping etype to weight
-      normalize (optional): normalize by the number of experiments of each type
+      mean (torch.tensor):          center value
+      factor (torch.tensor):        bounds factor
+
+    Keyword Args:
+      min_bound (torch.tensor):     clip to avoid going lower than this value
   """
-  warray = torch.ones(len(etypes))
+  return bounded_scale_function((mean*(1.0-factor),mean*(1+factor)), min_bound = min_bound)
 
-  count = defaultdict(int)
-  for i,et in enumerate(etypes):
-    warray[i] = weights[et]
-    count[et] += 1
-
-  if normalize:
-    for i, et in enumerate(etypes):
-      warray[i] /= count[et]
-
-  return warray
-
-def grid_search(model, time, strain, temperatures, stress, loss, bounds, 
-    ngrid, method = "lhs-maximin", save_grid = None,
-    rbf_function = "inverse"):
-  """
-    Use a coarse grid search to find a good starting point
-
-    Args:
-      model:                    forward model
-      time:                     time data
-      strain:                   strain data
-      temperature:              temperature data
-      stress:                   stress data
-      loss:                     loss function
-      bounds:                   bounds on each parameter
-      ngrid:                    number of points
-      method (optional):        method for generating the grid
-      save_grid (optional):     save the parameter grid to a file for future use
-      rbf_function (optional):  kernel for radial basis interpolation
-  """
-  # It's wasteful to do the adjoint propagation here, disable it
-  use_adjoint = model.use_adjoint
-  model.use_adjoint = False
-
-  # Helpful later
-  device = list(bounds.values())[0][0].device
-
-  # Parameter order
-  params = [(n, p.shape, torch.flatten(p).shape[0]) for n, p
-      in list(model.named_parameters())]
-  offsets = [0] + list(np.cumsum([i[2] for i in params]))
-  
-  # Generate the space
-  # Need to do this on the cpu
-  space = []
-  for n, shp, sz in params:
-    for i in range(sz):
-      space.append((bounds[n][0].cpu().numpy().flatten()[i],
-        bounds[n][1].cpu().numpy().flatten()[i]))
-  sspace = Space(space)
-
-  # Actually sample
-  if method == "lhs-maximin":
-    sampler = Lhs(criterion = "maximin")
-  else:
-    raise ValueError("Unknown sampling method %s" % method)
-  
-  samples = torch.tensor(sampler.generate(sspace.dimensions, ngrid),
-      device = device)
-  results = torch.zeros(samples.shape[0], device = samples.device)
-
-  # Here we go
-  pdict = {n:p for n,p in model.named_parameters()}
-  for i,sample in tqdm(enumerate(samples), total = len(samples),
-      desc = "Grid sampling"):
-    for k,(name, shp, sz) in enumerate(params):
-      pdict[name].data = samples[i][offsets[k]:offsets[k+1]].reshape(shp)
-    with torch.no_grad():
-      pred = model.solve_strain(time, strain, temperature)
-      lv = loss(pred[:,:,0], stress)
-      results[i] = lv
-
-  data = torch.hstack((samples, results[:,None]))
-  # Store the results if we want
-  if save_grid is not None:
-    torch.save(data, save_grid)
-
-  # Uncache
-  model.use_adjoint = use_adjoint
-
-  # We now need to do this on the CPU again
-  data = data.cpu().numpy()
-  
-  # Get the surrogate and minimize it
-  ifn = inter.Rbf(*(data[:,i] for i in range(data.shape[1])), 
-      function = rbf_function)
-  res = opt.minimize(lambda x: ifn(*x), [(i+j)/2 for i,j in space],
-      method = 'L-BFGS-B', bounds = space)
-  if not res.success:
-    warnings.warn("Surrogate model minimization did not succeed!")
-
-  # Setup the parameter dict and alter the model
-  result = {}
-  for k, (name, shp, sz) in enumerate(params):
-    pdict[name].data = torch.tensor(res.x[offsets[k]:offsets[k+1]]).reshape(shp).to(device)
-    result[name] = res.x[offsets[k]:offsets[k+1]].reshape(shp)
-  
-  return result
-
-def bounded_scale_function(bounds):
+def bounded_scale_function(bounds, min_bound = None):
   """
     Sets up a scaling function that maps `(0,1)` to `(bounds[0], bounds[1])`
     and clips the values to remain in that range
 
     Args:
-      bounds:   tuple giving the parameter bounds
+      bounds (tuple(torch.tensor,torch.tensor)):    tuple giving the parameter bounds
+
+    Additional Args:
+      min_bounds (torch.tensor):                    clip to avoid going lower than this value
   """
-  return lambda x: torch.clamp(x, 0, 1)*(bounds[1]-bounds[0]) + bounds[0]
+  if min_bound is None:
+    return lambda x: torch.clamp(x, 0, 1)*(bounds[1]-bounds[0]) + bounds[0]
+  else:
+    return lambda x: torch.maximum(torch.clamp(x, 0, 1)*(bounds[1]-bounds[0]) + bounds[0], min_bound)
+
+def clamp_scale_function(bounds):
+  """
+    Just clamp to bounds
+
+    Args:
+      bounds (tuple(torch.tensor, torch.tensor)):   tuple giving the parameter bounds
+  """
+  return lambda x: torch.clamp(x, bounds[0], bounds[1])
+
+def bound_and_scale(scale, bounds):
+  """
+    Combination of scaling and bounding
+
+    Args:
+      scale (torch.tensor):     divide input by this value
+      bounds (torch.tensor):    tuple, clamp to (bounds[0], bounds[1])
+  """
+  return lambda x: torch.clamp(x / scale, bounds[0], bounds[1])
+
+def log_bound_and_scale(scale, bounds):
+  """
+    Scale, de-log, and bound
+
+    Args:
+      scale (torch.tensor):     divide input by this value, then take exp
+      bounds (torch.tensor):    tuple, clamp to (bounds[0], bounds[1])
+  """
+  return lambda x: torch.clamp(torch.exp(x / scale), bounds[0], bounds[1])
 
 class DeterministicModel(Module):
   """
     Wrap a material model to provide a :py:mod:`pytorch` deterministic model
 
     Args:
-      maker:      function that returns a valid Module, given the 
-                  input parameters
-      names:      names to use for the parameters
-      ics:        initial conditions to use for each parameter
+      maker (function):         function that returns a valid model as a  
+                                :py:class:`pytorch.nn.Module`, 
+                                given the input parameters
+      names (list(str)):        names to use for the parameters
+      ics (list(torch.tensor)): initial conditions to use for each parameter
   """
   def __init__(self, maker, names, ics):
     super().__init__()
 
     self.maker = maker
+
+    self.names = names
     
     # Add all the parameters
     self.params = names
     for name, ic in zip(names, ics):
-      setattr(self, name, Parameter(torch.tensor(ic)))
-
+      setattr(self, name, Parameter(ic))
+    
   def get_params(self):
     """
       Return the parameters for input to the model
     """
     return [getattr(self, name) for name in self.params]
 
-  def forward(self, times, strains, temperatures):
+  def forward(self, exp_data, exp_cycles, exp_types, exp_control):
     """
-      Integrate forward and return the stress
+      Integrate forward and return the results.
+
+      See the :py:mod:`pyoptmat.experiments` module 
+      for detailed on how to format the input to this function
 
       Args:
-        times:          time points to hit
-        strains:        input strain data
-        temperatures:   input temperature data
+        exp_data (torch.tensor):    formatted input experimental data
+        exp_cycles (torch.tensor):  cycle counts for each test
+        exp_types (torch.tensor):   experiment types, as integers
+        exp_control (torch.tensor): stress/strain control flag
     """
     model = self.maker(*self.get_params())
-    
-    return model.solve_strain(times, strains, temperatures)[:,:,0]
+
+    predictions = model.solve_both(exp_data[0], exp_data[1],
+        exp_data[2], exp_control)
+
+    return experiments.convert_results(predictions[:,:,0], exp_cycles, exp_types)
 
 class StatisticalModel(PyroModule):
   """
@@ -189,15 +171,23 @@ class StatisticalModel(PyroModule):
     statistical model
 
     Single level means each parameter is sampled once before running
-    all the tests -- i.e. each test is run on the "heat" of material
+    all the tests -- i.e. each test is run on the same material properties.
+
+    Generally this is not appropriate for fitting models (see
+    :py:class:`pyoptmat.optimize.HierarchicalStatisticsModel`)
+    but can be a nice way to evaluate models (i.e. run all tests on a
+    single "heat" of material multiple times to sample heat-to-heat variation).
 
     Args:
-      maker:      function that returns a valid Module, given the 
-                  input parameters
-      names:      names to use for the parameters
-      loc:        parameter location priors
-      scales:     parameter scale priors
-      eps:        random noise, could be a constant value or a parameter
+      maker (function):             function that returns a valid 
+                                    :py:class:`torch.nn.Module`, given the input 
+                                    parameters
+      names (list(str)):            names to use for the parameters
+      loc (list(torch.tensor)):     parameter location priors
+      scales (list(torch.tensor):   parameter scale priors
+      eps (list or scalar):         random noise, can be either a single scalar 
+                                    or a 1D tensor if it's a 1D tensor then each
+                                    entry i represents the noise in test type i
   """
   def __init__(self, maker, names, locs, scales, eps):
     super().__init__()
@@ -211,30 +201,47 @@ class StatisticalModel(PyroModule):
 
     self.eps = eps
 
+    self.type_noise = self.eps.dim() > 0
+
   def get_params(self):
     """
       Return the sampled parameters for input to the model
     """
     return [getattr(self, name) for name in self.params]
 
-  def forward(self, times, strains, temperatures, true = None):
+  def forward(self, exp_data, exp_cycles, exp_types, exp_control, exp_results = None):
     """
       Integrate forward and return the result
 
-      Args:
-        times:          time points to hit in integration
-        strains:        input strains
-        temperatures:   input temperatures
+      Optionally condition on the actual data
 
-      Additional Args:
-        true:       true values of the stress, if we're using this
-                    model in inference
+      See the :py:mod:`pyoptmat.experiments` module 
+      for detailed on how to format the input to this function
+
+      Args:
+        exp_data (torch.tensor):    formatted input experimental data
+        exp_cycles (torch.tensor):  cycle counts for each test
+        exp_types (torch.tensor):   experiment types, as integers
+        exp_control (torch.tensor): stress/strain control flag
+
+      Keyword Args:
+        exp_results (torch.tensor): true results for conditioning
     """
     model = self.maker(*self.get_params())
-    stresses = model.solve_strain(times, strains, temperatures)[:,:,0]
-    with pyro.plate("trials", times.shape[1]):
-      with pyro.plate("time", times.shape[0]):
-        return pyro.sample("obs", dist.Normal(stresses, self.eps), obs = true)
+    predictions = model.solve_both(exp_data[0], exp_data[1], exp_data[2], exp_control)
+    results = experiments.convert_results(predictions[:,:,0], exp_cycles, exp_types)
+
+    # Setup the full noise, which can be type specific
+    if self.type_noise:
+      full_noise = torch.empty(exp_data.shape[-1])
+      for i in experiments.exp_map.values():
+        full_noise[exp_types==i] = self.eps[i]
+    else:
+      full_noise = self.eps
+
+    with pyro.plate("trials", exp_data.shape[2]):
+      with pyro.plate("time", exp_data.shape[1]):
+        return pyro.sample("obs", dist.Normal(results, full_noise), obs = exp_results)
 
 class HierarchicalStatisticalModel(PyroModule):
   """
@@ -257,21 +264,30 @@ class HierarchicalStatisticalModel(PyroModule):
     Normal distribution
 
     Args: 
-      maker:                    function that returns a valid material Module, 
-                                given the input parameters
-      names:                    names to use for each parameter
-      loc_loc_priors:           location of the prior for the mean of each
-                                parameter
-      loc_scale_priors:         scale of the prior of the mean of each
-                                parameter
-      scale_scale_priors:       scale of the prior of the standard
-                                deviation of each parameter
-      noise_priors:             prior on the white noise
-      loc_suffix (optional):    append to the variable name to give the top
-                                level sample for the location
-      scale_suffix (optional):  append to the variable name to give the top
-                                level sample for the scale
-      include_noise (optional): if true include white noise in the inference
+      maker (function):                     function that returns a valid 
+                                            :py:class`torch.nn.Module`, given the input 
+                                            parameters
+      names (list(str)):                    names to use for the parameters
+      loc_loc_priors (list(tensor)):        location of the prior for the mean
+                                            of each parameter
+      loc_scale_priors (list(tensor)):      scale of the prior of the mean of each
+                                            parameter
+      scale_scale_priors (list(tensor)):    scale of the prior of the standard
+                                            deviation of each parameter
+      noise_priors (list or scalar):        random noise, can be either a single scalar 
+                                            or a 1D tensor if it's a 1D tensor then each
+                                            entry i represents the noise in test type i
+
+    Keyword Args:
+      loc_suffix (str):                     append to the variable name to give the top
+                                            level sample for the location, default :code:`"_loc"`
+      scale_suffix (str):                   append to the variable name to give the top
+                                            level sample for the scale, default :code:`"_scale"`
+      param_suffix (str):                   append to the variable name to give the corresponding
+                                            :py:mod:`pyro.param` name, default
+                                            :code:`"_param"`
+      include_noise (str):                  if :code:`True` include white noise in the inference,
+                                            default :code:`False`
   """
   def __init__(self, maker, names, loc_loc_priors, loc_scale_priors,
       scale_scale_priors, noise_prior, loc_suffix = "_loc",
@@ -293,6 +309,9 @@ class HierarchicalStatisticalModel(PyroModule):
     self.loc_scale_priors = loc_scale_priors
     self.scale_scale_priors = scale_scale_priors
     self.noise_prior = noise_prior
+
+    # What type of noise are we using
+    self.type_noise = noise_prior.dim() > 0
 
     # Setup both the top and bottom level variables
     self.bot_vars = names
@@ -318,9 +337,12 @@ class HierarchicalStatisticalModel(PyroModule):
 
     # Setup the noise
     if self.include_noise:
-      self.eps = PyroSample(dist.HalfNormal(noise_prior))
+      if self.type_noise:
+        self.eps = PyroSample(dist.HalfNormal(noise_prior).to_event(1))
+      else:
+        self.eps = PyroSample(dist.HalfNormal(noise_prior))
     else:
-      self.eps = torch.tensor(noise_prior)
+      self.eps = noise_prior
 
     # This annoyance is required to make the adjoint solver work
     self.extra_param_names = []
@@ -346,7 +368,7 @@ class HierarchicalStatisticalModel(PyroModule):
       Make the guide and cache the extra parameter names the adjoint solver
       is going to need
     """
-    def guide(times, strains, temperatures, true_stresses = None):
+    def guide(exp_data, exp_cycles, exp_types, exp_control, exp_results = None):
       # Setup and sample the top-level loc and scale
       top_loc_samples = []
       top_scale_samples = []
@@ -364,12 +386,16 @@ class HierarchicalStatisticalModel(PyroModule):
       # Add in the noise, if included in the inference
       if self.include_noise:
         eps_param = pyro.param("eps" + self.param_suffix, torch.tensor(self.noise_prior), constraint = constraints.positive)
-        eps_sample = pyro.sample("eps", dist.Delta(eps_param))
+        if self.type_noise:
+          eps_sample = pyro.sample("eps", dist.Delta(eps_param).to_event(1))
+        else:
+          eps_sample = pyro.sample("eps", dist.Delta(eps_param))
 
       # Plate on experiments and sample individual values
-      with pyro.plate("trials", times.shape[1]):
+      with pyro.plate("trials", exp_data.shape[2]):
         for i,(name, val, dim) in enumerate(zip(self.names, self.loc_loc_priors, self.dims)):
-          ll_param = pyro.param(name + self.param_suffix, torch.zeros_like(val).unsqueeze(0).repeat((times.shape[1],) + (1,)*dim))
+          # Fix this to init to the mean (or a sample I guess)
+          ll_param = pyro.param(name + self.param_suffix, torch.zeros_like(val).unsqueeze(0).repeat((exp_data.shape[2],) + (1,)*dim) + 0.5)
           param_value = pyro.sample(name, dist.Delta(ll_param).to_event(dim))
     
     self.extra_param_names = [var + self.param_suffix for var in self.names]
@@ -390,30 +416,48 @@ class HierarchicalStatisticalModel(PyroModule):
 
     return [pyro.param(name).unconstrained() for name in self.extra_param_names]
 
-  def forward(self, times, strains, temperatures, true_stresses = None):
+  def forward(self, exp_data, exp_cycles, exp_types, exp_control, exp_results = None):
     """
-      Evaluate the forward model, conditioned by the true stresses if
-      they are available
+      Evaluate the forward model, optionally conditioned by the experimental
+      data.
+
+      Optionally condition on the actual data
+
+      See the :py:mod:`pyoptmat.experiments` module 
+      for detailed on how to format the input to this function
 
       Args:
-        times:                      time points to hit
-        strains:                    input strains
-        temperaturse:               input temperature data
-        true_stresses (optional):   actual stress values, if we're conditioning
-                                    for inference
+        exp_data (torch.tensor):    formatted input experimental data
+        exp_cycles (torch.tensor):  cycle counts for each test
+        exp_types (torch.tensor):   experiment types, as integers
+        exp_control (torch.tensor): stress/strain control flag
+
+      Keyword Args:
+        exp_results (torch.tensor): true results for conditioning
     """
     # Sample the top level parameters
     curr = self.sample_top()
     eps = self.eps
+    
+    # Setup the full noise, which can be type specific
+    if self.type_noise:
+      full_noise = torch.empty(exp_data.shape[-1], device = exp_data.device)
+      for i in experiments.exp_map.values():
+        full_noise[exp_types==i] = eps[i]
+    else:
+      full_noise = eps
 
-    with pyro.plate("trials", times.shape[1]):
+    with pyro.plate("trials", exp_data.shape[2]):
       # Sample the bottom level parameters
       bmodel = self.maker(*self.sample_bot(),
           extra_params = self.get_extra_params())
-      # Generate the stresses
-      stresses = bmodel.solve_strain(times, strains, temperatures)[:,:,0]
-      # Sample!
-      with pyro.plate("time", times.shape[0]):
-        pyro.sample("obs", dist.Normal(stresses, eps), obs = true_stresses)
+      # Generate the results
+      predictions = bmodel.solve_both(exp_data[0], exp_data[1], exp_data[2], exp_control)
+      # Process the results
+      results = experiments.convert_results(predictions[:,:,0], exp_cycles, exp_types)
 
-    return stresses
+      # Sample!
+      with pyro.plate("time", exp_data.shape[1]):
+        pyro.sample("obs", dist.Normal(results, full_noise), obs = exp_results)
+
+    return results

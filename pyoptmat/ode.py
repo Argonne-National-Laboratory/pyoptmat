@@ -2,6 +2,33 @@
   Module defining the key objects and functions to integrate ODEs
   and provide the sensitivity of the results with respect to the
   model parameters either through backpropogation AD or the adjoint method.
+
+  The key functions are :py:func:`pyoptmat.odeint` and
+  :py:func:`pyoptmat.odeint_adjoint`.  These functions both
+  integrate a system of ODEs forward in time using one of several methods
+  and have identical function signature.  The only difference is that
+  backward passes over the results of :py:func:`pyoptmat.ode.odeint` will
+  use PyTorch backpropogation AD to return the gradients while
+  :py:func:`pyoptmat.ode.odeint_adjoint` will use the adjoint method.  
+
+  The two different backward pass options are seamless, the end-user
+  can interchange them freely with other PyTorch code stacking on top
+  of the integrated results and obtain gradient information just as if they
+  were using AD.
+
+  In all realistic cases explored so far the adjoint method produces faster
+  results with far less memory use and should be preferred versus
+  the AD variant.
+
+  The methods currently available to solve ODEs are detailed below, but
+  as a summary:
+  
+  * "forward_euler": simple forward Euler explicit integration
+  * "backward_euler": simple backward Euler implicit integration
+
+  The current methods all accept a :code:`substep` option which will
+  subdivide the provided time intervals into some number of subdivisions
+  to decrease integration error.
 """
 
 import torch
@@ -15,12 +42,19 @@ def linear(t0, t1, y0, y1, t):
   """
     Helper function for linear interpolation between two points
 
+    .. math::
+
+      z = \\frac{y_1-y_0}{t_1-t_0} \\left( t - t_0 \\right)
+
     Args:
-      t0:     first "x" point
-      t1:     second "x" point
-      y0:     first "y" point
-      y1:     second "y" point
-      t:      target "x" point
+      t0 (torch.tensor):     first "x" point
+      t1 (torch.tensor):     second "x" point
+      y0 (torch.tensor):     first "y" point
+      y1 (torch.tensor):     second "y" point
+      t (torch.tensor):      target "x" point
+
+    Returns:
+      torch.tensor:         interpolated values
   """
   n = y0.dim() - 1
   return y0 + (y1-y0) / (t1-t0)[(...,)+(None,)*n] * (t - t0)[(...,)+(None,)*n]
@@ -30,12 +64,16 @@ class FixedGridSolver:
     Superclass of all solvers that use a fixed grid (versus an adaptive method)
 
     Args:
-      func:                 function returning the time rate of change and,
+      func (function):      function returning the time rate of change and,
                             optionally, the jacobian
-      y0:                   initial condition
-      substep (optional):   subdivide each provided timestep into some number
-                            of subdivisions for integration
-      jit_mode (optional):  if true do various dangerous things to fix the model structure
+      y0 (torch.tensor):    initial condition
+
+    Keyword Args:
+      substep (int):        subdivide each provided timestep into some number
+                            of subdivisions for integration.  Default is `None`
+                            (i.e. no subdivision)
+      jit_mode (bool):      if true do various dangerous things to fix the
+                            model structure.  Default is :code:`False`
   """   
   def __init__(self, func, y0, adjoint_params = None, **kwargs):
     # Store basic info about the system
@@ -79,9 +117,12 @@ class FixedGridSolver:
       output_gradient
 
       Args:
-        t:      time you want
-        y:      state you want
-        og:     thing to dot with
+        t (torch.tensor):      time you want
+        y (torch.tensor):      state you want
+        og (torch.tensor):     thing to dot with
+
+      Returns:
+        torch.tensor:           derivative dot product
     """
     with torch.enable_grad():
       ydot = self.func(t, y)[0]
@@ -92,10 +133,16 @@ class FixedGridSolver:
 
   def _construct_grid(self, t):
     """
-      Construct the grid for substepped problems
+      Construct the subidivided grid for substepped problems.
+
+      The subdivided grid adds :code:`self.substep` extra steps
+      between each point in the original grid :code:`t`.
 
       Args:
-        t:      initial timesteps
+        t (torch.tensor):   initial timesteps
+
+      Returns:
+        torch.tensor:       subdivided grid
     """
     if self.substep and self.substep > 1:
       nshape = list(t.shape)
@@ -117,12 +164,17 @@ class FixedGridSolver:
 
   def integrate(self, t, cache_adjoint = False):
     """
-      Main method: actually integrate through the provided times
+      Main method: actually integrate through the times :code:`t`.
 
       Args:
-        t:                          timesteps to report results at
-        cache_adjoint (optional):   store the info we'll need for the
-                                    adjoint pass
+        t (torch.tensor):       timesteps to report results at
+
+      Keyword Args:
+        cache_adjoint (bool):   store the info we'll need for the
+                                adjoint pass, default `False`
+
+      Returns:
+        torch.tensor:       integrated results at times :code:`t`
     """
     # Basic error checking
     if not self.jit_mode:
@@ -165,16 +217,17 @@ class FixedGridSolver:
       y0 = y1
     
     result[-1] = y1 # There may be a more elegant way of doing this...
-    
+
     return result
 
   def rewind_adjoint(self, times, output_grad):
     """
-      Rewind the solve the get the sensitivities via the adjoint method
+      Rewind the solve the get the partials via the adjoint method, dotted
+      with the :code:`output_grad`
 
       Args:
-        times:          actual times required by the solver
-        output_grad:    dot product tensor
+        times (torch.tensor):           output times required by the solver
+        output_grad (torch.tensor):    dot product tensor
     """
     # Start from *end* of the output_grad -- going backwards
     l0 = output_grad[-1]
@@ -238,10 +291,13 @@ class ForwardEuler(ExplicitSolver):
       Return the Jacobian even if it isn't used for the adjoint method
 
       Args:
-        t0:     previous time
-        t1:     next time
-        dt:     time increment
-        y0:     previous state
+        t0 (torch.tensor):     previous time
+        t1 (torch.tensor):     next time
+        dt (torch.tensor):     time increment
+        y0 (torch.tensor):     previous state
+
+      Returns:
+        torch.tensor:   state at time :code:`t1`
     """
     v, J = self.func(t0, y0)
     return y0 + v * dt[:,None], J
@@ -252,12 +308,15 @@ class ForwardEuler(ExplicitSolver):
 
       The confusing thing here is that we must use the :math:`t_{n+1}`
       Jacobian as that's what we did on the forward pass, even though that's
-      sort of backwards for the actual implicit Euler method
+      sort of backwards for the actual backward Euler method
 
       Args:
-        dt:     time step (defined positive!)
-        J:      cached Jacobian value -- actually :math:`\\frac{d\\dot{y}}{dy}` for this method
-        llast:  last value of the adjoint
+        dt (torch.tensor):      time step (defined positive!)
+        J (torch.tensor):       cached Jacobian value -- actually :math:`\\frac{d\\dot{y}}{dy}` for this method
+        llast (torch.tensor):   last value of the adjoint
+
+      Returns:
+        torch.tensor:           updated value of the adjoint at the "last" time step
     """
     return llast + torch.bmm(llast.view(self.batch_size, 1, self.prob_size), J)[:,0,...] * dt[...,None]
 
@@ -266,8 +325,11 @@ class ForwardEuler(ExplicitSolver):
       Update the *parameter gradient* to the next step
 
       Args:
-        grad_results:   previous value of the gradient results
-        partial:        value of the parameter partials * dt
+        grad_results (torch.tensor):    previous value of the gradient results
+        partial (torch.tensor):         value of the parameter partials * dt
+
+      Returns:
+        tuple of torch.tensor:          updated parameter gradients at the "next" step
     """
     return tuple(gi + pi for gi, pi in zip(grad_results, partial))
     
@@ -275,15 +337,14 @@ class ImplicitSolver(FixedGridSolver):
   """
     Superclass of all implicit solvers
 
-    Args:
-      rtol (optional):              solver relative tolerance
-      atol (optional):              solver absolute tolerance
-      miter (optional):             maximum nonlinear iterations
-      solver_method (optional):     how to solve linear equations, `"diag"` or
-                                    `"lu"`
-                                    `"diag"` uses just the diagonal of the
-                                    Jacobian -- the dumbest NK scheme ever.
-                                    `"lu"` uses the full LU factorization
+    Keyword Args:
+      rtol (float):             solver relative tolerance
+      atol (float):             solver absolute tolerance
+      miter (int):              maximum nonlinear iterations
+      solver_method (string):   how to solve linear equations, `"diag"` or `"lu"`
+                                `"diag"` uses just the diagonal of the
+                                Jacobian -- the dumbest Newton-Krylov scheme ever.
+                                `"lu"` uses the full LU factorization
   """
   def __init__(self, *args, rtol = 1.0e-6, atol = 1.0e-10, miter = 100,
       solver_method = "lu",  **kwargs):
@@ -307,8 +368,11 @@ class ImplicitSolver(FixedGridSolver):
       Dispatch to solve the nonlinear system of equations
 
       Args:
-        system:     function return R and J
-        guess:      initial guess at solution
+        system (function):      function return R and J
+        guess (torch.tensor):   initial guess at solution
+
+      Returns:
+        (torch.tensor, torch.tensor): the solution and Jacobian evaluated at the solution
     """
     return solvers.newton_raphson(system, guess, 
         linsolver = self.solver_method, rtol = self.rtol, atol = self.atol,
@@ -316,10 +380,13 @@ class ImplicitSolver(FixedGridSolver):
 
   def _add_id(self, df):
     """
-      Add the identity to a tensor with the shape of the jacobian
+      Add the identity to a tensor with the shape of the Jacobian
 
       Args:
-        df:     batched `(n,m,m)` tensor
+        df (torch.tensor):  batched `(n,m,m)` tensor
+
+      Returns:
+        torch.tensor:       :code:`df` plus a batched identity of the right shape
     """
     return df + torch.eye(df.shape[1], device = df.device).reshape((1,)  + df.shape[1:]).repeat(df.shape[0],1,1)
 
@@ -338,10 +405,13 @@ class BackwardEuler(ImplicitSolver):
       for later use in the adjoint method
 
       Args:
-        t0:     previous time
-        t1:     next time
-        dt:     time increment
-        y0:     previous state
+        t0 (torch.tensor):     previous time
+        t1 (torch.tensor):     next time
+        dt (torch.tensor):     time increment
+        y0 (torch.tensor):     previous state
+
+      Returns:
+        (torch.tensor, torch.tensor): next state and Jacobian + identity at that state
     """
     # Function which returns the residual and jacobian 
     def RJ(x):
@@ -359,10 +429,13 @@ class BackwardEuler(ImplicitSolver):
       that's sort of backwards for the actual implicit Euler method
 
       Args:
-        dt:     time step (defined positive!)
-        Jlast:  cached Jacobian value -- :math:`I - \\frac{d\\dot{y}}{dy}`
-                for this method
-        llast:  last value of the adjoint
+        dt (torch.tensor):      time step (defined positive!)
+        Jlast (torch.tensor):   cached Jacobian value -- :math:`I - \\frac{d\\dot{y}}{dy}`
+                                for this method
+        llast (torch.tensor):   last value of the adjoint
+
+      Returns:
+        torch.tensor:           updated adjoint problem
     """
     return torch.linalg.solve(J.transpose(1,2), llast)
   
@@ -372,8 +445,11 @@ class BackwardEuler(ImplicitSolver):
       integration method
 
       Args:
-        grad_results:   previous value of the gradient results
-        partial:        value of the parameter partials * dt
+        grad_results (torch.tensor):    previous value of the gradient results
+        partial (torch.tensor):         value of the parameter partials * dt
+
+      Returns:
+        tuple of torch.tensors:         updated parameter gradients
     """
     return tuple(gi + pi for gi, pi in zip(grad_results, partial)) 
 
@@ -383,24 +459,33 @@ methods = {"forward-euler": ForwardEuler, "backward-euler": BackwardEuler}
 def odeint(func, y0, times, method = 'backward-euler', extra_params = None,
     **kwargs):
   """
-    Solve the ordinary differential equation defined by the function func
-    
-    Input variables and initial condition have shape `(nbatch, nvar)`
+    Solve the ordinary differential equation defined by the function :code:`func` in a way
+    that will provide results capable of being differentiated with PyTorch's AD.
+   
+    The function :code:`func` is typically a PyTorch module.  It takes the time and
+    state and returns the time rate of change and (optionally) the Jacobian at that
+    time and state.  Not all integration methods require the Jacobian, but it's generally
+    a good idea to provide it make use of the implicit integration methods.
 
-    Input times have shape `(ntime, nbatch)`
+    Input variables and initial condition have shape :code:`(nbatch, nvar)`
 
-    Output history has shape `(ntime, nbatch, nvar)`
+    Input times have shape :code:`(ntime, nbatch)`
+
+    Output history has shape :code:`(ntime, nbatch, nvar)`
 
     Args:
-      func:             returns tensor defining the derivative y_dot and,
-                        optionally, the jacobian as a second return value 
-      y0:               initial conditions
-      times:            time locations to solve for
-      method:           integration method, currently `"backward-euler"` or 
-                        `"forward-euler"`
-      extra-params:     not used here, just maintains compatibility with the
-                        adjoint interface
-      kwargs:           keyword arguments passed on to specific solver methods
+      func (function):      returns tensor defining the derivative y_dot and,
+                            optionally, the jacobian as a second return value 
+      y0 (torch.tensor):    initial conditions
+      times (torch.tensor): time locations to provide solutions at
+
+    Keyword Args:
+      method (string):                      integration method, currently `"backward-euler"` or 
+                                            `"forward-euler"`
+      extra-params (list of parameters):    not used here, just maintains compatibility with
+                                            the adjoint interface
+      kwargs:                               keyword arguments passed on to specific
+                                            solver methods
   """
   solver = methods[method](func, y0, **kwargs)
   
@@ -408,7 +493,8 @@ def odeint(func, y0, times, method = 'backward-euler', extra_params = None,
 
 class IntegrateWithAdjoint(torch.autograd.Function):
   """
-    Wrapper to convince the thing that it needs to use the hard-coded sensitivity
+    Wrapper to convince the thing that it needs to use the adjoint sensitivity
+    instead of AD
   """
   @staticmethod
   def forward(ctx, solver, times, *params):
@@ -416,7 +502,7 @@ class IntegrateWithAdjoint(torch.autograd.Function):
       Args:
         ctx:        context object we can use to stash state
         solver:     ODE Solver object to use
-        times:      times to hit
+        times:      times to provide output for
     """
     with torch.no_grad():
       # Do our first pass and get full results
@@ -441,27 +527,34 @@ class IntegrateWithAdjoint(torch.autograd.Function):
 def odeint_adjoint(func, y0, times, method = 'backward-euler',
     extra_params = [], **kwargs):
   """
-    Solve the ordinary differential equation defined by the function func
+    Solve the ordinary differential equation defined by the function :code:`func` in a way
+    that will provide gradients using the adjoint trick
 
-    Calculate the gradient with the adjoint trick
+    The function :code:`func` is typically a PyTorch module.  It takes the time and
+    state and returns the time rate of change and (optionally) the Jacobian at that
+    time and state.  Not all integration methods require the Jacobian, but it's generally
+    a good idea to provide it make use of the implicit integration methods.
     
-    Input variables and initial condition have shape `(nbatch, nvar)`
+    Input variables and initial condition have shape :code:`(nbatch, nvar)`
 
-    Input times have shape `(ntime, nbatch)`
+    Input times have shape :code:`(ntime, nbatch)`
 
-    Output history has shape `(ntime, nbatch, nvar)`
+    Output history has shape :code:`(ntime, nbatch, nvar)`
 
     Args:
-      func:         returns tensor defining the derivative :math:`\\dot{y}` and,
-                    optionally, the jacobian as a second return value 
-      y0:           initial conditions
-      times:        time locations to solve for
-      method:       integration method, currently `"backward-euler"` or 
-                    `"forward-euler"`
-      extra_params: any additional pytorch parameters that need to be included
-                    in the adjoint calculation that are not determinable
-                    via introspection
-      kwargs:   keyword arguments passed on to specific solver methods
+      func (function):      returns tensor defining the derivative y_dot and,
+                            optionally, the jacobian as a second return value 
+      y0 (torch.tensor):    initial conditions
+      times (torch.tensor): time locations to provide solutions at
+
+    Keyword Args:
+      method (string):                      integration method, currently `"backward-euler"` or 
+                                            `"forward-euler"`
+      extra-params (list of parameters):    additional parameters that need to be included
+                                            in the backward pass that are not determinable
+                                            via introsection of :code:`func`
+      kwargs:                               keyword arguments passed on to specific
+                                            solver methods
   """
   adjoint_params = tuple(p for p in func.parameters()) + tuple(extra_params)
   

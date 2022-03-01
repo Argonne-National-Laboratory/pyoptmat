@@ -1,5 +1,32 @@
 #!/usr/bin/env python3
 
+"""
+  This example demonstrate the ability of the backward Euler integration
+  option to accurately integrate a very stiff system of ODEs.  The example
+  system used here is the Van der Pol system from Manichev et al. 2019.
+
+  .. math::
+
+    \dot{y}_0 = y_1
+    \dot{y}_1 = -y_0 + \mu \left(1 - y_0^2 \right) y_1
+
+  with initial conditions
+
+  .. math::
+    
+    y_0(0) = -1
+    y_1(0) = 1
+
+  and :math:`t \in [0,4.2\mu].
+
+  This system of ODEs is parameterized by :math:`\mu`.  For
+  :math:`mu = 1.0` the system is not stiff and can be integrated by
+  either forward or backward methods.  For :math:`\mu=14` the equations
+  begin to become stiff and the forward Euler method becomes inaccurate.
+  For :math:`\mu=30` the equations are very stiff and can only
+  be integrated with the backward Euler method.
+"""
+
 import sys
 
 sys.path.append('../..')
@@ -56,7 +83,10 @@ if __name__ == "__main__":
   plt.figure()
   plt.plot(times, res_exp[:,0,0], label = 'Forward')
   plt.plot(times, res_imp[:,0,0], label = 'Backward')
+  plt.xlabel("time")
+  plt.ylabel(r"$y_0$")
   plt.legend(loc='best')
+  plt.title("Not stiff")
   plt.show()
 
   # Test for moderately stiff version
@@ -74,6 +104,9 @@ if __name__ == "__main__":
   plt.plot(times, res_exp[:,0,0], label = 'Forward')
   plt.plot(times, res_imp[:,0,0], label = 'Backward')
   plt.legend(loc='best')
+  plt.xlabel("time")
+  plt.ylabel(r"$y_0$")
+  plt.title("Moderately stiff")
   plt.show()
 
   # Test for highly stiff version (explicit just explodes)
@@ -86,5 +119,9 @@ if __name__ == "__main__":
       substep = 20, solver_method = "lu")
   
   plt.figure()
-  plt.plot(times, res_imp[:,0,0])
+  plt.plot(times, res_imp[:,0,0], label = 'Backward')
+  plt.legend(loc='best')
+  plt.xlabel("time")
+  plt.ylabel(r"$y_0$")
+  plt.title("Very stiff")
   plt.show()

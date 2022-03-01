@@ -12,17 +12,17 @@
 #
 import os
 import sys
-sys.path.insert(0, '../../')
+sys.path.insert(0, os.path.abspath('../../'))
 
 
 # -- Project information -----------------------------------------------------
 
 project = 'pyoptmat'
-copyright = '2021, Argonne National Laboratory'
+copyright = '2022, Argonne National Laboratory'
 author = 'Argonne National Laboratory'
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.0'
+release = '1.1.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -32,7 +32,8 @@ release = '1.0.0'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinxcontrib.napoleon'
+    'sphinxcontrib.napoleon',
+    'sphinxcontrib.bibtex'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -51,7 +52,11 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 #
 html_theme = 'sphinx_rtd_theme'
 
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# Logo
+html_logo = 'figures/logo.png'
+html_favicon = 'figures/icon.ico'
+
+# -- Options for bibtex ------------------------------------------------------
+
+# Our bibliography file
+bibtex_bibfiles = ['refs.bib']

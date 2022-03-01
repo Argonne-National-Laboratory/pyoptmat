@@ -1,4 +1,6 @@
+sphinx
 sphinxcontrib-napoleon
+sphinxcontrib-bibtex
 torch
 numpy
 scipy
@@ -7,3 +9,8 @@ pyro-ppl
 tqdm
 matplotlib
 scikit-optimize
+netCDF4
+pandas
+xarray[io]
+xarray
+sphinx-rtd-theme

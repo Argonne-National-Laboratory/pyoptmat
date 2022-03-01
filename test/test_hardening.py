@@ -52,6 +52,41 @@ class TestVoceIsotropicHardening(unittest.TestCase, HardeningBase):
     self.ep = torch.linspace(0.1,0.2,self.nbatch)
     self.T = torch.zeros_like(self.t)
 
+class TestVoceIsotropicThetaHardening(unittest.TestCase, HardeningBase):
+  def setUp(self):
+    self.tau = torch.tensor(100.0)
+    self.theta = torch.tensor(12.0)
+    self.model = hardening.Theta0VoceIsotropicHardeningModel(CP(self.tau), 
+        CP(self.theta))
+
+    self.nbatch = 10
+
+    self.s = torch.linspace(90,100,self.nbatch)
+    self.h = torch.reshape(torch.linspace(50,110,self.nbatch), 
+        (self.nbatch,1))
+    self.t = torch.ones(self.nbatch)
+    self.ep = torch.linspace(0.1,0.2,self.nbatch)
+    self.T = torch.zeros_like(self.t)
+
+class TestVoceIsotropicThetaReceoveryHardening(unittest.TestCase, HardeningBase):
+  def setUp(self):
+    self.tau = torch.tensor(100.0)
+    self.theta = torch.tensor(12.0)
+    self.r1 = 0.1
+    self.r2 = 1.2
+    self.R0 = 10.0
+    self.model = hardening.Theta0RecoveryVoceIsotropicHardeningModel(CP(self.tau), 
+        CP(self.theta), CP(self.R0), CP(self.r1), CP(self.r2))
+
+    self.nbatch = 10
+
+    self.s = torch.linspace(90,100,self.nbatch)
+    self.h = torch.reshape(torch.linspace(50,110,self.nbatch), 
+        (self.nbatch,1))
+    self.t = torch.ones(self.nbatch)
+    self.ep = torch.linspace(0.1,0.2,self.nbatch)
+    self.T = torch.zeros_like(self.t)
+
 class TestFAKinematicHardening(unittest.TestCase, HardeningBase):
   def setUp(self):
     self.C = torch.tensor(100.0)
@@ -82,3 +117,20 @@ class TestChabocheKinematicHardening(unittest.TestCase, HardeningBase):
     self.ep = torch.linspace(0.1,0.2,self.nbatch)
     self.T = torch.zeros_like(self.t)
 
+class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
+  def setUp(self):
+    self.C = torch.tensor([100.0,1000,1500])
+    self.g = torch.tensor([1.2,100,50])
+    self.b = torch.tensor([5e-4,4e-4,2e-4])
+    self.r = torch.tensor([3.0,3.2,3.5])
+    self.model = hardening.ChabocheHardeningModelRecovery(CP(self.C), CP(self.g),
+        CP(self.b), CP(self.r))
+
+    self.nbatch = 10
+
+    self.s = torch.linspace(90,100,self.nbatch)
+    self.h = torch.reshape(torch.linspace(50,110,self.nbatch*len(self.C)), 
+        (self.nbatch,len(self.C)))
+    self.t = torch.ones(self.nbatch)
+    self.ep = torch.linspace(0.1,0.2,self.nbatch)
+    self.T = torch.zeros_like(self.t)

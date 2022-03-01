@@ -1,5 +1,29 @@
 #!/usr/bin/env python3
 
+"""
+  This example demonstrates using the basic capabilities of pyopmat to
+  find parameter distributions for a system of ODEs to match variable
+  measured data.  The particular example here is a cannon firing with a
+  random velocity, parameterized here with a random speed and launch
+  angle.  The observed "data" is the resulting trajectory of the cannon ball,
+  starting from the point of launch and ending when it hits the ground.
+  In this case, the x-coordinate represents the distance from the cannon
+  and the y-coordinate the height above the initial launch point.
+
+  This example further applies some additional white noise on top of the
+  trajectory "measurements" representing random experimental error in
+  measuring or recording the data.
+
+  The goal of the variational inference is to recover the statistical 
+  distribution of launch speeds and angles by observing some number of
+  trajectories.  The example also tries to recover the scale of the 
+  random, white noise superimposed on top of the measured trajectories.
+  The example, as setup below, observes 50 random trajectories
+  and uses pyro's SVI algorithm to infer the angle and speed distributions.
+  The example plots the results and compares the inferred distributions to
+  the known actual posteriors.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -14,26 +38,37 @@ import pyro.optim as optim
 import pyro.distributions.constraints as constraints
 from pyro import poutine
 
+import scipy.interpolate as inter
+
 from tqdm import tqdm
 
 import sys
 sys.path.append('../..')
 from pyoptmat import ode
 
+# Gravity
 g = torch.tensor(0.1)
 
+# Actual location and scale of the speed and launch angle
+# True posteriors are normal distributions
 v_loc_act = 2.0
 v_scale_act = 0.03
 a_loc_act = 0.7
 a_scale_act = 0.04
 
+# Prior normal distribution for the speed and launch angle
 v_loc_prior = 1.5
 v_scale_prior = 0.1
 a_loc_prior = 0.3
 a_scale_prior = 0.1
 
+# White noise applied to the observations
 eps_act = 0.05
+
+# Prior for the noise 
 eps_prior = 0.1 # Just measure variance in data...
+
+# If true use torch JIT mode
 jit_mode = False
 
 def model_act(times):
@@ -169,8 +204,10 @@ class Model(pyro.nn.PyroModule):
     return [pyro.param(name).unconstrained() for name in self.extra_param_names]
 
 if __name__ == "__main__":
+  # Number of samples to provide
   nsamples = 50
-
+  
+  # Maximum and number of time steps
   tmax = 20.0
   tnum = 100
 
@@ -182,12 +219,14 @@ if __name__ == "__main__":
     for i in range(nsamples):
       times[:,i] = time
       data[:,i] = model_act(time)
-
+  
+  plt.figure()
   plt.plot(data[:,:,0], data[:,:,1])
+  plt.xlabel("x-coordinate")
+  plt.ylabel("y-coordinate")
+  plt.title("Trajectory data")
   plt.show()
   
-  # MAP
-  print("MAP")
   pyro.clear_param_store()
 
   def maker(v, a, **kwargs):
@@ -195,7 +234,9 @@ if __name__ == "__main__":
 
   # Setup the model
   model = Model(maker, ["v", "a"], [v_loc_prior, a_loc_prior], [v_scale_prior, a_scale_prior])
-
+  
+  # Optimization hyperparameters: learning rate, number of iterations, and
+  # number of samples for calculating the ELBO
   lr = 5.0e-3
   niter = 250
   num_samples = 1
@@ -226,8 +267,12 @@ if __name__ == "__main__":
   print("Angle mean: %4.3f, actual %4.3f" % (pyro.param("a_loc_param").data, a_loc_act))
   print("Angle scale: %4.3f, actual %4.3f" % (pyro.param("a_scale_param").data, a_scale_act))
   print("White noise: %4.3f, actual %4.3f" % (pyro.param("eps_param").data, eps_act))
-
+  
+  plt.figure()
   plt.plot(loss_hist)
+  plt.xlabel("Iteration")
+  plt.ylabel("Loss")
+  plt.title("Convergence diagram")
   plt.show()
 
   print("")
@@ -241,11 +286,19 @@ if __name__ == "__main__":
     max_x, _ = torch.max(samples[0,:,:,0], 1)
     min_y, _ = torch.min(samples[0,:,:,1], 1)
     max_y, _ = torch.max(samples[0,:,:,1], 1)
-
+  
+  plt.figure()
   plt.plot(times, data[:,:,1], 'k-', lw = 0.5)
   plt.fill_between(time, min_y, max_y, alpha = 0.75)
+  plt.xlabel("Time")
+  plt.ylabel("y coordinate")
+  plt.title("Height versus time")
   plt.show()
-
+  
+  plt.figure()
   plt.plot(times, data[:,:,0], 'k-', lw = 0.5)
   plt.fill_between(time, min_x, max_x, alpha = 0.75)
+  plt.xlabel("Time")
+  plt.ylabel("x coordinate")
+  plt.title("Distance versus time")
   plt.show()

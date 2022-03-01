@@ -1,3 +1,9 @@
+"""
+  A few common functions related to solving nonlinear and linear systems
+  of equations.  These functions exist to "torchify" these common tasks.
+  As always, the routines accept batched input.
+"""
+
 import torch
 import warnings
 
@@ -8,12 +14,19 @@ def newton_raphson(fn, x0, linsolver = "lu", rtol = 1e-6, atol = 1e-10,
     solution and the last Jacobian
 
     Args:
-      fn:                   function that returns the residual and Jacobian
-      x0:                   starting point
-      linsolver (optional): method to use to solve the linear system
-      rtol (optional):      nonlinear relative tolerance
-      atol (optional):      nonlinear absolute tolerance
-      miter (optional):     maximum number of nonlinear iterations
+      fn (function):        function that returns the residual and Jacobian
+      x0 (torch.tensor):    starting point
+
+    Keyword Args:
+      linsolver (string):   method to use to solve the linear system, options are
+                            "diag" or "lu".  Defaults to "lu".  See 
+                            :py:func:`pyoptmat.solvers.solve_linear_system`
+      rtol (float):         nonlinear relative tolerance
+      atol (float):         nonlinear absolute tolerance
+      miter (int):          maximum number of nonlinear iterations
+
+    Returns:
+      torch.tensor, torch.tensor:   solution to system of equations and Jacobian evaluated at that point
   """
   x = x0
   R, J = fn(x)
@@ -35,12 +48,18 @@ def newton_raphson(fn, x0, linsolver = "lu", rtol = 1e-6, atol = 1e-10,
 
 def solve_linear_system(A, b, method = "lu"):
   """
-    Solve or iterate on a linear system of equations
+    Solve or iterate on a linear system of equations using one of
+    several methods:
+
+    * "lu" -- use :code:`torch.linalg.solve`
+    * "diag" -- do one Jacobi iteration (:code:`b / diag(A)`)
 
     Args:
-      A:                    block matrix
-      b:                    block RHS
-      method (optional): 
+      A (torch.tensor):     block matrix
+      b (torch.tensor):     block RHS
+    
+    Keyword Args:
+      method (string):      Method to use.  Options outlined above.
   """
   if method == "diag":
     return b / torch.diagonal(A, dim1=-2, dim2=-1)
