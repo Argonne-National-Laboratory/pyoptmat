@@ -10,3 +10,4 @@ xarray[io]
 xarray
 black
 nose
+pylint==2.12.2
