@@ -1,6 +1,6 @@
 # pyoptmat: statistical inference for material models 
 
-![Test Status](https://github.com/Argonne-National-Laboratory/pyoptmat/workflows/tests/badge.svg?branch=master) [![Documentation Status](https://readthedocs.org/projects/pyoptmat/badge/?version=stable)](https://pyoptmat.readthedocs.io/en/stable/)
+[![Run test suite](https://github.com/Argonne-National-Laboratory/pyoptmat/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/Argonne-National-Laboratory/pyoptmat/actions/workflows/tests.yml) [![Documentation Status](https://readthedocs.org/projects/pyoptmat/badge/?version=stable)](https://pyoptmat.readthedocs.io/en/stable/)
 
 pyoptmat is a package for calibrating statistical material
 models to data.  The package is based on [pytorch](https://pytorch.org/)
