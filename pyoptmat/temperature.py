@@ -222,7 +222,7 @@ class MTSScaling(TemperatureParameter):
         """
         return self.tau0_scale(self.tau0) * (
             1
-            - (self.k * T / (self.mu(T) * self.b ** 3.0 * self.g0_scale(self.g0)))
+            - (self.k * T / (self.mu(T) * self.b**3.0 * self.g0_scale(self.g0)))
             ** (1 / self.q_scale(self.q))
         ) ** (1 / self.p_scale(self.p))
 
@@ -277,7 +277,7 @@ class KMRateSensitivityScaling(TemperatureParameter):
           torch.tensor:       value at the given temperatures
         """
         return torch.clip(
-            -self.mu(T) * self.b ** 3.0 / (self.k * T * self.A_scale(self.A)),
+            -self.mu(T) * self.b**3.0 / (self.k * T * self.A_scale(self.A)),
             min=1,
             max=self.cutoff,
         )

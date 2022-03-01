@@ -1,4 +1,4 @@
-name: tests
+name: Check code formatting
 on: [push, pull_request]
 jobs:
       check-formatting:

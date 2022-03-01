@@ -8,6 +8,6 @@ netCDF4
 pandas
 xarray[io]
 xarray
-black
+black==22.1.0
 nose
 pylint==2.12.2
