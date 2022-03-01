@@ -11,4 +11,6 @@ matplotlib
 scikit-optimize
 netCDF4
 pandas
+xarray[io]
 xarray
+sphinx-rtd-theme
