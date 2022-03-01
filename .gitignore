@@ -16,3 +16,5 @@ nohup.out
 examples/a617
 doc/sphinx/_build
 .DS_Store
+build/
+dist/
