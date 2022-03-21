@@ -2,3 +2,16 @@ sphinx
 sphinxcontrib-napoleon
 sphinxcontrib-bibtex
 sphinx-rtd-theme
+torch
+numpy
+scipy
+pyro-ppl
+tqdm
+matplotlib
+netCDF4
+pandas
+xarray[io]
+xarray
+black==22.1.0
+nose
+pylint==2.12.2
