@@ -1,5 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation
-
+pylint: disable=abstract-method, no-self-use, useless-super-delegation
 """
   Modules defining isotropic and kinematic hardening models.
 
@@ -12,30 +11,24 @@
      :py:class:`pyoptmat.flowrules.FlowRule`
   4. The derivative of that map with respect to the internal variables
 """
-
 import torch
 from torch import nn
-
 
 class HardeningModel(nn.Module):
     """
     Superclass for all hardening models.  Right now this does nothing, but
     could be a basis for future expansion.
     """
-
     def __init__(self):
         super().__init__()
-
 
 class IsotropicHardeningModel(HardeningModel):
     """
     Superclass for all isotropic hardening models.  Right now this
     does nothing but is here in case we need it in the future.
     """
-
     def __init__(self):
         super().__init__()
-
 
 class VoceIsotropicHardeningModel(IsotropicHardeningModel):
     """
@@ -51,7 +44,6 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
       R (|TP|): saturated increase/decrease in flow stress
       d (|TP|): parameter controlling the rate of saturation
     """
-
     def __init__(self, R, d):
         super().__init__()
         self.R = R
@@ -162,7 +154,6 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
             torch.unsqueeze(self.d(T) * (self.R(T) - h[:, 0]) * torch.sign(ep), 1), 1
         )
 
-
 class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
     """
     Reparameterized Voce isotropic hardening, defined by
@@ -180,7 +171,6 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
       tau (|TP|):   saturated increase/decrease in flow stress
       theta (|TP|): initial hardening rate
     """
-
     def __init__(self, tau, theta):
         super().__init__()
         self.tau = tau
@@ -296,7 +286,6 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
             1,
         )
 
-
 class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
     # pylint: disable=line-too-long
     """
@@ -315,7 +304,6 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
       r1 (|TP|):        static recovery prefactor
       r2 (|TP|):        static recovery exponent
     """
-
     def __init__(self, tau, theta, R0, r1, r2):
         super().__init__()
         self.tau = tau
@@ -429,13 +417,11 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
 
 class YaguchiHardeningModel(IsotropicHardeningModel):
     """
-    Voce isotropic hardening, defined by
+    YaguchiHardeningModel isotropic hardening, defined by
     .. math::
       \\sigma_{iso} = h
-      \\dot{h} = b (\\sigma_{sat} - h) \\left|\\dot{\\varepsilon}_{in}\\right|
-      
+      \\dot{h} = b (\\sigma_{sat} - h) \\left|\\dot{\\varepsilon}_{in}\\right|  
       \\sigma_{sat} = A + B * log_{10}(|ep|)
-      
       \\b = b_{h} if \\sigma_{sat} >= sigma_{iso} else b = b_{r} 
     Args:
       b_{r} (|TP|): parameter controlling the rate of saturation
@@ -443,7 +429,6 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
       A (|TP|): material constant
       B (|TP|): material constant
     """
-
     def __init__(self, br, bh, A, B):
         super().__init__()
         self.br = br
@@ -537,8 +522,7 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
           torch.tensor:       derivative with respect to the inelastic rate
         """
         l10 = torch.log(torch.tensor(10.0))
-        return (self.b(h, ep, T) / l10 * (self.B(T) + 
-                (self.A(T) - h[:,0])*l10 + 
+        return (self.b(h, ep, T) / l10 * (self.B(T) + (self.A(T) - h[:,0])*l10 + 
                 self.B(T)*torch.log(torch.abs(ep))) * torch.sign(ep))[:,None,None]
     
     def sigma_sat(self, ep, T):
@@ -563,7 +547,6 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
                 torch.tensor:       current values of b
         """
         sigma_sat = self.sigma_sat(ep, T)
-
         b = torch.zeros_like(ep)
         b[sigma_sat >= h[:,0]] = self.bh(T)
         b[sigma_sat < h[:,0]] = self.br(T)
@@ -575,16 +558,13 @@ class KinematicHardeningModel(HardeningModel):
 
     Right now this does nothing, but it's available for future expansion
     """
-
     def __init__(self):
         super().__init__()
-
 
 class NoKinematicHardeningModel(KinematicHardeningModel):
     """
     The simplest kinematic hardening model: a constant value of 0
     """
-
     def __init__(self):
         super().__init__()
 
@@ -674,7 +654,6 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
         """
         return torch.empty(h.shape[0], 0, 1, device=h.device)
 
-
 class FAKinematicHardeningModel(KinematicHardeningModel):
     """
     Frederick and Armstrong hardening, as defined in :cite:`frederick2007mathematical`
@@ -691,7 +670,6 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
       C (|TP|): kinematic hardening parameter
       g (|TP|): recovery parameter
     """
-
     def __init__(self, C, g):
         super().__init__()
         self.C = C
@@ -802,7 +780,6 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
             1,
         )
 
-
 class ChabocheHardeningModel(KinematicHardeningModel):
     # pylint: disable=line-too-long
     """
@@ -827,7 +804,6 @@ class ChabocheHardeningModel(KinematicHardeningModel):
       C (list of |TP|): *vector* of hardening coefficients
       g (list of |TP|): *vector* of recovery coefficients
     """
-
     def __init__(self, C, g):
         super().__init__()
         self.C = C
@@ -942,7 +918,6 @@ class ChabocheHardeningModel(KinematicHardeningModel):
             -1,
         ).reshape(h.shape + (1,))
 
-
 class ChabocheHardeningModelRecovery(KinematicHardeningModel):
     # pylint: disable=line-too-long
     """
@@ -973,7 +948,6 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
       b (list of |TP|): *vector* of static recovery prefactors
       r (list of |TP|): *vector* of static recovery exponents
     """
-
     def __init__(self, C, g, b, r):
         super().__init__()
         self.C = C
