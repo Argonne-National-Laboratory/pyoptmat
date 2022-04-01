@@ -1,4 +1,5 @@
-pylint: disable=abstract-method, no-self-use, useless-super-delegation
+#pylint: disable=abstract-method, no-self-use, useless-super-delegation
+#pylint: disable=trailing-whitespace, missing-final-newline, too-many-lines
 """
   Modules defining isotropic and kinematic hardening models.
 
