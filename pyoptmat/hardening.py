@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation
+# pylint: disable=abstract-method, no-self-use, useless-super-delegation, trailing-whitespace, missing-final-newline, too-many-lines
 
 """
   Modules defining isotropic and kinematic hardening models.
@@ -426,6 +426,154 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
             ),
             1,
         )
+
+
+class YaguchiHardeningModel(IsotropicHardeningModel):
+    """
+    YaguchiHardeningModel isotropic hardening, defined by
+    .. math::
+      \\sigma_{iso} = h
+      \\dot{h} = b (\\sigma_{sat} - h) \\left|\\dot{\\varepsilon}_{in}\\right|
+      \\sigma_{sat} = A + B * log_{10}(|ep|)
+      \\b = b_{h} if \\sigma_{sat} >= sigma_{iso} else b = b_{r}
+    Args:
+      b_{r} (|TP|): parameter controlling the rate of saturation
+      b_{h} (|TP|): parameter controlling the rate of saturation
+      A (|TP|): material constant
+      B (|TP|): material constant
+    """
+
+    def __init__(self, br, bh, A, B):
+        super().__init__()
+        self.br = br
+        self.bh = bh
+        self.A = A
+        self.B = B
+
+    def value(self, h):
+        """
+        Map from the vector of internal variables to the isotropic hardening
+        value
+        Args:
+          h (torch.tensor):   the vector of internal variables for this model
+        Returns:
+          torch.tensor:       the isotropic hardening value
+        """
+        return h[:, 0]
+
+    def dvalue(self, h):
+        """
+        Derivative of the map with respect to the internal variables
+        Args:
+          h (torch.tensor):   the vector of internal variables for this model
+        Returns:
+          torch.tensor:       the derivative of the isotropic hardening value
+                              with respect to the internal variables
+        """
+        return torch.ones((h.shape[0], 1), device=h.device)
+
+    @property
+    def nhist(self):
+        """
+        The number of internal variables: here just 1
+        """
+        return 1
+
+    def history_rate(self, s, h, t, ep, T):
+        """
+        The rate evolving the internal variables
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+        Returns:
+          torch.tensor:       internal variable rate
+        """
+        return torch.unsqueeze(
+            self.b(h, ep, T) * (self.sigma_sat(ep, T) - h[:, 0]) * torch.abs(ep), 1
+        )
+
+    def dhistory_rate_dstress(self, s, h, t, ep, T):
+        """
+        The derivative of this history rate with respect to the stress
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+        Returns:
+          torch.tensor:       derivative with respect to stress
+        """
+        return torch.zeros_like(h)
+
+    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+        """
+        The derivative of the history rate with respect to the internal variables
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+        Returns:
+          torch.tensor:       derivative with respect to history
+        """
+        return (-self.b(h, ep, T) * torch.abs(ep))[:, None, None]
+
+    def dhistory_rate_derate(self, s, h, t, ep, T):
+        """
+        The derivative of the history rate with respect to the inelastic
+        strain rate
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+        Returns:
+          torch.tensor:       derivative with respect to the inelastic rate
+        """
+        l10 = torch.log(torch.tensor(10.0))
+        return (
+            self.b(h, ep, T)
+            / l10
+            * (
+                self.B(T)
+                + (self.A(T) - h[:, 0]) * l10
+                + self.B(T) * torch.log(torch.abs(ep))
+            )
+            * torch.sign(ep)
+        )[:, None, None]
+
+    def sigma_sat(self, ep, T):
+        """
+        Calculate the current value of sigma_sat
+        Args:
+            ep (torch.tensor):  inelastic strain rate
+            T (torch.tensor):   the temperature
+        Returns:
+            torch.tensor:       current saturation strength
+        """
+        return self.A(T) + self.B(T) * torch.log10(torch.abs(ep))
+
+    def b(self, h, ep, T):
+        """
+        Calculate the current value of b
+        Args:
+            h (torch.tensor):   current isotropic hardening value
+            ep (torch.tensor):  current viscoplastic strain rate
+            T (torch.tensor):   the temperature
+        Returns:
+            torch.tensor:       current values of b
+        """
+        sigma_sat = self.sigma_sat(ep, T)
+        b = torch.zeros_like(ep)
+        b[sigma_sat >= h[:, 0]] = self.bh(T)
+        b[sigma_sat < h[:, 0]] = self.br(T)
+        return b
 
 
 class KinematicHardeningModel(HardeningModel):

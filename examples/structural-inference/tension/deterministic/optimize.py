@@ -43,7 +43,7 @@ device = torch.device(dev)
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
     """
-        Maker with the Young's modulus fixed
+    Maker with the Young's modulus fixed
     """
     return make_model(torch.tensor(0.5), n, eta, s0, R, d, device=device, **kwargs).to(
         device
