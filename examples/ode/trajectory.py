@@ -81,7 +81,7 @@ def model_act(times):
             torch.stack(
                 (
                     v * torch.cos(a) * times,
-                    v * torch.sin(a) * times - 0.5 * g * times ** 2.0,
+                    v * torch.sin(a) * times - 0.5 * g * times**2.0,
                 )
             ).T,
             eps_act,
