@@ -15,7 +15,7 @@
 
 import torch
 from torch import nn
-
+from pyoptmat import utility
 
 class HardeningModel(nn.Module):
     """
@@ -430,7 +430,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
 
 class YaguchiHardeningModel(IsotropicHardeningModel):
     """
-    YaguchiHardeningModel isotropic hardening, defined by
+    Voce isotropic hardening, defined by
     .. math::
       \\sigma_{iso} = h
       \\dot{h} = b (\\sigma_{sat} - h) \\left|\\dot{\\varepsilon}_{in}\\right|
@@ -536,8 +536,17 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
         """
+        # l10 = torch.log(torch.tensor(10.0))
+        # return (self.b(h, ep, T) / l10 * (self.B(T) +
+        # (self.A(T) - h[:,0])*l10 +
+        # self.B(T)*torch.log(torch.abs(ep))) * torch.sign(ep))[:,None,None]
         l10 = torch.log(torch.tensor(10.0))
-        return (
+        sigma_sign = (
+            torch.eq(
+                self.sigma_sat(ep, T), torch.zeros_like(self.sigma_sat(ep, T))
+            ).int()
+        )[:, None, None]
+        solution_1 = (
             self.b(h, ep, T)
             / l10
             * (
@@ -547,6 +556,9 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
             )
             * torch.sign(ep)
         )[:, None, None]
+        solution_2 = ((-self.b(h, ep, T) * h[:, 0]) * torch.sign(ep))[:, None, None]
+
+        return sigma_sign * solution_2 + (1.0 - sigma_sign) * solution_1
 
     def sigma_sat(self, ep, T):
         """
@@ -557,7 +569,7 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
         Returns:
             torch.tensor:       current saturation strength
         """
-        return self.A(T) + self.B(T) * torch.log10(torch.abs(ep))
+        return utility.macaulay(self.A(T) + self.B(T) * torch.log10(torch.abs(ep)))
 
     def b(self, h, ep, T):
         """
@@ -570,10 +582,11 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
             torch.tensor:       current values of b
         """
         sigma_sat = self.sigma_sat(ep, T)
-        b = torch.zeros_like(ep)
-        b[sigma_sat >= h[:, 0]] = self.bh(T)
-        b[sigma_sat < h[:, 0]] = self.br(T)
-        return b
+        # b = torch.zeros_like(ep)
+        # b[sigma_sat >= h[:,0]] = self.bh(T)
+        # b[sigma_sat < h[:,0]] = self.br(T)
+        heaviside = torch.ge(sigma_sat, h[:, 0]).int()
+        return heaviside * self.bh(T) + (1.0 - heaviside) * self.br(T)
 
 
 class KinematicHardeningModel(HardeningModel):
