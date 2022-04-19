@@ -93,7 +93,6 @@ class TestPiecewiseScaling(unittest.TestCase):
 
         self.assertTrue(np.allclose(y1, y2))
 
-
 class TestShearModulusScaling(unittest.TestCase):
     def setUp(self):
         self.mu = temperature.PolynomialScaling(

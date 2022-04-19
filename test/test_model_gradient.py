@@ -88,7 +88,7 @@ class CommonGradient:
         # Skipping the first step helps with noise issues
         for i, (p1, p2) in enumerate(zip(grad[1:], ngrad[1:])):
             print(i, p1, p2)
-            self.assertTrue(np.allclose(p1, p2, rtol=1e-4, atol=1e-8))
+            self.assertTrue(np.allclose(p1, p2, rtol=1e-4, atol=1e-7))
 
 
 class TestPerfectViscoplasticity(unittest.TestCase, CommonGradient):
