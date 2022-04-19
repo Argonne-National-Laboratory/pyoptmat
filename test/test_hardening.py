@@ -37,6 +37,9 @@ class HardeningBase:
             self.h,
         )
 
+        print(exact.shape)
+        print(numer.shape)
+
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-3))
 
     def test_derate(self):
@@ -114,6 +117,76 @@ class TestFAKinematicHardening(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+
+
+class TestFAKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
+    def setUp(self):
+        self.C = torch.tensor(100.0)
+        self.g = torch.tensor(1.2)
+        self.b = torch.tensor(5.0e-4)
+        self.r = torch.tensor(3.0)
+        self.model = hardening.FAKinematicHardeningModel(
+            CP(self.C), CP(self.g), CP(self.b), CP(self.r)
+        )
+
+        self.nbatch = 10
+
+        self.s = torch.linspace(90, 100, self.nbatch)
+        self.h = torch.reshape(torch.linspace(50, 110, self.nbatch), (self.nbatch, 1))
+        self.t = torch.ones(self.nbatch)
+        self.ep = torch.linspace(0.1, 0.2, self.nbatch)
+        self.T = torch.zeros_like(self.t)
+
+
+class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
+    def setUp(self):
+        self.C1 = torch.tensor(100.0)
+        self.g1 = torch.tensor(1.2)
+        self.model1 = hardening.FAKinematicHardeningModel(CP(self.C1), CP(self.g1))
+
+        self.C2 = torch.tensor(12.0)
+        self.g2 = torch.tensor(1.5)
+        self.model2 = hardening.FAKinematicHardeningModel(CP(self.C2), CP(self.g2))
+
+        self.model = hardening.SuperimposedKinematicHardening(
+            [self.model1, self.model2]
+        )
+
+        self.nbatch = 10
+
+        self.s = torch.linspace(90, 100, self.nbatch)
+        self.h = torch.reshape(
+            torch.linspace(50, 110, 2 * self.nbatch), (self.nbatch, 2)
+        )
+        self.t = torch.ones(self.nbatch)
+        self.ep = torch.linspace(0.1, 0.2, self.nbatch)
+        self.T = torch.zeros_like(self.t)
+
+    def test_correct_sum(self):
+        should = torch.sum(self.h, 1)
+        model = self.model.value(self.h)
+
+        self.assertTrue(np.allclose(should.numpy(), model.numpy()))
+
+    def test_correct_rate(self):
+        rates = self.model.history_rate(self.s, self.h, self.t, self.ep, self.T)
+
+        self.assertTrue(
+            np.allclose(
+                self.model1.history_rate(
+                    self.s, self.h[:, :1], self.t, self.ep, self.T
+                ),
+                rates[:, :1],
+            )
+        )
+        self.assertTrue(
+            np.allclose(
+                self.model2.history_rate(
+                    self.s, self.h[:, 1:2], self.t, self.ep, self.T
+                ),
+                rates[:, 1:2],
+            )
+        )
 
 
 class TestChabocheKinematicHardening(unittest.TestCase, HardeningBase):

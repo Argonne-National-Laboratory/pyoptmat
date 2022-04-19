@@ -149,7 +149,7 @@ class TestMTSScaling(unittest.TestCase):
         v1 = obj.value(Ts)
 
         v2 = tau0 * (
-            1.0 - (self.k * Ts / (self.mu(Ts) * self.b ** 3.0 * g0)) ** (1 / q)
+            1.0 - (self.k * Ts / (self.mu(Ts) * self.b**3.0 * g0)) ** (1 / q)
         ) ** (1 / p)
 
         self.assertTrue(np.allclose(v1, v2))
@@ -169,7 +169,7 @@ class TestMTSScaling(unittest.TestCase):
         v1 = obj.value(Ts)
 
         v2 = tau0 * (
-            1.0 - (self.k * Ts / (self.mu(Ts) * self.b ** 3.0 * g0)) ** (1 / q)
+            1.0 - (self.k * Ts / (self.mu(Ts) * self.b**3.0 * g0)) ** (1 / q)
         ) ** (1 / p)
 
         self.assertTrue(np.allclose(v1, v2))
@@ -191,7 +191,7 @@ class TestKMRateSensitivityScaling(unittest.TestCase):
 
         mu_values = np.array([mu.value(T).numpy() for T in Ts])
 
-        v2 = -mu_values * b ** 3.0 / (k * Ts * A)
+        v2 = -mu_values * b**3.0 / (k * Ts * A)
 
         v2 = np.minimum(v2, 20.0)
 
@@ -212,7 +212,7 @@ class TestKMRateSensitivityScaling(unittest.TestCase):
 
         mu_values = np.array([mu.value(T).numpy() for T in Ts])
 
-        v2 = -mu_values * b ** 3.0 / (k * Ts * A.numpy())
+        v2 = -mu_values * b**3.0 / (k * Ts * A.numpy())
         v2 = np.minimum(v2, 20.0)
 
         self.assertTrue(np.allclose(v1.numpy(), v2))
@@ -238,7 +238,7 @@ class TestKMViscosityScaling(unittest.TestCase):
         v2 = (
             np.exp(B)
             * mu_values
-            * eps0 ** (k * Ts.numpy() * A / (mu_values * b ** 3.0))
+            * eps0 ** (k * Ts.numpy() * A / (mu_values * b**3.0))
         )
 
         self.assertTrue(np.allclose(v1, v2))
@@ -262,6 +262,6 @@ class TestKMViscosityScaling(unittest.TestCase):
         v2 = (
             np.exp(B.numpy())
             * mu_values
-            * eps0 ** (k * Ts.numpy() * A.numpy() / (mu_values * b ** 3.0))
+            * eps0 ** (k * Ts.numpy() * A.numpy() / (mu_values * b**3.0))
         )
         self.assertTrue(np.allclose(v1, v2))

@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation
+# pylint: disable=abstract-method, no-self-use, useless-super-delegation, too-many-lines, duplicate-code
 
 """
   Modules defining isotropic and kinematic hardening models.
@@ -13,8 +13,12 @@
   4. The derivative of that map with respect to the internal variables
 """
 
+import numpy as np
+
 import torch
 from torch import nn
+
+from pyoptmat import temperature
 
 
 class HardeningModel(nn.Module):
@@ -535,6 +539,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
 
 
 class FAKinematicHardeningModel(KinematicHardeningModel):
+    # pylint: disable=line-too-long
     """
     Frederick and Armstrong hardening, as defined in :cite:`frederick2007mathematical`
 
@@ -544,17 +549,29 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
 
     .. math::
 
-      \\dot{x}=\\frac{2}{3}C\\dot{\\varepsilon}_{in}-gx\\left|\\dot{\\varepsilon}_{in}\\right|
+      \\dot{x}=\\frac{2}{3}C\\dot{\\varepsilon}_{in}-gx\\left|\\dot{\\varepsilon}_{in}\\right| - b\\left| h \\right|^{r-1} h
+
+    where the static recovery defaults to zero
 
     Args:
-      C (|TP|): kinematic hardening parameter
-      g (|TP|): recovery parameter
+      C (|TP|):     kinematic hardening parameter
+      g (|TP|):     recovery parameter
+      b (optional): static recovery prefactor
+      r (optional): static recovery exponent
     """
 
-    def __init__(self, C, g):
+    def __init__(self, C, g, b=None, r=None):
         super().__init__()
         self.C = C
         self.g = g
+
+        if b is None:
+            b = temperature.ConstantParameter(torch.zeros(self.C.shape))
+        if r is None:
+            r = temperature.ConstantParameter(torch.ones(self.C.shape))
+
+        self.b = b
+        self.r = r
 
     def value(self, h):
         """
@@ -604,7 +621,10 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           torch.tensor:       internal variable rate
         """
         return torch.unsqueeze(
-            2.0 / 3 * self.C(T) * ep - self.g(T) * h[:, 0] * torch.abs(ep), 1
+            self.C(T) * ep
+            - self.g(T) * h[:, 0] * torch.abs(ep)
+            - self.b(T) * torch.abs(h[:, 0]) ** (self.r(T) - 1.0) * h[:, 0],
+            1,
         )
 
     def dhistory_rate_dstress(self, s, h, t, ep, T):
@@ -637,7 +657,12 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        return torch.unsqueeze(-self.g(T)[..., None] * torch.abs(ep)[:, None], 1)
+        return (
+            torch.unsqueeze(-self.g(T)[..., None] * torch.abs(ep)[:, None], 1)
+            - (self.b(T) * self.r(T) * torch.abs(h)[:, 0] ** (self.r(T) - 1.0))[
+                :, None, None
+            ]
+        )
 
     def dhistory_rate_derate(self, s, h, t, ep, T):
         """
@@ -655,9 +680,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           torch.tensor:       derivative with respect to the inelastic rate
         """
         return torch.unsqueeze(
-            torch.unsqueeze(
-                2.0 / 3 * self.C(T) - self.g(T) * h[:, 0] * torch.sign(ep), 1
-            ),
+            torch.unsqueeze(self.C(T) - self.g(T) * h[:, 0] * torch.sign(ep), 1),
             1,
         )
 
@@ -955,3 +978,146 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
             - self.g(T)[None, :] * h * torch.sign(ep)[:, None],
             -1,
         ).reshape(h.shape + (1,))
+
+
+class SuperimposedKinematicHardening(KinematicHardeningModel):
+    # pylint: disable=line-too-long
+    """
+    Sum the contributions of several kinematic hardening models
+
+    Args:
+      models (list of models):   list of KinematicHardening models
+    """
+
+    def __init__(self, models):
+        super().__init__()
+        self.models = models
+
+        self.nmodels = len(self.models)
+        self.nhist_per = [m.nhist for m in self.models]
+        self.offsets = [0] + list(np.cumsum(self.nhist_per))[:-1]
+
+    def value(self, h):
+        """
+        Map from the vector of internal variables to the kinematic hardening
+        value
+
+        Args:
+          h (torch.tensor):   the vector of internal variables for this model
+
+        Returns:
+          torch.tensor:       the kinematic hardening value
+        """
+        v = torch.zeros(h.shape[0], device=h.device)
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            v += model.value(h[:, o : o + n])
+        return v
+
+    def dvalue(self, h):
+        """
+        Derivative of the map with respect to the internal variables
+
+        Args:
+          h (torch.tensor):   the vector of internal variables for this model
+
+        Returns:
+          torch.tensor:       the derivative of the kinematic hardening value
+                              with respect to the internal variables
+        """
+        dv = torch.zeros((h.shape[0], self.nhist), device=h.device)
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dv[:, o : o + n] = model.dvalue(h[:, o : o + n])
+
+        return dv
+
+    @property
+    def nhist(self):
+        """
+        Number of history variables
+        """
+        return sum(self.nhist_per)
+
+    def history_rate(self, s, h, t, ep, T):
+        """
+        The rate evolving the internal variables
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+
+        Returns:
+          torch.tensor:       internal variable rate
+        """
+        hr = torch.zeros_like(h)
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            hr[:, o : o + n] = model.history_rate(s, h[:, o : o + n], t, ep, T)
+
+        return hr
+
+    def dhistory_rate_dstress(self, s, h, t, ep, T):
+        """
+        The derivative of this history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+
+        Returns:
+          torch.tensor:       derivative with respect to stress
+        """
+        dhr = torch.zeros_like(h)
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dhr[:, o : o + n] = model.dhistory_rate_dstress(
+                s, h[:, o : o + n], t, ep, T
+            )
+
+        return dhr
+
+    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+        """
+        The derivative of the history rate with respect to the internal variables
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+
+        Returns:
+          torch.tensor:       derivative with respect to history
+        """
+        dhr = torch.zeros(h.shape[0], self.nhist, self.nhist)
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dhr[:, o : o + n, o : o + n] = model.dhistory_rate_dhistory(
+                s, h[:, o : o + n], t, ep, T
+            )
+
+        return dhr
+
+    def dhistory_rate_derate(self, s, h, t, ep, T):
+        """
+        The derivative of the history rate with respect to the inelastic
+        strain rate
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+
+        Returns:
+          torch.tensor:       derivative with respect to the inelastic rate
+        """
+        dhr = torch.zeros(h.shape + (1,))
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dhr[:, o : o + n] = model.dhistory_rate_derate(s, h[:, o : o + n], t, ep, T)
+
+        return dhr

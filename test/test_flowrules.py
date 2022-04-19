@@ -129,6 +129,63 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
         self.assertTrue(np.allclose(i1, i2, rtol=1.0e-4))
 
 
+class TestSuperimposedFlowRate(unittest.TestCase, CommonFlowRule):
+    def setUp(self):
+        self.n1 = torch.tensor(5.2)
+        self.eta1 = torch.tensor(110.0)
+        self.s01 = torch.tensor(11.0)
+
+        self.nbatch = 10
+
+        self.R1 = torch.tensor(101.0)
+        self.d1 = torch.tensor(1.3)
+        self.iso1 = hardening.VoceIsotropicHardeningModel(CP(self.R1), CP(self.d1))
+
+        self.C1 = torch.tensor(1200.0)
+        self.g1 = torch.tensor(10.1)
+        self.kin1 = hardening.FAKinematicHardeningModel(CP(self.C1), CP(self.g1))
+
+        self.model1 = flowrules.IsoKinViscoplasticity(
+            CP(self.n1), CP(self.eta1), CP(self.s01), self.iso1, self.kin1
+        )
+
+        self.n2 = torch.tensor(4.1)
+        self.eta2 = torch.tensor(100.0)
+        self.s02 = torch.tensor(1.0)
+
+        self.R2 = torch.tensor(250.0)
+        self.d2 = torch.tensor(20.1)
+        self.iso2 = hardening.VoceIsotropicHardeningModel(CP(self.R2), CP(self.d2))
+
+        self.C2 = torch.tensor(120.0)
+        self.g2 = torch.tensor(11.1)
+        self.kin2 = hardening.FAKinematicHardeningModel(CP(self.C2), CP(self.g2))
+
+        self.model2 = flowrules.IsoKinViscoplasticity(
+            CP(self.n2), CP(self.eta2), CP(self.s02), self.iso2, self.kin2
+        )
+
+        self.model = flowrules.SuperimposedFlowRule([self.model1, self.model2])
+
+        self.s = torch.linspace(150, 200, self.nbatch)
+        self.h = torch.reshape(
+            torch.tensor(
+                np.array(
+                    [
+                        np.linspace(51, 110, self.nbatch * 2),
+                        np.linspace(-100, 210, self.nbatch * 2)[::-1],
+                    ]
+                )
+            ).T,
+            (self.nbatch, 4),
+        )
+
+        self.t = torch.ones(self.nbatch)
+        self.T = torch.zeros_like(self.t)
+
+        self.skip = False
+
+
 class TestIsoKinChabocheViscoplasticity(unittest.TestCase, CommonFlowRule):
     def setUp(self):
         self.n = torch.tensor(5.2)
