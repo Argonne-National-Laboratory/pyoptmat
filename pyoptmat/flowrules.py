@@ -22,6 +22,8 @@
   themselves.  The "cross" derivatives are defined with separate methods.
 """
 
+import numpy as np
+
 import torch
 from torch import nn
 
@@ -74,6 +76,131 @@ class FlowRule(nn.Module):
           torch.tensor:       derivative of flow rate with respect to the stress
         """
         return torch.zeros(h.shape + s.shape[1:])
+
+
+class SuperimposedFlowRule(FlowRule):
+    """
+    Superimpose multiple flow rules with
+
+    .. math::
+
+        \\dot{\\varepsilon}_{in}=\\sum_i \\dot{\\varepsilon}_{in,i}
+
+    and the history the union of all the individual models
+
+    Args:
+        models (list):      list of the individual models
+
+    """
+
+    def __init__(self, models):
+        super().__init__()
+        self.models = models
+
+        self.nmodels = len(self.models)
+        self.nhist_per = [m.nhist for m in self.models]
+        self.offsets = [0] + list(np.cumsum(self.nhist_per))[:-1]
+
+    @property
+    def nhist(self):
+        """
+        The number of internal variables
+        """
+        return sum(self.nhist_per)
+
+    def flow_rate(self, s, h, t, T):
+        """
+        The uniaxial flow rate itself and the derivative
+        with respect to stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+
+        Returns:
+          tuple(torch.tensor, torch.tensor):    the flow rate and the derivative
+                                                of the flow rate with
+                                                respect to stress
+        """
+        rate = torch.zeros_like(s)
+        drate = torch.zeros_like(s)
+
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            ratei, dratei = model.flow_rate(s, h[:, o : o + n], t, T)
+            rate += ratei
+            drate += dratei
+
+        return (rate, drate)
+
+    def dflow_dhist(self, s, h, t, T):
+        """
+        The derivative of the flow rate with respect to the internal variables
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        res = torch.zeros(s.shape[:1] + (1,) + h.shape[1:], device=h.device)
+
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dratei = model.dflow_dhist(s, h[:, o : o + n], t, T)
+            res[:, :, o : o + n] = dratei
+
+        return res
+
+    def history_rate(self, s, h, t, T):
+        """
+        The history rate and the derivative of the history rate with respect
+        to the current history
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+
+        Returns:
+          tuple(torch.tensor, torch.tensor):    the history rate and the
+                                                derivative of the history rate
+                                                with respect to history
+        """
+        rate = torch.zeros_like(h)
+        drate = torch.zeros(h.shape + h.shape[-1:], device=h.device)
+
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            ratei, dratei = model.history_rate(s, h[:, o : o + n], t, T)
+            rate[:, o : o + n] = ratei
+            drate[:, o : o + n, o : o + n] = dratei
+
+        return (rate, drate)
+
+    def dhist_dstress(self, s, h, t, T):
+        """
+        The derivative of the history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        res = torch.zeros(h.shape + s.shape[1:], device=h.device)
+
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dratei = model.dhist_dstress(s, h[:, o : o + n], t, T)
+            res[:, o : o + n] = dratei
+
+        return res
 
 
 class PerfectViscoplasticity(FlowRule):
