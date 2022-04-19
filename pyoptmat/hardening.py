@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation
+# pylint: disable=abstract-method, no-self-use, useless-super-delegation, too-many-lines, duplicate-code
 
 """
   Modules defining isotropic and kinematic hardening models.
@@ -539,6 +539,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
 
 
 class FAKinematicHardeningModel(KinematicHardeningModel):
+    # pylint: disable=line-too-long
     """
     Frederick and Armstrong hardening, as defined in :cite:`frederick2007mathematical`
 
