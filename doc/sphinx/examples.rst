@@ -73,4 +73,12 @@ data to train constitutive models.
 
 .. literalinclude:: /../../examples/structural-material-models/stress_control_creep.py
 
+AD versus adjoint comparison
+----------------------------
 
+`examples/performance/ad_vs_adjoint.py` compares the efficiency of computing
+the parameter gradients using the AD versus the adjoint method.  
+It demonstrates that the adjoint method is always better for practical problems:
+it is both faster and requires far less memory on the device.
+
+.. literalinclude:: /../../examples/performance/ad_vs_adjoint.py
