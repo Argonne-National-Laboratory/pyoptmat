@@ -16,6 +16,18 @@ available.
 
 .. literalinclude:: /../../examples/structural-inference/tension/maker.py
 
+The example in `examples/structural-inference/creep-fatigue/deterministic`
+repeats a similar example using synthetic cyclic (creep-fatigue) test
+data and a :py:class:`pyoptmat.hardening.ChabocheHardeningModel` viscoplastic material model.
+
+Tutorial example for cyclic load
+--------------------------------
+
+`examples/structural-inference/creep-fatigue/statistical` basically
+repeats the :doc:`tutorial <structural_tutorial>`, but using
+synthetic cyclic test data a :py:class:`pyoptmat.hardening.ChabocheHardeningModel` viscoplastic model capable
+of capturing kinematic hardening behavior.
+
 Implicit versus explicit integration
 ------------------------------------
 
