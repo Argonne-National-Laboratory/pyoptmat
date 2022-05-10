@@ -62,9 +62,9 @@ if __name__ == "__main__":
 
     # 2) Setup names for each parameter and the initial conditions
     names = ["n", "eta", "s0", "R", "d", "C", "g"]
-    ics = [torch.tensor(ra.uniform(0, 1), device=device) for i in range(5)] + [
-        torch.tensor(ra.uniform(0, 1, size=(3,)), device=device),
-        torch.tensor(ra.uniform(0, 1, size=(3,)), device=device),
+    ics = [torch.tensor(ra.uniform(0.25, 0.75), device=device) for i in range(5)] + [
+        torch.tensor(ra.uniform(0.25, 0.75, size=(3,)), device=device),
+        torch.tensor(ra.uniform(0.25, 0.75, size=(3,)), device=device),
     ]
 
     print("Initial parameter values:")
