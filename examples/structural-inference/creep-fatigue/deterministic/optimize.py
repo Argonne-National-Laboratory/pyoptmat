@@ -53,8 +53,8 @@ def make(n, eta, s0, R, d, C, g, **kwargs):
 if __name__ == "__main__":
     # 1) Load the data for the variance of interest,
     #    cut down to some number of samples, and flatten
-    scale = 0.01
-    nsamples = 10  # 10 is the full number of samples in the default dataset
+    scale = 0.15
+    nsamples = 10  # 20 is the full number of samples in the default dataset
     input_data = xr.open_dataset(os.path.join("..", "scale-%3.2f.nc" % scale))
     data, results, cycles, types, control = load_subset_data(
         input_data, nsamples, device=device
@@ -62,9 +62,9 @@ if __name__ == "__main__":
 
     # 2) Setup names for each parameter and the initial conditions
     names = ["n", "eta", "s0", "R", "d", "C", "g"]
-    ics = [torch.tensor(ra.uniform(0, 1), device=device) for i in range(5)] + [
-        torch.tensor(ra.uniform(0, 1, size=(3,)), device=device),
-        torch.tensor(ra.uniform(0, 1, size=(3,)), device=device),
+    ics = [torch.tensor(ra.uniform(0.25, 0.75), device=device) for i in range(5)] + [
+        torch.tensor(ra.uniform(0.25, 0.75, size=(3,)), device=device),
+        torch.tensor(ra.uniform(0.25, 0.75, size=(3,)), device=device),
     ]
 
     print("Initial parameter values:")
@@ -76,8 +76,9 @@ if __name__ == "__main__":
     model = optimize.DeterministicModel(make, names, ics)
 
     # 4) Setup the optimizer
-    niter = 100
-    optim = torch.optim.Adam(model.parameters(), lr=1.0e-3)
+    niter = 200
+    lr = 1.0e-2
+    optim = torch.optim.Adam(model.parameters(), lr=lr)
 
     # 5) Setup the objective function
     loss = torch.nn.MSELoss(reduction="sum")
