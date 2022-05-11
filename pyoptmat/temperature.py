@@ -87,6 +87,10 @@ class ConstantParameter(TemperatureParameter):
         self.pvalue = pvalue
         self.p_scale = p_scale
 
+    @property
+    def device(self):
+        return self.pvalue.device
+
     def value(self, T):
         """
         Pretty simple, just return the value!
@@ -131,6 +135,10 @@ class ShearModulusScaling(TemperatureParameter):
         self.A = A
         self.mu = mu
         self.A_scale = A_scale
+
+    @property
+    def device(self):
+        return self.A.device
 
     def value(self, T):
         """
@@ -210,6 +218,10 @@ class MTSScaling(TemperatureParameter):
         self.q_scale = q_scale
         self.p_scale = p_scale
 
+    @property
+    def device(self):
+        return self.tau0.device
+
     def value(self, T):
         """
         Return the function value
@@ -265,6 +277,10 @@ class KMRateSensitivityScaling(TemperatureParameter):
         self.cutoff = cutoff
 
         self.A_scale = A_scale
+
+    @property
+    def device(self):
+        return self.A.device
 
     def value(self, T):
         """
@@ -347,6 +363,10 @@ class KMViscosityScaling(TemperatureParameter):
         self.n = KMRateSensitivityScaling(
             self.A, self.mu, self.b, self.k, A_scale=self.A_scale, cutoff=1000
         )
+
+    @property
+    def device(self):
+        return self.A.device
 
     def value(self, T):
         """
@@ -437,6 +457,10 @@ class KMViscosityScalingCutoff(TemperatureParameter):
             self.A, self.mu, self.b, self.k, A_scale=self.A_scale, cutoff=1000
         )
 
+    @property
+    def device(self):
+        return self.A.device
+
     def value(self, T):
         """
         Return the function value
@@ -478,6 +502,10 @@ class PolynomialScaling(TemperatureParameter):
         super().__init__(*args, **kwargs)
         self.coefs = coefs
         self.scale_fn = coef_scale_fn
+
+    @property
+    def device(self):
+        return self.coefs.device
 
     def value(self, T):
         """
@@ -530,6 +558,10 @@ class PiecewiseScaling(TemperatureParameter):
         self.values_scale_fn = values_scale_fn
 
         self.batch = values.dim() > 1
+
+    @property
+    def device(self):
+        return self.values.device
 
     def value(self, T):
         """
@@ -591,6 +623,10 @@ class ArrheniusScaling(TemperatureParameter):
         self.Q = Q
         self.A_scale = A_scale
         self.Q_scale = Q_scale
+
+    @property
+    def device(self):
+        return self.A.device
 
     def value(self, T):
         """

@@ -8,15 +8,19 @@
 """
 
 import torch
+from torch import nn
 
 
-class ScalingFunction:
+class ScalingFunction(nn.Module):
     """
     Common superclass for scaling functions, defines required
     methods.
     """
 
-    def __call__(self, x):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
         """
         Passes through a function to the `scale` method
 
@@ -76,6 +80,7 @@ class BoundedScalingFunction(ScalingFunction):
     """
 
     def __init__(self, l, u, clamp=True):
+        super().__init__()
         self.l = l
         self.u = u
         self.clamp = clamp
@@ -150,6 +155,7 @@ class LogBoundedScalingFunction(ScalingFunction):
     """
 
     def __init__(self, l, u, clamp=True):
+        super().__init__()
         self.l = l
         self.u = u
         self.clamp = clamp

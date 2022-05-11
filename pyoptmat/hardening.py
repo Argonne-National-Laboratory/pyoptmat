@@ -565,7 +565,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         self.C = C
         self.g = g
 
-        Cdev = self.C(0.0).device
+        Cdev = self.C.device
 
         if b is None:
             b = temperature.ConstantParameter(torch.zeros(self.C.shape, device=Cdev))
