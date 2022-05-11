@@ -240,7 +240,10 @@ class CheaterBatchTimeSeriesInterpolator(nn.Module):
         Returns:
           torch.tensor:       batched values at :code:`t`
         """
-        gi = torch.argmax((self.times[:, 0] >= t[0]).type(torch.uint8))
+        gi = torch.maximum(
+            torch.argmax((self.times[:, 0] >= t[0]).type(torch.uint8)),
+            torch.tensor(1, device=t.device),
+        )
 
         return self.values[gi - 1] + self.slopes[gi - 1] * (t - self.times[gi - 1])
 

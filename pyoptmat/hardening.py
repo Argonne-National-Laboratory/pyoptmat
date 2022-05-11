@@ -565,10 +565,12 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         self.C = C
         self.g = g
 
+        Cdev = self.C.device
+
         if b is None:
-            b = temperature.ConstantParameter(torch.zeros(self.C.shape))
+            b = temperature.ConstantParameter(torch.zeros(self.C.shape, device=Cdev))
         if r is None:
-            r = temperature.ConstantParameter(torch.ones(self.C.shape))
+            r = temperature.ConstantParameter(torch.ones(self.C.shape, device=Cdev))
 
         self.b = b
         self.r = r
@@ -991,7 +993,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
 
     def __init__(self, models):
         super().__init__()
-        self.models = models
+        self.models = nn.ModuleList(models)
 
         self.nmodels = len(self.models)
         self.nhist_per = [m.nhist for m in self.models]
@@ -1093,7 +1095,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        dhr = torch.zeros(h.shape[0], self.nhist, self.nhist)
+        dhr = torch.zeros(h.shape[0], self.nhist, self.nhist, device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
             dhr[:, o : o + n, o : o + n] = model.dhistory_rate_dhistory(
                 s, h[:, o : o + n], t, ep, T
@@ -1116,7 +1118,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
         """
-        dhr = torch.zeros(h.shape + (1,))
+        dhr = torch.zeros(h.shape + (1,), device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
             dhr[:, o : o + n] = model.dhistory_rate_derate(s, h[:, o : o + n], t, ep, T)
 
