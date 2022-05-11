@@ -17,9 +17,6 @@ class ScalingFunction(nn.Module):
     methods.
     """
 
-    def __init__(self):
-        super().__init__()
-
     def forward(self, x):
         """
         Passes through a function to the `scale` method

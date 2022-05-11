@@ -89,6 +89,9 @@ class ConstantParameter(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.pvalue.device
 
     def value(self, T):
@@ -138,6 +141,9 @@ class ShearModulusScaling(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.A.device
 
     def value(self, T):
@@ -220,6 +226,9 @@ class MTSScaling(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.tau0.device
 
     def value(self, T):
@@ -280,6 +289,9 @@ class KMRateSensitivityScaling(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.A.device
 
     def value(self, T):
@@ -366,6 +378,9 @@ class KMViscosityScaling(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.A.device
 
     def value(self, T):
@@ -459,6 +474,9 @@ class KMViscosityScalingCutoff(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.A.device
 
     def value(self, T):
@@ -505,6 +523,9 @@ class PolynomialScaling(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.coefs.device
 
     def value(self, T):
@@ -561,6 +582,9 @@ class PiecewiseScaling(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.values.device
 
     def value(self, T):
@@ -626,6 +650,9 @@ class ArrheniusScaling(TemperatureParameter):
 
     @property
     def device(self):
+        """
+        Return the device used by the scaling function
+        """
         return self.A.device
 
     def value(self, T):
