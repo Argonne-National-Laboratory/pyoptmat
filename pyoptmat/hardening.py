@@ -993,7 +993,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
 
     def __init__(self, models):
         super().__init__()
-        self.models = models
+        self.models = nn.ModuleList(models)
 
         self.nmodels = len(self.models)
         self.nhist_per = [m.nhist for m in self.models]
