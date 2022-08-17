@@ -28,7 +28,7 @@ class NoDamage(DamageModel):
     def __init__(self):
         super().__init__()
 
-    def damage_rate(self, s, d, t, T):
+    def damage_rate(self, s, d, t, T, e):
         """
         The damage rate and the derivative wrt to the damage variable.
         Here it's just zero.
@@ -38,10 +38,11 @@ class NoDamage(DamageModel):
           d (torch.tensor):      current value of damage
           t (torch.tensor):      current time
           T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
         """
         return torch.zeros_like(s), torch.zeros_like(s)
 
-    def d_damage_rate_d_s(self, s, d, t, T):
+    def d_damage_rate_d_s(self, s, d, t, T, e):
         """
         Derivative of the damage rate with respect to the stress.
 
@@ -52,8 +53,24 @@ class NoDamage(DamageModel):
           d (torch.tensor):      current value of damage
           t (torch.tensor):      current time
           T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
         """
         return torch.zeros_like(s)
+
+    def d_damage_rate_d_e(self, s, d, t, T, e):
+        """
+        Derivative of the damage rate with respect to the strain rate
+
+        Here again it's zero
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      current value of damage
+          t (torch.tensor):      current time
+          T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.zeros_like(e)
 
 
 class HayhurstLeckie(DamageModel):
@@ -80,7 +97,7 @@ class HayhurstLeckie(DamageModel):
         self.xi = xi
         self.phi = phi
 
-    def damage_rate(self, s, d, t, T):
+    def damage_rate(self, s, d, t, T, e):
         """
         Damage rate and the derivative of the rate with respect to the
         damage variable
@@ -90,6 +107,7 @@ class HayhurstLeckie(DamageModel):
           d (torch.tensor):      damage variable
           t (torch.tensor):      time
           T (torch.tensor):      temperature
+          e (torch.tensor):      total strain rate
         """
         return (torch.abs(s) / self.A(T)) ** self.xi(T) * (1 - d) ** (
             self.xi(T) - self.phi(T)
@@ -97,7 +115,7 @@ class HayhurstLeckie(DamageModel):
             self.xi(T) - self.phi(T) - 1
         )
 
-    def d_damage_rate_d_s(self, s, d, t, T):
+    def d_damage_rate_d_s(self, s, d, t, T, e):
         """
         Derivative of the damage rate with respect to the stress
 

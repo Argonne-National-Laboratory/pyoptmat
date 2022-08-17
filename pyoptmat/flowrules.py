@@ -40,7 +40,7 @@ class FlowRule(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def dflow_dhist(self, s, h, t, T):
+    def dflow_dhist(self, s, h, t, T, e):
         """
         The derivative of the flow rate with respect to the internal variables
 
@@ -52,14 +52,35 @@ class FlowRule(nn.Module):
           h (torch.tensor):   internal variables
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative of flow rate with respect to the
                               internal variables
         """
-        return torch.zeros(s.shape + (1,) + h.shape[1:])
+        return torch.zeros(s.shape + (1,) + h.shape[1:], device = h.device)
 
-    def dhist_dstress(self, s, h, t, T):
+    def dflow_derate(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the total strain rate
+
+        The superclass implementation provides a default of zero with the
+        right shape.
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   internal variables
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative of flow rate with respect to the
+                              internal variables
+        """
+        return torch.zeros(s.shape + e.shape[1:], device = h.device)
+
+    def dhist_dstress(self, s, h, t, T, e):
         """
         The derivative of the flow rate with respect to the stress
 
@@ -71,12 +92,31 @@ class FlowRule(nn.Module):
           h (torch.tensor):   internal variables
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative of flow rate with respect to the stress
         """
-        return torch.zeros(h.shape + s.shape[1:])
+        return torch.zeros(h.shape + s.shape[1:], device = h.device)
 
+    def dhist_derate(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the total strain rate
+
+        The superclass implementation provides a default of zero with the
+        right shape.
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   internal variables
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative of flow rate with respect to the strain rate
+        """
+        return torch.zeros(h.shape + e.shape[1:], device = h.device)
 
 class SuperimposedFlowRule(FlowRule):
     """
@@ -108,7 +148,7 @@ class SuperimposedFlowRule(FlowRule):
         """
         return sum(self.nhist_per)
 
-    def flow_rate(self, s, h, t, T):
+    def flow_rate(self, s, h, t, T, e):
         """
         The uniaxial flow rate itself and the derivative
         with respect to stress
@@ -118,6 +158,7 @@ class SuperimposedFlowRule(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           tuple(torch.tensor, torch.tensor):    the flow rate and the derivative
@@ -128,13 +169,13 @@ class SuperimposedFlowRule(FlowRule):
         drate = torch.zeros_like(s)
 
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            ratei, dratei = model.flow_rate(s, h[:, o : o + n], t, T)
+            ratei, dratei = model.flow_rate(s, h[:, o : o + n], t, T, e)
             rate += ratei
             drate += dratei
 
         return (rate, drate)
 
-    def dflow_dhist(self, s, h, t, T):
+    def dflow_dhist(self, s, h, t, T, e):
         """
         The derivative of the flow rate with respect to the internal variables
 
@@ -143,6 +184,7 @@ class SuperimposedFlowRule(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       the derivative of the flow rate
@@ -150,12 +192,35 @@ class SuperimposedFlowRule(FlowRule):
         res = torch.zeros(s.shape[:1] + (1,) + h.shape[1:], device=h.device)
 
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dratei = model.dflow_dhist(s, h[:, o : o + n], t, T)
+            dratei = model.dflow_dhist(s, h[:, o : o + n], t, T, e)
             res[:, :, o : o + n] = dratei
 
         return res
 
-    def history_rate(self, s, h, t, T):
+    def dflow_derate(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the total strain rate
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   internal variables
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative of flow rate with respect to the
+                              internal variables
+        """
+        res = torch.zeros(s.shape + (1,) + e.shape[1:], device = h.device)
+
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dratei = model.dflow_derate(s, h[:, o : o + n], t, T, e)
+            res += dratei
+
+        return res
+
+    def history_rate(self, s, h, t, T, e):
         """
         The history rate and the derivative of the history rate with respect
         to the current history
@@ -165,6 +230,7 @@ class SuperimposedFlowRule(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           tuple(torch.tensor, torch.tensor):    the history rate and the
@@ -175,13 +241,13 @@ class SuperimposedFlowRule(FlowRule):
         drate = torch.zeros(h.shape + h.shape[-1:], device=h.device)
 
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            ratei, dratei = model.history_rate(s, h[:, o : o + n], t, T)
+            ratei, dratei = model.history_rate(s, h[:, o : o + n], t, T, e)
             rate[:, o : o + n] = ratei
             drate[:, o : o + n, o : o + n] = dratei
 
         return (rate, drate)
 
-    def dhist_dstress(self, s, h, t, T):
+    def dhist_dstress(self, s, h, t, T, e):
         """
         The derivative of the history rate with respect to the stress
 
@@ -190,6 +256,7 @@ class SuperimposedFlowRule(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       the derivative of the flow rate
@@ -197,7 +264,29 @@ class SuperimposedFlowRule(FlowRule):
         res = torch.zeros(h.shape + s.shape[1:], device=h.device)
 
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dratei = model.dhist_dstress(s, h[:, o : o + n], t, T)
+            dratei = model.dhist_dstress(s, h[:, o : o + n], t, T, e)
+            res[:, o : o + n] = dratei
+
+        return res
+
+    def dhist_derate(self, s, h, t, T, e):
+        """
+        The derivative of the history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        res = torch.zeros(h.shape + e.shape[1:], device=h.device)
+
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dratei = model.dhist_derate(s, h[:, o : o + n], t, T, e)
             res[:, o : o + n] = dratei
 
         return res
@@ -223,7 +312,7 @@ class PerfectViscoplasticity(FlowRule):
         self.n = n
         self.eta = eta
 
-    def flow_rate(self, s, h, t, T):
+    def flow_rate(self, s, h, t, T, e):
         """
         The uniaxial flow rate itself and the derivative
         with respect to stress
@@ -233,6 +322,7 @@ class PerfectViscoplasticity(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           tuple(torch.tensor, torch.tensor):    the flow rate and the derivative
@@ -253,7 +343,7 @@ class PerfectViscoplasticity(FlowRule):
         """
         return 0
 
-    def history_rate(self, s, h, t, T):
+    def history_rate(self, s, h, t, T, e):
         """
         The history rate and the derivative of the history rate with respect
         to the current history
@@ -310,7 +400,7 @@ class IsoKinViscoplasticity(FlowRule):
         self.eta = eta
         self.s0 = s0
 
-    def flow_rate(self, s, h, t, T):
+    def flow_rate(self, s, h, t, T, e):
         """
         The flow rate itself and the derivative with respect to stress
 
@@ -319,6 +409,7 @@ class IsoKinViscoplasticity(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           tuple(torch.tensor, torch.tensor):  the flow rate and the derivative of the flow rate with
@@ -337,7 +428,7 @@ class IsoKinViscoplasticity(FlowRule):
             / self.eta(T),
         )
 
-    def dflow_diso(self, s, h, t, T):
+    def dflow_diso(self, s, h, t, T, e):
         """
         The derivative of the flow rate with respect to the isotropic hardening
 
@@ -346,6 +437,7 @@ class IsoKinViscoplasticity(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       the derivative of the flow rate
@@ -364,7 +456,7 @@ class IsoKinViscoplasticity(FlowRule):
             * torch.sign(s - kh)
         )
 
-    def dflow_dkin(self, s, h, t, T):
+    def dflow_dkin(self, s, h, t, T, e):
         """
         The derivative of the flow rate with respect to the kinematic hardening
 
@@ -373,6 +465,7 @@ class IsoKinViscoplasticity(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       the derivative of the flow rate
@@ -397,7 +490,7 @@ class IsoKinViscoplasticity(FlowRule):
         """
         return self.isotropic.nhist + self.kinematic.nhist
 
-    def history_rate(self, s, h, t, T):
+    def history_rate(self, s, h, t, T, e):
         """
         The vector of the rates of the internal variables split into
         portions defined by each hardening model
@@ -410,6 +503,7 @@ class IsoKinViscoplasticity(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           tuple(torch.tensor, torch.tensor):    the history rate and the
@@ -418,59 +512,59 @@ class IsoKinViscoplasticity(FlowRule):
         """
         hrate = torch.zeros_like(h)
         hdiv = torch.zeros(h.shape + h.shape[-1:], device=h.device)
-        erate, _ = self.flow_rate(s, h, t, T)
+        erate, _ = self.flow_rate(s, h, t, T, e)
 
         hiso = h[:, : self.isotropic.nhist]
         hkin = h[:, self.isotropic.nhist :]
 
         hrate[:, : self.isotropic.nhist] = self.isotropic.history_rate(
-            s, hiso, t, erate, T
+            s, hiso, t, erate, T, e
         )
         hrate[:, self.isotropic.nhist :] = self.kinematic.history_rate(
-            s, hkin, t, erate, T
+            s, hkin, t, erate, T, e
         )
 
         # History partials
         hdiv[
             :, : self.isotropic.nhist, : self.isotropic.nhist
-        ] = self.isotropic.dhistory_rate_dhistory(s, hiso, t, erate, T)
+        ] = self.isotropic.dhistory_rate_dhistory(s, hiso, t, erate, T, e)
         hdiv[
             :, self.isotropic.nhist :, self.isotropic.nhist :
-        ] = self.kinematic.dhistory_rate_dhistory(s, hkin, t, erate, T)
+        ] = self.kinematic.dhistory_rate_dhistory(s, hkin, t, erate, T, e)
 
         # Strain rate components
         hdiv[:, : self.isotropic.nhist, : self.isotropic.nhist] += torch.matmul(
-            self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T),
+            self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
             torch.matmul(
-                self.dflow_diso(s, h, t, T)[:, None, None],
+                self.dflow_diso(s, h, t, T, e)[:, None, None],
                 self.isotropic.dvalue(hiso)[:, None, :],
             ),
         )
         hdiv[:, : self.isotropic.nhist, self.isotropic.nhist :] += torch.matmul(
-            self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T),
+            self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
             torch.matmul(
-                self.dflow_dkin(s, h, t, T)[:, None, None],
+                self.dflow_dkin(s, h, t, T,e )[:, None, None],
                 self.kinematic.dvalue(hkin)[:, None, :],
             ),
         )
         hdiv[:, self.isotropic.nhist :, : self.isotropic.nhist] += torch.matmul(
-            self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T),
+            self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
             torch.matmul(
-                self.dflow_diso(s, h, t, T)[:, None, None],
+                self.dflow_diso(s, h, t, T, e)[:, None, None],
                 self.isotropic.dvalue(hiso)[:, None, :],
             ),
         )
         hdiv[:, self.isotropic.nhist :, self.isotropic.nhist :] += torch.matmul(
-            self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T),
+            self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
             torch.matmul(
-                self.dflow_dkin(s, h, t, T)[:, None, None],
+                self.dflow_dkin(s, h, t, T, e)[:, None, None],
                 self.kinematic.dvalue(hkin)[:, None, :],
             ),
         )
 
         return hrate, hdiv
 
-    def dflow_dhist(self, s, h, t, T):
+    def dflow_dhist(self, s, h, t, T, e):
         """
         The derivative of the flow rate with respect to the internal variables
 
@@ -479,6 +573,7 @@ class IsoKinViscoplasticity(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       the derivative of the flow rate
@@ -488,16 +583,16 @@ class IsoKinViscoplasticity(FlowRule):
         hiso = h[:, : self.isotropic.nhist]
         hkin = h[:, self.isotropic.nhist :]
 
-        res[:, 0, : self.isotropic.nhist] = self.dflow_diso(s, h, t, T)[
+        res[:, 0, : self.isotropic.nhist] = self.dflow_diso(s, h, t, T, e)[
             :, None
         ] * self.isotropic.dvalue(hiso)
-        res[:, 0, self.isotropic.nhist :] = self.dflow_dkin(s, h, t, T)[
+        res[:, 0, self.isotropic.nhist :] = self.dflow_dkin(s, h, t, T, e)[
             :, None
         ] * self.kinematic.dvalue(hkin)
 
         return res
 
-    def dhist_dstress(self, s, h, t, T):
+    def dhist_dstress(self, s, h, t, T, e):
         """
         The derivative of the history rate with respect to the stress
 
@@ -506,28 +601,57 @@ class IsoKinViscoplasticity(FlowRule):
           h (torch.tensor):   history
           t (torch.tensor):   time
           T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       the derivative of the flow rate
         """
         res = torch.zeros(h.shape + s.shape[1:], device=h.device)
 
-        erate, derate = self.flow_rate(s, h, t, T)
+        erate, derate = self.flow_rate(s, h, t, T, e)
 
         hiso = h[:, : self.isotropic.nhist]
         hkin = h[:, self.isotropic.nhist :]
 
         res[:, : self.isotropic.nhist] = (
-            self.isotropic.dhistory_rate_dstress(s, hiso, t, erate, T)
-            + self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T).bmm(
+            self.isotropic.dhistory_rate_dstress(s, hiso, t, erate, T, e)
+            + self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e).bmm(
                 derate[..., None, None]
             )[..., 0]
         )
         res[:, self.isotropic.nhist :] = (
-            self.kinematic.dhistory_rate_dstress(s, hkin, t, erate, T)
-            + self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T).bmm(
+            self.kinematic.dhistory_rate_dstress(s, hkin, t, erate, T, e)
+            + self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e).bmm(
                 derate[..., None, None]
             )[..., 0]
         )
+
+        return res
+
+    def dhist_derate(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the total strain rate
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   internal variables
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative of flow rate with respect to the strain rate
+        """
+        res = torch.zeros(h.shape + e.shape[1:], device=h.device)
+        
+        erate, derate = self.flow_rate(s, h, t, T, e)
+
+        hiso = h[:, : self.isotropic.nhist]
+        hkin = h[:, self.isotropic.nhist :]
+
+        res[:, : self.isotropic.nhist] = self.isotropic.dhistory_rate_dtotalrate(
+                s, hiso, t, erate, T, e)
+        res[:, self.isotropic.nhist :] = self.kinematic.dhistory_rate_dtotalrate(
+                s, hkin, t, erate, T, e)
 
         return res

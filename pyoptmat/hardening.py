@@ -30,6 +30,26 @@ class HardeningModel(nn.Module):
     def __init__(self):
         super().__init__()
 
+    def dhistory_rate_dtotalrate(self, s, h, t, ep, T, e):
+        """
+        The derivative of the history rate with respect to the total
+        strain rate
+
+        This will be zero in most models
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative with respect to the total rate
+        """
+        return torch.zeros(h.shape + e.shape[1:], device = h.device)
+
 
 class IsotropicHardeningModel(HardeningModel):
     """
@@ -94,7 +114,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
         """
         return 1
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The rate evolving the internal variables
 
@@ -104,13 +124,14 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       internal variable rate
         """
         return torch.unsqueeze(self.d(T) * (self.R(T) - h[:, 0]) * torch.abs(ep), 1)
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of this history rate with respect to the stress
 
@@ -120,13 +141,14 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to stress
         """
         return torch.zeros_like(h)
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the internal variables
 
@@ -136,6 +158,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to history
@@ -147,7 +170,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
             1,
         )
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate
@@ -158,6 +181,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
@@ -223,7 +247,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
         """
         return 1
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The rate evolving the internal variables
 
@@ -233,6 +257,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       internal variable rate
@@ -241,7 +266,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
             self.theta(T) * (1.0 - h[:, 0] / self.tau(T)) * torch.abs(ep), 1
         )
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of this history rate with respect to the stress
 
@@ -251,13 +276,14 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to stress
         """
         return torch.zeros_like(h)
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the internal variables
 
@@ -267,6 +293,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to history
@@ -278,7 +305,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
             1,
         )
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate
@@ -289,6 +316,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
@@ -354,7 +382,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
         """
         return 1
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The rate evolving the internal variables
 
@@ -364,6 +392,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      the temperature
+          e (torch.tensor):   total strain rate
         """
         return torch.unsqueeze(
             self.theta(T) * (1.0 - h[:, 0] / self.tau(T)) * torch.abs(ep)
@@ -373,7 +402,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
             1,
         )
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of this history rate with respect to the stress
 
@@ -383,10 +412,11 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      temperature
+          e (torch.tensor):   total strain rate
         """
         return torch.zeros_like(h)
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the internal variables
 
@@ -396,6 +426,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      temperature
+          e (torch.tensor):   total strain rate
         """
         recovery = (
             self.r2(T)
@@ -412,7 +443,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
             - recovery
         )
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate
@@ -423,6 +454,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      temperature
+          e (torch.tensor):   total strain rate
         """
         return torch.unsqueeze(
             torch.unsqueeze(
@@ -478,7 +510,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
         """
         return torch.zeros(h.shape[0], 0, device=h.device)
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The history evolution rate.  Here this is an empty vector.
 
@@ -488,10 +520,11 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      the temperature
+          e (torch.tensor):   total strain rate
         """
         return torch.empty_like(h)
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the stress.
 
@@ -503,10 +536,11 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      temperature
+          e (torch.tensor):   total strain rate
         """
         return torch.empty_like(h)
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the history
 
@@ -518,10 +552,11 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      temperature
+          e (torch.tensor):   total strain rate
         """
         return torch.empty(h.shape[0], 0, 0, device=h.device)
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate.
@@ -534,6 +569,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
           t:      time
           ep:     the inelastic strain rate
           T:      temperature
+          e (torch.tensor):   total strain rate
         """
         return torch.empty(h.shape[0], 0, 1, device=h.device)
 
@@ -608,7 +644,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         """
         return 1
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The rate evolving the internal variables
 
@@ -618,6 +654,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       internal variable rate
@@ -629,7 +666,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
             1,
         )
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of this history rate with respect to the stress
 
@@ -639,13 +676,14 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to stress
         """
         return torch.zeros_like(h)
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the internal variables
 
@@ -655,6 +693,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to history
@@ -666,7 +705,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
             ]
         )
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate
@@ -677,6 +716,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
@@ -752,7 +792,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
         """
         return self.nback
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The rate evolving the internal variables
 
@@ -762,6 +802,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       internal variable rate
@@ -771,7 +812,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
             - self.g(T)[None, ...] * h * torch.abs(ep)[:, None]
         ).reshape(h.shape)
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of this history rate with respect to the stress
 
@@ -781,13 +822,14 @@ class ChabocheHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to stress
         """
         return torch.zeros_like(h)
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the internal variables
 
@@ -797,6 +839,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to history
@@ -805,7 +848,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
             h.shape + h.shape[1:]
         )
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate
@@ -816,6 +859,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
@@ -900,7 +944,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
         """
         return self.nback
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The rate evolving the internal variables
 
@@ -910,6 +954,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       internal variable rate
@@ -920,7 +965,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
             - self.b(T)[None, ...] * torch.abs(h) ** (self.r(T)[None, ...] - 1.0) * h
         ).reshape(h.shape)
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of this history rate with respect to the stress
 
@@ -930,13 +975,14 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to stress
         """
         return torch.zeros_like(h)
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the internal variables
 
@@ -946,6 +992,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to history
@@ -960,7 +1007,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
             h.shape + h.shape[1:]
         )
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate
@@ -971,6 +1018,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
@@ -1039,7 +1087,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         return sum(self.nhist_per)
 
-    def history_rate(self, s, h, t, ep, T):
+    def history_rate(self, s, h, t, ep, T, e):
         """
         The rate evolving the internal variables
 
@@ -1049,17 +1097,19 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       internal variable rate
         """
         hr = torch.zeros_like(h)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            hr[:, o : o + n] = model.history_rate(s, h[:, o : o + n], t, ep, T)
+            hr[:, o : o + n] = model.history_rate(s, h[:, o : o + n], t, ep, T,
+                    e)
 
         return hr
 
-    def dhistory_rate_dstress(self, s, h, t, ep, T):
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
         The derivative of this history rate with respect to the stress
 
@@ -1069,6 +1119,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to stress
@@ -1076,12 +1127,12 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         dhr = torch.zeros_like(h)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
             dhr[:, o : o + n] = model.dhistory_rate_dstress(
-                s, h[:, o : o + n], t, ep, T
+                s, h[:, o : o + n], t, ep, T, e
             )
 
         return dhr
 
-    def dhistory_rate_dhistory(self, s, h, t, ep, T):
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the internal variables
 
@@ -1091,6 +1142,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to history
@@ -1098,12 +1150,12 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         dhr = torch.zeros(h.shape[0], self.nhist, self.nhist, device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
             dhr[:, o : o + n, o : o + n] = model.dhistory_rate_dhistory(
-                s, h[:, o : o + n], t, ep, T
+                s, h[:, o : o + n], t, ep, T, e
             )
 
         return dhr
 
-    def dhistory_rate_derate(self, s, h, t, ep, T):
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
         strain rate
@@ -1114,12 +1166,35 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
           t (torch.tensor):   time
           ep (torch.tensor):  the inelastic strain rate
           T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
 
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
         """
         dhr = torch.zeros(h.shape + (1,), device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dhr[:, o : o + n] = model.dhistory_rate_derate(s, h[:, o : o + n], t, ep, T)
+            dhr[:, o : o + n] = model.dhistory_rate_derate(s, h[:, o : o + n], t, ep, T, e)
+
+        return dhr
+
+    def dhistory_rate_dtotalrate(self, s, h, t, ep, T, e):
+        """
+        The derivative of the history rate with respect to the total
+        strain rate
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative with respect to the total rate
+        """
+        dhr = torch.zeros(h.shape + (1,), device=s.device)
+        for o, n, model in zip(self.offsets, self.nhist_per, self.models):
+            dhr[:, o : o + n] = model.dhistory_rate_dtotalrate(s, h[:, o : o + n], t, ep, T, e)
 
         return dhr
