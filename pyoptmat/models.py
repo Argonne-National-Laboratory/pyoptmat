@@ -133,13 +133,11 @@ class InelasticModel(nn.Module):
         dresult[:, -1, -1] = ddrate
 
         # Calculate the derivative wrt the strain rate, used in inverting
-        # TODO reconsider in light of frate_p above 
         drate = torch.zeros_like(y)
-        drate[:, 0] = self.E(T)*(1.0 - self.flowrule.dflow_derate(stress / (1-d), h, t, T, erate) - 
-                dfrate_p * self.dmodel.d_damage_rate_d_e(stress / (1-d), d, t, T, erate))
-        drate[:, 1 : 1 + self.flowrule.nhist] = self.flowrule.dhist_derate(stress / (1-d), h, t, T, erate
-                ) + d
-        drate[:, -1] = 0.0 # Wrong
+        drate[:, 0] = self.E(T)*(1.0 - (1-d) * self.flowrule.dflow_derate(stress / (1-d), h, t, T, erate) - 
+                 self.dmodel.d_damage_rate_d_e(stress / (1-d), d, t, T, erate) * stress)
+        drate[:, 1 : 1 + self.flowrule.nhist] = self.flowrule.dhist_derate(stress / (1-d), h, t, T, erate)
+        drate[:, -1] = self.dmodel.d_damage_rate_d_e(stress / (1-d), d, t, T, erate)
 
         # Logically we should return the derivative wrt T, but right now
         # we're not going to use it
