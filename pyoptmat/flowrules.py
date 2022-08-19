@@ -212,8 +212,8 @@ class SuperimposedFlowRule(FlowRule):
           torch.tensor:       derivative of flow rate with respect to the
                               internal variables
         """
-        res = torch.zeros(s.shape + (1,) + e.shape[1:], device = h.device)
-
+        res = torch.zeros(e.shape, device = h.device)
+        
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
             dratei = model.dflow_derate(s, h[:, o : o + n], t, T, e)
             res += dratei
