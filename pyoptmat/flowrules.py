@@ -118,6 +118,183 @@ class FlowRule(nn.Module):
         """
         return torch.zeros(h.shape + e.shape[1:], device = h.device)
 
+class RateIndependentFlowRuleWrapper(FlowRule):
+    """
+        Wraps another flow rule using Walker's time dilation trick to make it
+        behave as if it was rate-independent.
+
+        Specifically, the model dilates time with the formula:
+
+        .. math::
+
+            \\Delta t \\rightarrow \\kappa \\Delta t
+
+        with
+
+        .. math::
+
+            \\kappa = 1 - \\lambda + \\frac{\\lambda \\left| \dot{\\varepsilon} \\right|}{\\dot{\\varepsilon}_{ref}}
+
+        where :math:`\\lambda` is a parameter where :math:`\\lambda = 0` gives 
+        the original, rate dependent response and :math:`\\lambda \\approx 1` 
+        gives an approximately rate independent response,
+        :math:`\\dot{\\varepsilon}_{ref}` is a reference strain rate which
+        should be on the order of the applied strain rate,
+        and :math:`\\dot{\\varepsilon}` is the current, transient
+        strain rate applied to the model.
+
+        Args:
+            base (flowrules.FlowRule):  the base model
+            lmbda (scalar):             the tuning parameter :math:`\\lambda`
+            eps_ref (scalar):           the reference strain rate :math:`\\dot{\\varepsilon}_{ref}`
+
+    """
+    def __init__(self, base, lmbda, eps_ref):
+        super().__init__()
+
+        self.base = base
+        self.lmbda = lmbda
+        self.eps_ref = eps_ref
+    
+    @property
+    def nhist(self):
+        """
+        The number of internal variables
+        """
+        return self.base.nhist
+
+    def scale(self, e):
+        """
+        The current value of the time dilation factor
+
+        Args:
+            e (torch.tensor):   total strain rate
+
+        Returns:
+            torch.tensor:       current scale factor
+        """
+        return 1.0 - self.lmbda + self.lmbda * torch.abs(e) / self.eps_ref
+
+    def dscale(self, e):
+        """
+        The derivative of the current value of the time 
+        dilation factor with respect to the total strain 
+        rate
+
+        Args:
+            e (torch.tensor):   total strain rate
+
+        Returns:
+            torch.tensor:       derivative of the scale factor
+                                with respect to the total strain rate
+        """
+        return torch.sign(e) * self.lmbda / self.eps_ref
+
+    def flow_rate(self, s, h, t, T, e):
+        """
+        The uniaxial flow rate itself and the derivative
+        with respect to stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          tuple(torch.tensor, torch.tensor):    the flow rate and the derivative
+                                                of the flow rate with
+                                                respect to stress
+        """
+        pass
+
+    def dflow_dhist(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the internal variables
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        pass
+
+    def dflow_derate(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the total strain rate
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   internal variables
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative of flow rate with respect to the
+                              internal variables
+        """
+        pass
+
+    def history_rate(self, s, h, t, T, e):
+        """
+        The history rate and the derivative of the history rate with respect
+        to the current history
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          tuple(torch.tensor, torch.tensor):    the history rate and the
+                                                derivative of the history rate
+                                                with respect to history
+        """
+        pass
+
+    def dhist_dstress(self, s, h, t, T, e):
+        """
+        The derivative of the history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        pass
+
+    def dhist_derate(self, s, h, t, T, e):
+        """
+        The derivative of the history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        pass
+
+
+
 class SuperimposedFlowRule(FlowRule):
     """
     Superimpose multiple flow rules with
