@@ -207,7 +207,10 @@ class RateIndependentFlowRuleWrapper(FlowRule):
                                                 of the flow rate with
                                                 respect to stress
         """
-        pass
+        base, dbase = self.base.flow_rate(s, h, t, T, e)
+        sf = self.scale(e)
+
+        return sf*base, sf*dbase
 
     def dflow_dhist(self, s, h, t, T, e):
         """
@@ -223,7 +226,7 @@ class RateIndependentFlowRuleWrapper(FlowRule):
         Returns:
           torch.tensor:       the derivative of the flow rate
         """
-        pass
+        return self.base.dflow_dhist(s, h, t, T, e) * self.scale(e)[:,None,None]
 
     def dflow_derate(self, s, h, t, T, e):
         """
@@ -240,7 +243,8 @@ class RateIndependentFlowRuleWrapper(FlowRule):
           torch.tensor:       derivative of flow rate with respect to the
                               internal variables
         """
-        pass
+        return self.base.dflow_derate(s, h, t, T, e) * self.scale(e
+                ) + self.base.flow_rate(s, h, t, T, e)[0] * self.dscale(e)
 
     def history_rate(self, s, h, t, T, e):
         """
@@ -259,7 +263,10 @@ class RateIndependentFlowRuleWrapper(FlowRule):
                                                 derivative of the history rate
                                                 with respect to history
         """
-        pass
+        rate, drate = self.base.history_rate(s, h, t, T, e)
+        sf = self.scale(e)
+
+        return sf[:,None]*rate, sf[:,None,None]*drate
 
     def dhist_dstress(self, s, h, t, T, e):
         """
@@ -275,7 +282,7 @@ class RateIndependentFlowRuleWrapper(FlowRule):
         Returns:
           torch.tensor:       the derivative of the flow rate
         """
-        pass
+        return self.scale(e)[:,None] * self.base.dhist_dstress(s, h, t, T, e)
 
     def dhist_derate(self, s, h, t, T, e):
         """
@@ -291,7 +298,9 @@ class RateIndependentFlowRuleWrapper(FlowRule):
         Returns:
           torch.tensor:       the derivative of the flow rate
         """
-        pass
+        return self.base.dhist_derate(s, h, t, T, e) * self.scale(e
+                )[:,None] + self.base.history_rate(s, h, t, T, e
+                        )[0] * self.dscale(e)[:,None]
 
 
 
