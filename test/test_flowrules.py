@@ -132,6 +132,71 @@ class TestWrappedRIIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
 
         self.skip = False
 
+class TestKocksMeckingRegimeFlowRule(unittest.TestCase, CommonFlowRule):
+    def setUp(self):
+        self.nbatch = 10
+
+        self.n1 = torch.tensor(5.2)
+        self.eta1 = torch.tensor(110.0)
+        self.s01 = torch.tensor(11.0)
+
+        self.R1 = torch.tensor(101.0)
+        self.d1 = torch.tensor(1.3)
+        self.iso1 = hardening.VoceIsotropicHardeningModel(CP(self.R1), CP(self.d1))
+
+        self.C1 = torch.tensor(1200.0)
+        self.g1 = torch.tensor(10.1)
+        self.kin1 = hardening.FAKinematicHardeningModel(CP(self.C1), CP(self.g1))
+
+        self.model1 = flowrules.IsoKinViscoplasticity(
+            CP(self.n1), CP(self.eta1), CP(self.s01), self.iso1, self.kin1
+        )
+        
+        self.n2 = torch.tensor(5.2)
+        self.eta2 = torch.tensor(110.0)
+        self.s02 = torch.tensor(11.0)
+
+        self.R2 = torch.tensor(101.0)
+        self.d2 = torch.tensor(1.3)
+        self.iso2 = hardening.VoceIsotropicHardeningModel(CP(self.R2), CP(self.d2))
+
+        self.C2 = torch.tensor(1200.0)
+        self.g2 = torch.tensor(10.1)
+        self.kin2 = hardening.FAKinematicHardeningModel(CP(self.C2), CP(self.g2))
+
+        self.model2 = flowrules.IsoKinViscoplasticity(
+            CP(self.n2), CP(self.eta2), CP(self.s02), self.iso2, self.kin2
+        )
+
+        self.mu = CP(1000.0)
+        self.b = 1.0
+        self.eps0 = 1.0
+        self.k = 1.0
+
+        self.g0 = 1.5
+
+        self.model = flowrules.KocksMeckingRegimeFlowRule(self.model1, self.model2, 
+                self.g0, self.mu, self.b, self.eps0, self.k)
+
+        self.s = torch.linspace(150, 200, self.nbatch)
+        self.h = torch.reshape(
+            torch.tensor(
+                np.array(
+                    [
+                        np.linspace(51, 110, self.nbatch),
+                        np.linspace(-100, 210, self.nbatch)[::-1],
+                    ]
+                )
+            ).T,
+            (self.nbatch, 2),
+        )
+
+        self.t = torch.ones(self.nbatch)
+        self.T = torch.ones_like(self.t) * 300
+        self.erate = torch.linspace(1e-2,1e-3,self.nbatch)
+
+        self.skip = False
+
 class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
     def setUp(self):
         self.n = torch.tensor(5.2)

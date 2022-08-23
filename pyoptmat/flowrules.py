@@ -118,35 +118,238 @@ class FlowRule(nn.Module):
         """
         return torch.zeros(h.shape + e.shape[1:], device = h.device)
 
-class RateIndependentFlowRuleWrapper(FlowRule):
+class KocksMeckingRegimeFlowRule(FlowRule):
     """
-        Wraps another flow rule using Walker's time dilation trick to make it
-        behave as if it was rate-independent.
+    Switches between two different flow rules depending on the value of the
+    Kocks-Mecking normalized activation energy
 
-        Specifically, the model dilates time with the formula:
+    .. math::
 
-        .. math::
+        g = \\frac{kT}{\\mu b^3} \\log{\\frac{\\dot{\\varepsilon}_0}{\\dot{\\varepsilon}}}
 
-            \\Delta t \\rightarrow \\kappa \\Delta t
+    with :math:`k` the Boltzmann constant, :math:`T` temperature, :math:`\\mu` the shear modulus,
+    :math:`b` a representative Burgers vector, :math:`\\dot{\\varepsilon}_0` a reference
+    strain rate, and :math:`\\dot{\\varepsilon}` the current applied strain rate.
 
-        with
+    If the activation energy is less than or equal to a threshold :math:`g_0` the flow rate 
+    is equal to that of the first model.  If the activation energy is greater than the 
+    threshold then the model switches to the second flow rule.
 
-        .. math::
+    The two models should have compatible internal history vectors.
 
-            \\kappa = 1 - \\lambda + \\frac{\\lambda \\left| \dot{\\varepsilon} \\right|}{\\dot{\\varepsilon}_{ref}}
+    Args:
+        model1 (flowrules.FlowRule):            first flow rule
+        model2 (flowrules.FlowRule):            second flow rule
+        g0 (torch.tensor):                      activation energy threshold
+        mu (temperature.TemperatureParameter):  shear modulus
+        b (torch.tensor):                       burgers vector
+        eps0 (torch.tensor):                    reference strain rate
+        k (torch.tensor):                       Boltzmann constant
+    """
+    def __init__(self, model1, model2, g0, mu, b, eps0, k):
+        super().__init__()
 
-        where :math:`\\lambda` is a parameter where :math:`\\lambda = 0` gives 
-        the original, rate dependent response and :math:`\\lambda \\approx 1` 
-        gives an approximately rate independent response,
-        :math:`\\dot{\\varepsilon}_{ref}` is a reference strain rate which
-        should be several orders of magnitude smaller than the applied strain rate,
-        and :math:`\\dot{\\varepsilon}` is the current, transient
-        strain rate applied to the model.
+        self.model1 = model1
+        self.model2 = model2
+        self.g0 = g0
+
+        self.mu = mu
+        self.b = b
+        self.eps0 = eps0
+        self.k = k
+
+        # Check for conformal history vectors
+        if self.model1.nhist != self.model2.nhist:
+            raise ValueError("The two models provided to the KocksMeckingRegimeFlowRule "
+                    "model must have the same number of internal variables")
+
+    @property
+    def nhist(self):
+        """
+        The number of internal variables
+        """
+        return self.model1.nhist
+
+    def g(self, T, e):
+        """
+        The current value of activation energy
 
         Args:
-            base (flowrules.FlowRule):  the base model
-            lmbda (scalar):             the tuning parameter :math:`\\lambda`
-            eps_ref (scalar):           the reference strain rate :math:`\\dot{\\varepsilon}_{ref}`
+            T (torch.tensor):   temperature
+            e (torch.tensor):   total strain rate
+
+        Returns:
+            torch.tensor:       value of the activation energy
+        """
+        return self.k * T / (self.mu.value(T) * self.b**3.0) * torch.log(
+                self.eps0 / e)
+
+    def switch_values(self, vals1, vals2, T, e):
+        """
+        Switch between the two model results
+
+        Args:
+            vals1 (torch.tensor):   values from first model
+            vals2 (torch.tensor):   values from second model
+            T (torch.tensor):       temperatures
+            e (torch.tensor):       strain rates
+
+        """
+        result = torch.clone(vals1)
+        second = self.g(T, e) > self.g0
+        result[second] = vals2[second]
+
+        return result
+
+    def flow_rate(self, s, h, t, T, e):
+        """
+        The uniaxial flow rate itself and the derivative
+        with respect to stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          tuple(torch.tensor, torch.tensor):    the flow rate and the derivative
+                                                of the flow rate with
+                                                respect to stress
+        """
+        flow1, dflow1 = self.model1.flow_rate(s, h, t, T, e)
+        flow2, dflow2 = self.model2.flow_rate(s, h, t, T, e)
+
+        return (self.switch_values(flow1, flow2, T, e),
+                self.switch_values(dflow1, dflow2, T, e)) 
+
+    def dflow_dhist(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the internal variables
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        return self.switch_values(
+            self.model1.dflow_dhist(s, h, t, T, e),
+            self.model2.dflow_dhist(s, h, t, T, e), T, e)
+
+    def dflow_derate(self, s, h, t, T, e):
+        """
+        The derivative of the flow rate with respect to the total strain rate
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   internal variables
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative of flow rate with respect to the
+                              internal variables
+        """
+        return self.switch_values(
+            self.model1.dflow_derate(s, h, t, T, e),
+            self.model2.dflow_derate(s, h, t, T, e), T, e)
+
+    def history_rate(self, s, h, t, T, e):
+        """
+        The history rate and the derivative of the history rate with respect
+        to the current history
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          tuple(torch.tensor, torch.tensor):    the history rate and the
+                                                derivative of the history rate
+                                                with respect to history
+        """
+        rate1, drate1 = self.model1.history_rate(s, h, t, T, e)
+        rate2, drate2 = self.model2.history_rate(s, h, t, T, e)
+
+        return (self.switch_values(rate1, rate2, T, e),
+                self.switch_values(drate1, drate2, T, e))
+
+    def dhist_dstress(self, s, h, t, T, e):
+        """
+        The derivative of the history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        return self.switch_values(
+                self.model1.dhist_dstress(s, h, t, T, e),
+                self.model2.dhist_dstress(s, h, t, T, e), T, e)
+
+    def dhist_derate(self, s, h, t, T, e):
+        """
+        The derivative of the history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          T (torch.tensor):   temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       the derivative of the flow rate
+        """
+        return self.switch_values(
+                self.model1.dhist_derate(s, h, t, T, e),
+                self.model2.dhist_derate(s, h, t, T, e), T, e)
+
+
+class RateIndependentFlowRuleWrapper(FlowRule):
+    """
+    Wraps another flow rule using Walker's time dilation trick to make it
+    behave as if it was rate-independent.
+
+    Specifically, the model dilates time with the formula:
+
+    .. math::
+
+        \\Delta t \\rightarrow \\kappa \\Delta t
+
+    with
+
+    .. math::
+
+        \\kappa = 1 - \\lambda + \\frac{\\lambda \\left| \dot{\\varepsilon} \\right|}{\\dot{\\varepsilon}_{ref}}
+
+    where :math:`\\lambda` is a parameter where :math:`\\lambda = 0` gives 
+    the original, rate dependent response and :math:`\\lambda \\approx 1` 
+    gives an approximately rate independent response,
+    :math:`\\dot{\\varepsilon}_{ref}` is a reference strain rate which
+    should be several orders of magnitude smaller than the applied strain rate,
+    and :math:`\\dot{\\varepsilon}` is the current, transient
+    strain rate applied to the model.
+
+    Args:
+        base (flowrules.FlowRule):  the base model
+        lmbda (scalar):             the tuning parameter :math:`\\lambda`
+        eps_ref (scalar):           the reference strain rate :math:`\\dot{\\varepsilon}_{ref}`
 
     """
     def __init__(self, base, lmbda, eps_ref):
