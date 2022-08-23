@@ -82,20 +82,21 @@ class InelasticModel(nn.Module):
           y_dot:          (nbatch,1+nhist+1) state rate
           d_y_dot_d_y:    (nbatch,1+nhist+1,1+nhist+1) Jacobian wrt the state
           d_y_dot_d_erate:(nbatch,1+nhist+1) Jacobian wrt the strain rate
+          d_y_dot_d_T:    (nbatch,1+nhist+1) derivative wrt temperature (unused)
         """
         stress = y[:, 0].clone()
         h = y[:, 1 : 1 + self.flowrule.nhist].clone()
         d = y[:, -1].clone()
 
-        frate, dfrate = self.flowrule.flow_rate(stress / (1 - d), h, t, T)
-        hrate, dhrate = self.flowrule.history_rate(stress / (1 - d), h, t, T)
-        drate, ddrate = self.dmodel.damage_rate(stress / (1 - d), d, t, T)
+        frate, dfrate = self.flowrule.flow_rate(stress / (1 - d), h, t, T, erate)
+        hrate, dhrate = self.flowrule.history_rate(stress / (1 - d), h, t, T, erate)
+        drate, ddrate = self.dmodel.damage_rate(stress / (1 - d), d, t, T, erate)
 
         # Modify for damage
         frate_p = (1 - d) * frate - drate * stress
         dfrate_p = (
             dfrate
-            - self.dmodel.d_damage_rate_d_s(stress / (1 - d), d, t, T) / (1 - d)
+            - self.dmodel.d_damage_rate_d_s(stress / (1 - d), d, t, T, erate) / (1 - d)
             - drate
         )
 
@@ -111,29 +112,38 @@ class InelasticModel(nn.Module):
         dresult[:, 0:1, 1 : 1 + self.flowrule.nhist] = (
             -self.E(T)[..., None, None]
             * (1 - d)[:, None, None]
-            * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T)
+            * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate)
         )
         dresult[:, 0, -1] = self.E(T) * (frate - dfrate * stress / (1 - d))
 
         dresult[:, 1 : 1 + self.flowrule.nhist, 0] = (
-            self.flowrule.dhist_dstress(stress / (1 - d), h, t, T) / (1 - d)[:, None]
+            self.flowrule.dhist_dstress(stress / (1 - d), h, t, T, erate)
+            / (1 - d)[:, None]
         )
         dresult[:, 1 : 1 + self.flowrule.nhist, 1 : 1 + self.flowrule.nhist] = dhrate
         dresult[:, 1 : 1 + self.flowrule.nhist, -1] = (
-            self.flowrule.dhist_dstress(stress / (1 - d), h, t, T)
+            self.flowrule.dhist_dstress(stress / (1 - d), h, t, T, erate)
             * stress[:, None]
             / (1 - d[:, None]) ** 2
         )
 
-        dresult[:, -1, 0] = self.dmodel.d_damage_rate_d_s(stress / (1 - d), d, t, T) / (
-            1 - d
-        )
+        dresult[:, -1, 0] = self.dmodel.d_damage_rate_d_s(
+            stress / (1 - d), d, t, T, erate
+        ) / (1 - d)
         # d_damage_d_hist is zero
         dresult[:, -1, -1] = ddrate
 
         # Calculate the derivative wrt the strain rate, used in inverting
         drate = torch.zeros_like(y)
-        drate[:, 0] = self.E(T)
+        drate[:, 0] = self.E(T) * (
+            1.0
+            - (1 - d) * self.flowrule.dflow_derate(stress / (1 - d), h, t, T, erate)
+            - self.dmodel.d_damage_rate_d_e(stress / (1 - d), d, t, T, erate) * stress
+        )
+        drate[:, 1 : 1 + self.flowrule.nhist] = self.flowrule.dhist_derate(
+            stress / (1 - d), h, t, T, erate
+        )
+        drate[:, -1] = self.dmodel.d_damage_rate_d_e(stress / (1 - d), d, t, T, erate)
 
         # Logically we should return the derivative wrt T, but right now
         # we're not going to use it

@@ -19,10 +19,12 @@ class HardeningBase:
 
     def test_dstress(self):
         exact = self.model.dhistory_rate_dstress(
-            self.s, self.h, self.t, self.ep, self.T
+            self.s, self.h, self.t, self.ep, self.T, self.erate
         )
         numer = utility.new_differentiate(
-            lambda x: self.model.history_rate(x, self.h, self.t, self.ep, self.T),
+            lambda x: self.model.history_rate(
+                x, self.h, self.t, self.ep, self.T, self.erate
+            ),
             self.s,
         )
 
@@ -30,26 +32,42 @@ class HardeningBase:
 
     def test_dhistory(self):
         exact = self.model.dhistory_rate_dhistory(
-            self.s, self.h, self.t, self.ep, self.T
+            self.s, self.h, self.t, self.ep, self.T, self.erate
         )
         numer = utility.new_differentiate(
-            lambda x: self.model.history_rate(self.s, x, self.t, self.ep, self.T),
+            lambda x: self.model.history_rate(
+                self.s, x, self.t, self.ep, self.T, self.erate
+            ),
             self.h,
         )
-
-        print(exact.shape)
-        print(numer.shape)
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-3))
 
     def test_derate(self):
-        exact = self.model.dhistory_rate_derate(self.s, self.h, self.t, self.ep, self.T)
+        exact = self.model.dhistory_rate_derate(
+            self.s, self.h, self.t, self.ep, self.T, self.erate
+        )
         numer = utility.new_differentiate(
-            lambda x: self.model.history_rate(self.s, self.h, self.t, x, self.T),
+            lambda x: self.model.history_rate(
+                self.s, self.h, self.t, x, self.T, self.erate
+            ),
             self.ep,
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+
+    def test_dtotalrate(self):
+        exact = self.model.dhistory_rate_dtotalrate(
+            self.s, self.h, self.t, self.ep, self.T, self.erate
+        )
+        numer = utility.new_differentiate(
+            lambda x: self.model.history_rate(
+                self.s, self.h, self.t, self.ep, self.T, x
+            ),
+            self.erate,
+        )
+
+        self.assertTrue(np.allclose(exact, numer[:, :, 0], rtol=1.0e-4))
 
 
 class TestVoceIsotropicHardening(unittest.TestCase, HardeningBase):
@@ -65,6 +83,7 @@ class TestVoceIsotropicHardening(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
 
 class TestVoceIsotropicThetaHardening(unittest.TestCase, HardeningBase):
@@ -82,6 +101,7 @@ class TestVoceIsotropicThetaHardening(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
 
 class TestVoceIsotropicThetaReceoveryHardening(unittest.TestCase, HardeningBase):
@@ -102,6 +122,7 @@ class TestVoceIsotropicThetaReceoveryHardening(unittest.TestCase, HardeningBase)
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
 
 class TestFAKinematicHardening(unittest.TestCase, HardeningBase):
@@ -117,6 +138,7 @@ class TestFAKinematicHardening(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
 
 class TestFAKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
@@ -136,6 +158,7 @@ class TestFAKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
 
 class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
@@ -161,6 +184,7 @@ class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
     def test_correct_sum(self):
         should = torch.sum(self.h, 1)
@@ -169,12 +193,14 @@ class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
         self.assertTrue(np.allclose(should.numpy(), model.numpy()))
 
     def test_correct_rate(self):
-        rates = self.model.history_rate(self.s, self.h, self.t, self.ep, self.T)
+        rates = self.model.history_rate(
+            self.s, self.h, self.t, self.ep, self.T, self.erate
+        )
 
         self.assertTrue(
             np.allclose(
                 self.model1.history_rate(
-                    self.s, self.h[:, :1], self.t, self.ep, self.T
+                    self.s, self.h[:, :1], self.t, self.ep, self.T, self.erate
                 ),
                 rates[:, :1],
             )
@@ -182,7 +208,7 @@ class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
         self.assertTrue(
             np.allclose(
                 self.model2.history_rate(
-                    self.s, self.h[:, 1:2], self.t, self.ep, self.T
+                    self.s, self.h[:, 1:2], self.t, self.ep, self.T, self.erate
                 ),
                 rates[:, 1:2],
             )
@@ -205,6 +231,7 @@ class TestChabocheKinematicHardening(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
 
 class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
@@ -227,3 +254,4 @@ class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
         self.t = torch.ones(self.nbatch)
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
