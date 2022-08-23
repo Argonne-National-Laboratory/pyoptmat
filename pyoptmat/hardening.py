@@ -48,7 +48,7 @@ class HardeningModel(nn.Module):
         Returns:
           torch.tensor:       derivative with respect to the total rate
         """
-        return torch.zeros(h.shape, device = h.device)
+        return torch.zeros(h.shape, device=h.device)
 
 
 class IsotropicHardeningModel(HardeningModel):
@@ -1104,8 +1104,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         hr = torch.zeros_like(h)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            hr[:, o : o + n] = model.history_rate(s, h[:, o : o + n], t, ep, T,
-                    e)
+            hr[:, o : o + n] = model.history_rate(s, h[:, o : o + n], t, ep, T, e)
 
         return hr
 
@@ -1173,7 +1172,9 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         dhr = torch.zeros(h.shape + (1,), device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dhr[:, o : o + n] = model.dhistory_rate_derate(s, h[:, o : o + n], t, ep, T, e)
+            dhr[:, o : o + n] = model.dhistory_rate_derate(
+                s, h[:, o : o + n], t, ep, T, e
+            )
 
         return dhr
 
@@ -1195,6 +1196,8 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         dhr = torch.zeros(h.shape, device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dhr[:, o : o + n] = model.dhistory_rate_dtotalrate(s, h[:, o : o + n], t, ep, T, e)
+            dhr[:, o : o + n] = model.dhistory_rate_dtotalrate(
+                s, h[:, o : o + n], t, ep, T, e
+            )
 
         return dhr

@@ -22,8 +22,9 @@ class HardeningBase:
             self.s, self.h, self.t, self.ep, self.T, self.erate
         )
         numer = utility.new_differentiate(
-            lambda x: self.model.history_rate(x, self.h, self.t, self.ep, self.T,
-                self.erate),
+            lambda x: self.model.history_rate(
+                x, self.h, self.t, self.ep, self.T, self.erate
+            ),
             self.s,
         )
 
@@ -34,34 +35,39 @@ class HardeningBase:
             self.s, self.h, self.t, self.ep, self.T, self.erate
         )
         numer = utility.new_differentiate(
-            lambda x: self.model.history_rate(self.s, x, self.t, self.ep, self.T,
-                self.erate),
+            lambda x: self.model.history_rate(
+                self.s, x, self.t, self.ep, self.T, self.erate
+            ),
             self.h,
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-3))
 
     def test_derate(self):
-        exact = self.model.dhistory_rate_derate(self.s, self.h, self.t, self.ep, self.T,
-                self.erate)
+        exact = self.model.dhistory_rate_derate(
+            self.s, self.h, self.t, self.ep, self.T, self.erate
+        )
         numer = utility.new_differentiate(
-            lambda x: self.model.history_rate(self.s, self.h, self.t, x, self.T,
-                self.erate),
+            lambda x: self.model.history_rate(
+                self.s, self.h, self.t, x, self.T, self.erate
+            ),
             self.ep,
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
 
     def test_dtotalrate(self):
-        exact = self.model.dhistory_rate_dtotalrate(self.s, self.h, self.t, self.ep, self.T,
-                self.erate)
+        exact = self.model.dhistory_rate_dtotalrate(
+            self.s, self.h, self.t, self.ep, self.T, self.erate
+        )
         numer = utility.new_differentiate(
-            lambda x: self.model.history_rate(self.s, self.h, self.t, self.ep, self.T,
-                x),
+            lambda x: self.model.history_rate(
+                self.s, self.h, self.t, self.ep, self.T, x
+            ),
             self.erate,
         )
 
-        self.assertTrue(np.allclose(exact, numer[:,:,0], rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer[:, :, 0], rtol=1.0e-4))
 
 
 class TestVoceIsotropicHardening(unittest.TestCase, HardeningBase):
@@ -187,8 +193,9 @@ class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
         self.assertTrue(np.allclose(should.numpy(), model.numpy()))
 
     def test_correct_rate(self):
-        rates = self.model.history_rate(self.s, self.h, self.t, self.ep, self.T,
-                self.erate)
+        rates = self.model.history_rate(
+            self.s, self.h, self.t, self.ep, self.T, self.erate
+        )
 
         self.assertTrue(
             np.allclose(

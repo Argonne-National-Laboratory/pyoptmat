@@ -19,7 +19,8 @@ from pyoptmat import models, flowrules, experiments, hardening, temperature
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
-def calculate_yield(strain, stress, offset = 0.2/100.0):
+
+def calculate_yield(strain, stress, offset=0.2 / 100.0):
     """
     Calculate the yield stress given a strain/stress history
 
@@ -34,15 +35,18 @@ def calculate_yield(strain, stress, offset = 0.2/100.0):
 
     first = (vals - stress) > 0
 
-    vals, inds = torch.max(first, dim = 0)
+    vals, inds = torch.max(first, dim=0)
 
     return torch.diag(stress[inds])
 
+
 if __name__ == "__main__":
     E = temperature.PolynomialScaling(
-            [-6.82798735e-05, 9.48207244e-02, -1.11026526e+02, 2.21183687e+05])
+        [-6.82798735e-05, 9.48207244e-02, -1.11026526e02, 2.21183687e05]
+    )
     mu = temperature.PolynomialScaling(
-            [-2.60610204e-05, 3.61911162e-02, -4.23765368e+01, 8.44212545e+04])
+        [-2.60610204e-05, 3.61911162e-02, -4.23765368e01, 8.44212545e04]
+    )
     g0 = torch.tensor(0.771)
     k = torch.tensor(1.38064e-20)
     b = torch.tensor(2.019e-7)
@@ -51,7 +55,7 @@ if __name__ == "__main__":
     A = torch.tensor(-3.35)
     B = torch.tensor(-3.23)
     C = torch.tensor(-5.82)
-    
+
     n = temperature.KMRateSensitivityScaling(A, mu, b, k)
     eta = temperature.KMViscosityScaling(A, B, mu, eps0, b, k)
     s0 = temperature.ShearModulusScaling(torch.exp(C), mu)
@@ -65,56 +69,76 @@ if __name__ == "__main__":
     iso_hardening = hardening.VoceIsotropicHardeningModel(R, d)
     kin_hardening = hardening.NoKinematicHardeningModel()
 
-    rd_flowrule = flowrules.IsoKinViscoplasticity(n, eta, 
-            temperature.ConstantParameter(torch.tensor(0.0)),
-            iso_hardening, kin_hardening)
+    rd_flowrule = flowrules.IsoKinViscoplasticity(
+        n,
+        eta,
+        temperature.ConstantParameter(torch.tensor(0.0)),
+        iso_hardening,
+        kin_hardening,
+    )
 
-    ri_flowrule_base = flowrules.IsoKinViscoplasticity(n, eta,
-            s0, iso_hardening, kin_hardening)
-    ri_flowrule = flowrules.RateIndependentFlowRuleWrapper(ri_flowrule_base,
-            lmbda, eps0_ri)
+    ri_flowrule_base = flowrules.IsoKinViscoplasticity(
+        n, eta, s0, iso_hardening, kin_hardening
+    )
+    ri_flowrule = flowrules.RateIndependentFlowRuleWrapper(
+        ri_flowrule_base, lmbda, eps0_ri
+    )
 
-    flowrule = flowrules.KocksMeckingRegimeFlowRule(ri_flowrule, rd_flowrule,
-            g0, mu, b, eps0, k)
+    flowrule = flowrules.KocksMeckingRegimeFlowRule(
+        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
+    )
 
     model = models.InelasticModel(E, flowrule)
     integrator = models.ModelIntegrator(model)
-    
+
     ngrid = 10
     nsteps = 200
     elimits = torch.ones(ngrid) * 0.05
 
     # Constant temperature, varying flow rate
-    erates = torch.logspace(-5,-9,ngrid)
+    erates = torch.logspace(-5, -9, ngrid)
     temps = torch.ones_like(erates) * (575 + 273.15)
     g_rate = k * temps / (mu.value(temps) * b**3.0) * torch.log(eps0 / erates)
 
     times, strains, temperatures, cyclces = experiments.make_tension_tests(
-            erates, temps, elimits, nsteps)
+        erates, temps, elimits, nsteps
+    )
 
     results_rate = integrator.solve_strain(times, strains, temperatures)
-    yield_rate = calculate_yield(strains, results_rate[:,:,0])
+    yield_rate = calculate_yield(strains, results_rate[:, :, 0])
     norm_rate = yield_rate / mu.value(temps)
 
     # Constant flow rate, varying temperature
-    temps = torch.linspace(400+273.15, 1000+273.15, ngrid)
+    temps = torch.linspace(400 + 273.15, 1000 + 273.15, ngrid)
     erates = torch.ones_like(temps) * 8.33e-5
     g_temp = k * temps / (mu.value(temps) * b**3.0) * torch.log(eps0 / erates)
 
     times, strains, temperatures, cyclces = experiments.make_tension_tests(
-            erates, temps, elimits, nsteps)
+        erates, temps, elimits, nsteps
+    )
 
     results_temp = integrator.solve_strain(times, strains, temperatures)
-    yield_temp = calculate_yield(strains, results_temp[:,:,0])
+    yield_temp = calculate_yield(strains, results_temp[:, :, 0])
     norm_temp = yield_temp / mu.value(temps)
 
-    plt.semilogy(g_rate.numpy(), norm_rate.numpy(), color = 'tab:blue', ls = 'none',
-            marker = 'x', label = "Varying rate")
-    plt.semilogy(g_temp.numpy(), norm_temp.numpy(), color = 'tab:orange', ls = 'none',
-            marker = 'x', label = "Varying temperature")
-    plt.axvline(x = g0, ls = '--', color = 'k')
-    plt.legend(loc='best')
+    plt.semilogy(
+        g_rate.numpy(),
+        norm_rate.numpy(),
+        color="tab:blue",
+        ls="none",
+        marker="x",
+        label="Varying rate",
+    )
+    plt.semilogy(
+        g_temp.numpy(),
+        norm_temp.numpy(),
+        color="tab:orange",
+        ls="none",
+        marker="x",
+        label="Varying temperature",
+    )
+    plt.axvline(x=g0, ls="--", color="k")
+    plt.legend(loc="best")
     plt.xlabel("Normalized activation energy")
     plt.ylabel("Normalized flow stress")
     plt.show()
-

@@ -23,14 +23,14 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 if __name__ == "__main__":
     nrates = 5
 
-    erates = torch.logspace(-1,-5,nrates)
+    erates = torch.logspace(-1, -5, nrates)
     temps = torch.ones_like(erates)
     elimits = torch.ones_like(erates) * 0.1
 
     nsteps = 200
 
     times, strains, temperatures, cycles = experiments.make_tension_tests(
-            erates, temps, elimits, nsteps
+        erates, temps, elimits, nsteps
     )
 
     # Viscoplastic base model
@@ -46,26 +46,26 @@ if __name__ == "__main__":
     iso_hardening = hardening.VoceIsotropicHardeningModel(R, d)
     kin_hardening = hardening.NoKinematicHardeningModel()
 
-    base_flowrule = flowrules.IsoKinViscoplasticity(n, eta, s0, iso_hardening,
-            kin_hardening)
+    base_flowrule = flowrules.IsoKinViscoplasticity(
+        n, eta, s0, iso_hardening, kin_hardening
+    )
 
     # Approximately rate independent flow rule
     lmbda = torch.tensor(0.999)
     eps_ref = torch.tensor(1e-10)
 
-    flowrule = flowrules.RateIndependentFlowRuleWrapper(base_flowrule, lmbda,
-            eps_ref)
+    flowrule = flowrules.RateIndependentFlowRuleWrapper(base_flowrule, lmbda, eps_ref)
 
     base_model = models.InelasticModel(E, base_flowrule)
     base_integrator = models.ModelIntegrator(base_model)
 
-    rd_stresses = base_integrator.solve_strain(times, strains, temperatures)[:,:,0]
+    rd_stresses = base_integrator.solve_strain(times, strains, temperatures)[:, :, 0]
 
     model = models.InelasticModel(E, flowrule)
     integrator = models.ModelIntegrator(model)
 
-    ri_stresses = integrator.solve_strain(times, strains, temperatures)[:,:,0]
-    
+    ri_stresses = integrator.solve_strain(times, strains, temperatures)[:, :, 0]
+
     def analytic(strain):
         Ev = E.value(0).numpy()
         s0v = s0.value(0).numpy()
@@ -76,18 +76,17 @@ if __name__ == "__main__":
         plastic = pred > s0v
         ystrain = s0v / Ev
         pstrain = strain[plastic] - ystrain
-        pred[plastic] = s0v + Rv*(1.0 - np.exp(-dv * pstrain))
+        pred[plastic] = s0v + Rv * (1.0 - np.exp(-dv * pstrain))
 
         return pred
 
     for i in range(nrates):
-        plt.plot(strains[:,i], ri_stresses[:,i], 'k-', lw = 3)
-        plt.plot(strains[:,i], rd_stresses[:,i], 'k--', lw = 3)
+        plt.plot(strains[:, i], ri_stresses[:, i], "k-", lw=3)
+        plt.plot(strains[:, i], rd_stresses[:, i], "k--", lw=3)
 
-        enp = strains[:,i].numpy()
+        enp = strains[:, i].numpy()
         exact = analytic(enp)
-        plt.plot(enp, exact, color = 'r', lw = 2, ls = ':')
-
+        plt.plot(enp, exact, color="r", lw=2, ls=":")
 
     plt.xlabel("Strain (mm/mm)")
     plt.ylabel("Stress (MPa)")
