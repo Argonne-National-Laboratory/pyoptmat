@@ -139,7 +139,7 @@ class RateIndependentFlowRuleWrapper(FlowRule):
         the original, rate dependent response and :math:`\\lambda \\approx 1` 
         gives an approximately rate independent response,
         :math:`\\dot{\\varepsilon}_{ref}` is a reference strain rate which
-        should be on the order of the applied strain rate,
+        should be several orders of magnitude smaller than the applied strain rate,
         and :math:`\\dot{\\varepsilon}` is the current, transient
         strain rate applied to the model.
 
