@@ -674,6 +674,7 @@ class ArrheniusScaling(TemperatureParameter):
         """
         return self.A.shape
 
+
 class YieldStrengthScaling(TemperatureParameter):
     """
     Parameter that scales as:

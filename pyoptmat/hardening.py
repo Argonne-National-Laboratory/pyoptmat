@@ -463,6 +463,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
             1,
         )
 
+
 class YaguchiHardeningModel(IsotropicHardeningModel):
     """
     Voce isotropic hardening, defined by
@@ -562,7 +563,7 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
           torch.tensor:       derivative with respect to history
         """
         return (-self.b(h, ep, T) * torch.abs(ep))[:, None, None]
-        
+
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
         The derivative of the history rate with respect to the inelastic
@@ -601,7 +602,7 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
         solution_2 = ((-self.b(h, ep, T) * h[:, 0]) * torch.sign(ep))[:, None, None]
 
         return sigma_sign * solution_2 + (1.0 - sigma_sign) * solution_1
-        
+
     def sigma_sat(self, ep, T):
         """
         Calculate the current value of sigma_sat
@@ -632,6 +633,7 @@ class YaguchiHardeningModel(IsotropicHardeningModel):
         # b[sigma_sat < h[:,0]] = self.br(T)
         heaviside = torch.ge(sigma_sat, h[:, 0]).int()
         return heaviside * self.bh(T) + (1.0 - heaviside) * self.br(T)
+
 
 class KinematicHardeningModel(HardeningModel):
     """
