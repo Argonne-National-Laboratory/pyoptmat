@@ -673,3 +673,54 @@ class ArrheniusScaling(TemperatureParameter):
         Shape of the underlying parameter
         """
         return self.A.shape
+
+class YieldStrengthScaling(TemperatureParameter):
+    """
+    Parameter that scales as:
+
+    .. math::
+
+      C \\mu
+
+    where :math:`\\mu` further depends on temperature
+
+    Args:
+      C (torch.tensor): actual parameter
+      mu (|TP|):        scalar, temperature-dependent shear modulus
+
+    Keyword Args:
+      C_scale (function):       numerical scaling function for C, defaults to
+                                no scaling
+    """
+
+    def __init__(self, C, mu, *args, C_scale=lambda x: x, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.C = C
+        self.mu = mu
+        self.C_scale = C_scale
+
+    @property
+    def device(self):
+        """
+        Return the device used by the scaling function
+        """
+        return self.C.device
+
+    def value(self, T):
+        """
+        Return the function value
+
+        Args:
+          T (torch.tensor):   current temperature
+
+        Returns:
+          torch.tensor:       value at the given temperatures
+        """
+        return torch.exp(self.C_scale(self.C)) * self.mu(T)
+
+    @property
+    def shape(self):
+        """
+        The shape of the underlying parameter
+        """
+        return self.C.shape

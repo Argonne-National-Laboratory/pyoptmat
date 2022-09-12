@@ -141,4 +141,6 @@ if __name__ == "__main__":
     plt.legend(loc="best")
     plt.xlabel("Normalized activation energy")
     plt.ylabel("Normalized flow stress")
+    plt.savefig("check-different-approach-II.pdf")
     plt.show()
+    plt.close()
