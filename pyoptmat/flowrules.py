@@ -206,12 +206,12 @@ class KocksMeckingRegimeFlowRule(FlowRule):
         # result[second] = vals2[second]
 
         # approach 2
-        temp_g = self.g(T, e)
+        temp_g = self.g(T, e+1.0e-30)
         new_g = (torch.abs(temp_g - self.g0) / (temp_g - self.g0) + 1.0) / 2.0
         result = vals1.clone() * (1.0 - new_g).reshape(
             vals1.shape
         ) + vals2.clone() * new_g.reshape(vals2.shape)
-
+        
         return result
 
     def flow_rate(self, s, h, t, T, e):
