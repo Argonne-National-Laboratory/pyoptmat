@@ -208,9 +208,17 @@ class KocksMeckingRegimeFlowRule(FlowRule):
         # approach 2
         temp_g = self.g(T, e + 1.0e-30)
         new_g = (torch.abs(temp_g - self.g0) / (temp_g - self.g0) + 1.0) / 2.0
-        result = vals1.clone() * (1.0 - new_g).reshape(
-            vals1.shape
-        ) + vals2.clone() * new_g.reshape(vals2.shape)
+
+        if vals1.clone().dim() > 1:
+            dim = vals1.clone().dim() - 1
+            result = (
+                vals1.clone() * (1.0 - new_g).repeat((vals1.shape[1],) + (1,) * dim).T
+                + vals2.clone() * new_g.repeat((vals2.shape[1],) + (1,) * dim).T
+            )
+        else:
+            result = vals1.clone() * (1.0 - new_g).reshape(
+                vals1.shape
+            ) + vals2.clone() * new_g.reshape(vals2.shape)
 
         return result
 
