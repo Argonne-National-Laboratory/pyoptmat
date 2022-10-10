@@ -1,5 +1,5 @@
-Other example problems
-======================
+Other sample problems
+=====================
 
 Optimizing deterministic material models
 ----------------------------------------
