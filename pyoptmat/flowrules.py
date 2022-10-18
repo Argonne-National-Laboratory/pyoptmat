@@ -186,7 +186,10 @@ class KocksMeckingRegimeFlowRule(FlowRule):
             torch.tensor:       value of the activation energy
         """
         return (
-            self.k * T / (self.mu.value(T) * self.b**3.0) * torch.log(self.eps0 / e)
+            self.k
+            * T
+            / (self.mu.value(T) * self.b**3.0)
+            * torch.log(self.eps0 / torch.abs(e + 1.0e-30))
         )
 
     def switch_values(self, vals1, vals2, T, e):
@@ -200,13 +203,14 @@ class KocksMeckingRegimeFlowRule(FlowRule):
             e (torch.tensor):       strain rates
 
         """
+        """
         # approach 1
-        # result = torch.clone(vals1)
-        # second = self.g(T, e) > self.g0
-        # result[second] = vals2[second]
-
+        result = torch.clone(vals1)
+        second = self.g(T, e) > self.g0
+        result[second] = vals2[second]
+        """
         # approach 2
-        temp_g = self.g(T, e + 1.0e-30)
+        temp_g = self.g(T, e)
         new_g = (torch.abs(temp_g - self.g0) / (temp_g - self.g0) + 1.0) / 2.0
 
         if vals1.clone().dim() > 1:
@@ -414,7 +418,7 @@ class RateIndependentFlowRuleWrapper(FlowRule):
         Returns:
             torch.tensor:       current scale factor
         """
-        return 1.0 - self.lmbda + self.lmbda * torch.abs(e) / self.eps_ref
+        return 1.0 - self.lmbda + self.lmbda * torch.abs(e + 1.0e-30) / self.eps_ref
 
     def dscale(self, e):
         """
@@ -429,7 +433,7 @@ class RateIndependentFlowRuleWrapper(FlowRule):
             torch.tensor:       derivative of the scale factor
                                 with respect to the total strain rate
         """
-        return torch.sign(e) * self.lmbda / self.eps_ref
+        return torch.sign(e + 1.0e-30) * self.lmbda / self.eps_ref
 
     def flow_rate(self, s, h, t, T, e):
         """
