@@ -203,13 +203,11 @@ class KocksMeckingRegimeFlowRule(FlowRule):
             e (torch.tensor):       strain rates
 
         """
-        """
         # approach 1
-        result = torch.clone(vals1)
-        second = self.g(T, e) > self.g0
-        result[second] = vals2[second]
-        """
-        # approach 2
+        # result = torch.clone(vals1)
+        # second = self.g(T, e) > self.g0
+        # result[second] = vals2[second]
+
         temp_g = self.g(T, e)
         new_g = (torch.abs(temp_g - self.g0) / (temp_g - self.g0) + 1.0) / 2.0
 
