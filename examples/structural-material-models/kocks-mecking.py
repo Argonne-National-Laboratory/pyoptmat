@@ -12,7 +12,9 @@ sys.path.append("../..")
 
 import torch
 import numpy as np
+import matplotlib
 
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from pyoptmat import models, flowrules, experiments, hardening, temperature
@@ -88,6 +90,10 @@ if __name__ == "__main__":
         ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
     )
 
+    # flowrule = flowrules.KMFlowRule(
+    # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
+    # )
+
     model = models.InelasticModel(E, flowrule)
     integrator = models.ModelIntegrator(model)
 
@@ -142,5 +148,5 @@ if __name__ == "__main__":
     plt.xlabel("Normalized activation energy")
     plt.ylabel("Normalized flow stress")
     plt.savefig("check-different-approach-II.pdf")
-    plt.show()
+    # plt.show()
     plt.close()
