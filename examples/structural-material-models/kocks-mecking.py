@@ -86,13 +86,13 @@ if __name__ == "__main__":
         ri_flowrule_base, lmbda, eps0_ri
     )
 
-    flowrule = flowrules.KocksMeckingRegimeFlowRule(
+    # flowrule = flowrules.KocksMeckingRegimeFlowRule(
+        # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
+    # )
+
+    flowrule = flowrules.KMFlowRule(
         ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
     )
-
-    # flowrule = flowrules.KMFlowRule(
-    # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
-    # )
 
     model = models.InelasticModel(E, flowrule)
     integrator = models.ModelIntegrator(model)

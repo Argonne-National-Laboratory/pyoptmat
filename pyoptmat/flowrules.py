@@ -1226,10 +1226,16 @@ class KMFlowRule(FlowRule):
 
         if torch.all(logic == True):
             flow2, dflow2 = self.model2.flow_rate(s, h, t, T, e)
-            return (flow2, dflow2)
+            return (
+                self.switch_values(flow2, flow2, T, e),
+                self.switch_values(dflow2, dflow2, T, e),
+            )
         elif torch.all(logic == False):
             flow1, dflow1 = self.model1.flow_rate(s, h, t, T, e)
-            return (flow1, dflow1)
+            return (
+                self.switch_values(flow1, flow1, T, e),
+                self.switch_values(dflow1, dflow1, T, e),
+            )
         else:
             flow1, dflow1 = self.model1.flow_rate(s, h, t, T, e)
             flow2, dflow2 = self.model2.flow_rate(s, h, t, T, e)
@@ -1257,9 +1263,19 @@ class KMFlowRule(FlowRule):
         _, logic = self.logic(T, e)
 
         if torch.all(logic == True):
-            return self.model2.dflow_dhist(s, h, t, T, e)
+            return self.switch_values(
+                self.model2.dflow_dhist(s, h, t, T, e),
+                self.model2.dflow_dhist(s, h, t, T, e),
+                T,
+                e,
+            )
         elif torch.all(logic == False):
-            return self.model1.dflow_dhist(s, h, t, T, e)
+            return self.switch_values(
+                self.model1.dflow_dhist(s, h, t, T, e),
+                self.model1.dflow_dhist(s, h, t, T, e),
+                T,
+                e,
+            )
         else:
             return self.switch_values(
                 self.model1.dflow_dhist(s, h, t, T, e),
@@ -1287,9 +1303,19 @@ class KMFlowRule(FlowRule):
         _, logic = self.logic(T, e)
 
         if torch.all(logic == True):
-            return self.model2.dflow_derate(s, h, t, T, e)
+            return self.switch_values(
+                self.model2.dflow_derate(s, h, t, T, e),
+                self.model2.dflow_derate(s, h, t, T, e),
+                T,
+                e,
+            )
         elif torch.all(logic == False):
-            return self.model1.dflow_derate(s, h, t, T, e)
+            return self.switch_values(
+                self.model1.dflow_derate(s, h, t, T, e),
+                self.model1.dflow_derate(s, h, t, T, e),
+                T,
+                e,
+            )
         else:
             return self.switch_values(
                 self.model1.dflow_derate(s, h, t, T, e),
@@ -1320,14 +1346,19 @@ class KMFlowRule(FlowRule):
 
         if torch.all(logic == True):
             rate2, drate2 = self.model2.history_rate(s, h, t, T, e)
-            return rate2, drate2
+            return (
+                self.switch_values(rate2, rate2, T, e),
+                self.switch_values(drate2, drate2, T, e),
+            )
         elif torch.all(logic == False):
             rate1, drate1 = self.model1.history_rate(s, h, t, T, e)
-            return rate1, drate1
+            return (
+                self.switch_values(rate1, rate1, T, e),
+                self.switch_values(drate1, drate1, T, e),
+            )
         else:
             rate1, drate1 = self.model1.history_rate(s, h, t, T, e)
             rate2, drate2 = self.model2.history_rate(s, h, t, T, e)
-
             return (
                 self.switch_values(rate1, rate2, T, e),
                 self.switch_values(drate1, drate2, T, e),
@@ -1351,9 +1382,19 @@ class KMFlowRule(FlowRule):
         _, logic = self.logic(T, e)
 
         if torch.all(logic == True):
-            return self.model2.dhist_dstress(s, h, t, T, e)
+            return self.switch_values(
+                self.model2.dhist_dstress(s, h, t, T, e),
+                self.model2.dhist_dstress(s, h, t, T, e),
+                T,
+                e,
+            )
         elif torch.all(logic == False):
-            return self.model1.dhist_dstress(s, h, t, T, e)
+            return self.switch_values(
+                self.model1.dhist_dstress(s, h, t, T, e),
+                self.model1.dhist_dstress(s, h, t, T, e),
+                T,
+                e,
+            )
         else:
             return self.switch_values(
                 self.model1.dhist_dstress(s, h, t, T, e),
@@ -1379,9 +1420,19 @@ class KMFlowRule(FlowRule):
         _, logic = self.logic(T, e)
 
         if torch.all(logic == True):
-            return self.model2.dhist_derate(s, h, t, T, e)
+            return self.switch_values(
+                self.model2.dhist_derate(s, h, t, T, e),
+                self.model2.dhist_derate(s, h, t, T, e),
+                T,
+                e,
+            )
         elif torch.all(logic == False):
-            return self.model1.dhist_derate(s, h, t, T, e)
+            return self.switch_values(
+                self.model1.dhist_derate(s, h, t, T, e),
+                self.model1.dhist_derate(s, h, t, T, e),
+                T,
+                e,
+            )
         else:
             return self.switch_values(
                 self.model1.dhist_derate(s, h, t, T, e),
