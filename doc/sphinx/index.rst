@@ -1,9 +1,9 @@
 pyoptmat: statistical inference for material models
 ===================================================
 
-``pyoptmat takes uncertain experimental data and uses it to train 
+*pyoptmat takes uncertain experimental data and uses it to train 
 a statistical material model that can predict and extrapolate that
-variability to new loading conditions.``
+variability to new loading conditions.*
 
 pyoptmat is a Python package for using Bayesian inference
 to train statistical material constitutive models against
