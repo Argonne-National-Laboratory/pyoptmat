@@ -64,6 +64,7 @@ class CommonFlowRule:
             lambda x: self.model.flow_rate(self.s, self.h, self.t, self.T, x)[0],
             self.erate,
         )
+
         self.assertTrue(np.allclose(exact, torch.flatten(numer), rtol=1.0e-4))
 
     def test_history_erate(self):
@@ -362,6 +363,87 @@ class TestIsoKinChabocheViscoplasticity(unittest.TestCase, CommonFlowRule):
             ).T,
             (self.nbatch, 4),
         )
+        self.t = torch.ones(self.nbatch)
+        self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
+
+        self.skip = False
+
+    def test_kin(self):
+        def fn(i):
+            hp = self.h.clone()
+            hp[:, 1] = i
+            return self.model.flow_rate(self.s, hp, self.t, self.T, self.erate)[0]
+
+        i1 = utility.differentiate(fn, self.h[:, 1])
+        i2 = self.model.dflow_dkin(self.s, self.h, self.t, self.T, self.erate)
+        self.assertTrue(np.allclose(i1, i2, rtol=1.0e-4))
+
+    def test_iso(self):
+        def fn(i):
+            hp = self.h.clone()
+            hp[:, 0] = i
+            return self.model.flow_rate(self.s, hp, self.t, self.T, self.erate)[0]
+
+        i1 = utility.differentiate(fn, self.h[:, 0])
+        i2 = self.model.dflow_diso(self.s, self.h, self.t, self.T, self.erate)
+
+        self.assertTrue(np.allclose(i1, i2, rtol=1.0e-4))
+
+
+class TestAdaptiveViscoplasticity(unittest.TestCase, CommonFlowRule):
+    def setUp(self):
+        self.n = torch.tensor(5.2)
+        self.eta = torch.tensor(110.0)
+        self.s0 = torch.tensor(11.0)
+        self.vpys = torch.tensor(20.0)
+        self.lmbda = torch.tensor(0.9)
+        self.eps_ref = torch.tensor(1.0e-3)
+        self.mu = CP(1000.0)
+        self.b = torch.tensor(2.019e-7)
+        self.k = torch.tensor(1.38064e-20)
+        self.eps0 = torch.tensor(1.0e6)
+        self.g0 = torch.tensor(0.5)
+
+        self.nbatch = 10
+
+        self.R = torch.tensor(101.0)
+        self.d = torch.tensor(1.3)
+        self.iso = hardening.VoceIsotropicHardeningModel(CP(self.R), CP(self.d))
+
+        self.C = torch.tensor(1200.0)
+        self.g = torch.tensor(10.1)
+        self.kin = hardening.FAKinematicHardeningModel(CP(self.C), CP(self.g))
+
+        self.model = flowrules.AdaptiveViscoplasticity(
+            CP(self.n),
+            CP(self.eta),
+            CP(self.s0),
+            CP(self.vpys),
+            self.lmbda,
+            self.eps_ref,
+            self.mu,
+            self.b,
+            self.k,
+            self.eps0,
+            self.g0,
+            self.iso,
+            self.kin,
+        )
+
+        self.s = torch.linspace(150, 200, self.nbatch)
+        self.h = torch.reshape(
+            torch.tensor(
+                np.array(
+                    [
+                        np.linspace(51, 110, self.nbatch),
+                        np.linspace(-100, 210, self.nbatch)[::-1],
+                    ]
+                )
+            ).T,
+            (self.nbatch, 2),
+        )
+
         self.t = torch.ones(self.nbatch)
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)

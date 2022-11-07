@@ -14,7 +14,7 @@ import torch
 import numpy as np
 import matplotlib
 
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from pyoptmat import models, flowrules, experiments, hardening, temperature
@@ -62,8 +62,8 @@ if __name__ == "__main__":
     eta = temperature.KMViscosityScaling(A, B, mu, eps0, b, k)
     s0 = temperature.ShearModulusScaling(torch.exp(C), mu)
 
-    eps0_ri = 1e-10
-    lmbda = 0.99
+    eps0_ri = torch.tensor(1e-10)
+    lmbda = torch.tensor(0.99)
 
     R = temperature.ConstantParameter(torch.tensor(100.0))
     d = temperature.ConstantParameter(torch.tensor(20.0))
@@ -86,13 +86,29 @@ if __name__ == "__main__":
         ri_flowrule_base, lmbda, eps0_ri
     )
 
-    # flowrule = flowrules.KocksMeckingRegimeFlowRule(
+    flowrule = flowrules.KocksMeckingRegimeFlowRule(
+        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
+    )
+
+    # flowrule = flowrules.KMFlowRule(
         # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
     # )
 
-    flowrule = flowrules.KMFlowRule(
-        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
-    )
+    # flowrule = flowrules.AdaptiveViscoplasticity(
+        # n,
+        # eta,
+        # s0,
+        # temperature.ConstantParameter(torch.tensor(0.0)),
+        # lmbda,
+        # eps0_ri,
+        # mu,
+        # b,
+        # k,
+        # eps0,
+        # g0,
+        # iso_hardening,
+        # kin_hardening,
+    # )
 
     model = models.InelasticModel(E, flowrule)
     integrator = models.ModelIntegrator(model)
@@ -147,6 +163,6 @@ if __name__ == "__main__":
     plt.legend(loc="best")
     plt.xlabel("Normalized activation energy")
     plt.ylabel("Normalized flow stress")
-    plt.savefig("check-different-approach-II.pdf")
-    # plt.show()
+    # plt.savefig("check-different-approach-II.pdf")
+    plt.show()
     plt.close()
