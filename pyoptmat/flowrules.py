@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation, line-too-long, duplicate-code, too-many-lines
+# pylint: disable=abstract-method, no-self-use, useless-super-delegation, line-too-long, duplicate-code, too-many-lines, too-many-arguments
 
 """
   Module containing inelastic flow rules.  These provide the rate of the
