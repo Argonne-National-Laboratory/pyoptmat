@@ -396,7 +396,7 @@ class TestAdaptiveViscoplasticity(unittest.TestCase, CommonFlowRule):
         self.n = torch.tensor(5.2)
         self.eta = torch.tensor(110.0)
         self.s0 = torch.tensor(11.0)
-        self.vpys = torch.tensor(20.0)
+        self.vpys = torch.tensor(0.0)
         self.lmbda = torch.tensor(0.9)
         self.eps_ref = torch.tensor(1.0e-3)
         self.mu = CP(1000.0)

@@ -1596,23 +1596,23 @@ class AdaptiveViscoplasticity(FlowRule):
         kh = self.kinematic.value(h[:, self.isotropic.nhist :])
 
         flow1 = utility.macaulay(
-            (torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T)
+            (torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T)
         ) ** self.n(T) * torch.sign(s - kh)
 
         dflow1 = (
             self.n(T)
-            * utility.macaulay((torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T))
+            * utility.macaulay((torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T))
             ** (self.n(T) - 1)
             / self.eta(T)
         )
 
         flow2 = utility.macaulay(
-            (torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T)
+            (torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T)
         ) ** self.n(T) * torch.sign(s - kh)
 
         dflow2 = (
             self.n(T)
-            * utility.macaulay((torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T))
+            * utility.macaulay((torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T))
             ** (self.n(T) - 1)
             / self.eta(T)
         )
@@ -1641,8 +1641,8 @@ class AdaptiveViscoplasticity(FlowRule):
             h[:, self.isotropic.nhist : self.isotropic.nhist + self.kinematic.nhist]
         )
 
-        iv1 = (torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T)
-        iv2 = (torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T)
+        iv1 = (torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T)
+        iv2 = (torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T)
 
         dflow1_diso = self.scale(e) * (
             -self.n(T)
@@ -1681,14 +1681,14 @@ class AdaptiveViscoplasticity(FlowRule):
 
         dflow1_dkin = self.scale(e) * (
             -self.n(T)
-            * utility.macaulay((torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T))
+            * utility.macaulay((torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T))
             ** (self.n(T) - 1)
             / self.eta(T)
         )
 
         dflow2_dkin = (
             -self.n(T)
-            * utility.macaulay((torch.abs(s - kh) - self.s0(T) - ih) / self.eta(T))
+            * utility.macaulay((torch.abs(s - kh) - self.vpys(T) - ih) / self.eta(T))
             ** (self.n(T) - 1)
             / self.eta(T)
         )

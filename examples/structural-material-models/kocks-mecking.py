@@ -13,6 +13,7 @@ sys.path.append("../..")
 import torch
 import numpy as np
 import matplotlib
+import time
 
 # matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -20,6 +21,8 @@ import matplotlib.pyplot as plt
 from pyoptmat import models, flowrules, experiments, hardening, temperature
 
 torch.set_default_tensor_type(torch.DoubleTensor)
+
+start_time = time.time()
 
 
 def calculate_yield(strain, stress, offset=0.2 / 100.0):
@@ -71,44 +74,44 @@ if __name__ == "__main__":
     iso_hardening = hardening.VoceIsotropicHardeningModel(R, d)
     kin_hardening = hardening.NoKinematicHardeningModel()
 
-    rd_flowrule = flowrules.IsoKinViscoplasticity(
+    # rd_flowrule = flowrules.IsoKinViscoplasticity(
+    # n,
+    # eta,
+    # temperature.ConstantParameter(torch.tensor(0.0)),
+    # iso_hardening,
+    # kin_hardening,
+    # )
+
+    # ri_flowrule_base = flowrules.IsoKinViscoplasticity(
+    # n, eta, s0, iso_hardening, kin_hardening
+    # )
+    # ri_flowrule = flowrules.RateIndependentFlowRuleWrapper(
+    # ri_flowrule_base, lmbda, eps0_ri
+    # )
+
+    # flowrule = flowrules.KocksMeckingRegimeFlowRule(
+    # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
+    # )
+
+    # flowrule = flowrules.KMFlowRule(
+    # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
+    # )
+
+    flowrule = flowrules.AdaptiveViscoplasticity(
         n,
         eta,
+        s0,
         temperature.ConstantParameter(torch.tensor(0.0)),
+        lmbda,
+        eps0_ri,
+        mu,
+        b,
+        k,
+        eps0,
+        g0,
         iso_hardening,
         kin_hardening,
     )
-
-    ri_flowrule_base = flowrules.IsoKinViscoplasticity(
-        n, eta, s0, iso_hardening, kin_hardening
-    )
-    ri_flowrule = flowrules.RateIndependentFlowRuleWrapper(
-        ri_flowrule_base, lmbda, eps0_ri
-    )
-
-    flowrule = flowrules.KocksMeckingRegimeFlowRule(
-        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
-    )
-
-    # flowrule = flowrules.KMFlowRule(
-        # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
-    # )
-
-    # flowrule = flowrules.AdaptiveViscoplasticity(
-        # n,
-        # eta,
-        # s0,
-        # temperature.ConstantParameter(torch.tensor(0.0)),
-        # lmbda,
-        # eps0_ri,
-        # mu,
-        # b,
-        # k,
-        # eps0,
-        # g0,
-        # iso_hardening,
-        # kin_hardening,
-    # )
 
     model = models.InelasticModel(E, flowrule)
     integrator = models.ModelIntegrator(model)
@@ -163,6 +166,8 @@ if __name__ == "__main__":
     plt.legend(loc="best")
     plt.xlabel("Normalized activation energy")
     plt.ylabel("Normalized flow stress")
-    # plt.savefig("check-different-approach-II.pdf")
-    plt.show()
+    plt.savefig("check-different-approach-II.pdf")
+    # plt.show()
     plt.close()
+
+    print("--- %s seconds ---" % (time.time() - start_time))
