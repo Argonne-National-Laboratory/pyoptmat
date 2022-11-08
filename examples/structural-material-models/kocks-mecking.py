@@ -93,10 +93,6 @@ if __name__ == "__main__":
     # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
     # )
 
-    # flowrule = flowrules.KMFlowRule(
-    # ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
-    # )
-
     flowrule = flowrules.AdaptiveViscoplasticity(
         n,
         eta,
