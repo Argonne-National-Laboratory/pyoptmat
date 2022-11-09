@@ -21,7 +21,7 @@
   variable rate with respect to the internal variables) along with the rates
   themselves.  The "cross" derivatives are defined with separate methods.
 """
-import sys
+
 import numpy as np
 
 import torch
