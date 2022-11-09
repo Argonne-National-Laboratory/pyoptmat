@@ -22,8 +22,6 @@ from pyoptmat import models, flowrules, experiments, hardening, temperature
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
-start_time = time.time()
-
 
 def calculate_yield(strain, stress, offset=0.2 / 100.0):
     """
@@ -125,7 +123,10 @@ if __name__ == "__main__":
         erates, temps, elimits, nsteps
     )
 
+    start_time = time.time()
     results_rate = integrator.solve_strain(times, strains, temperatures)
+    print("--- %s seconds ---" % (time.time() - start_time))
+
     yield_rate = calculate_yield(strains, results_rate[:, :, 0])
     norm_rate = yield_rate / mu.value(temps)
 
@@ -162,8 +163,6 @@ if __name__ == "__main__":
     plt.legend(loc="best")
     plt.xlabel("Normalized activation energy")
     plt.ylabel("Normalized flow stress")
-    plt.savefig("check-different-approach-II.pdf")
-    # plt.show()
+    # plt.savefig("check-different-approach-II.pdf")
+    plt.show()
     plt.close()
-
-    print("--- %s seconds ---" % (time.time() - start_time))
