@@ -1,25 +1,25 @@
 Structural material modeling tutorial
 =====================================
 
-The scripts for generating the data and running this sample
-problem are in the `examples/structural-inference/tension` directory
+The scripts for generating data and running the tutorial sample
+problem can be found in the `examples/structural-inference/tension` directory
 in the full distribution package.
 
-This example solves a practical problem: given experimental tension
+The tutorial solves a practical problem: given experimental tension
 test data for a material with varying material properties find a statistical
 viscoplastic model, defined by a set of model parameter distributions, that
 represents the resulting variation in the material response.  The experimental
 data characterizes the variability in the material response.  This
 variability may arise from heat-to-heat variation in the underlying
-material properties, caused by manufacturing variability, and random
+material properties, caused by manufacturing variability, or from random
 experimental noise in the test controls and measurements.
 
-There are three ingredients to using pyoptmat to generate a statistical model
+There are three ingredients pyoptmat uses to generate a statistical model
 for the material behavior
 
 - Experimental data sampling different test conditions and the variability in the underlying material properties.
 - A parameterized mathematical model describing the material behavior.  This model can be setup as as if it was deterministic, the inference process will find parameter distributions to explain the distribution of the test data.
-- Guesses as to what the statistical distribution of each model parameter should be.  These are the formal prior parameter distributions for the statistical inference.  However, these prior distributions can be very poor guesses ("ill-informed priors") and the inference algorithm can still produce a very accurate statistical model.
+- Guesses as to what the statistical distribution of each model parameter should be.  These are the formal prior parameter distributions for the statistical inference, and although they can be very poor guesses ("ill-informed priors") the inference algorithm can still produce a very accurate statistical model.
 
 Input data
 ----------

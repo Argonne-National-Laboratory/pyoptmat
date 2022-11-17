@@ -1,67 +1,68 @@
 pyoptmat: statistical inference for material models
 ===================================================
 
+*pyoptmat takes uncertain experimental data and uses it to train 
+a statistical material model that can predict and extrapolate that
+variability to new loading conditions.*
+
 pyoptmat is a Python package for using Bayesian inference
 to train statistical material constitutive models against
-experimental data.
-A "material model" is mathematically a parameterized system of ordinary 
-differential equations which, integrated through the
-experimental conditions, returns some simulated
-output that can be compared to the test measurements.
-pyoptmat uses the `pyro <http://pyro.ai/>`_ package to find
+experimental data.  Material models describe how
+the material responds to some external stimulus.  For example,
+structural material models describe how the material reacts to
+mechanical forces.  Mathematically, these models are systems of ordinary
+differential equations.  pyoptmat trains stoachastic ordinary differential
+equations to match the variability in the experimental data.
+
+As an example, consider a collection of tension test data from 
+several samples of a material.  Test measurements vary due to 
+manufacturing variability and uncertainty in the experimental controls
+and measurements.  pyoptmat uses the `pyro <http://pyro.ai/>`_ package to find
 statistical distributions of the model parameters to explain the
 variation in the experimental data.
 
-As an example, consider a collection of tension test data on several samples
-of a material.  The test measurements have some variation caused by
-manufacturing variability and uncertainty in the experimental controls
-and measurements.
-
-pyoptmat aims to make training a statistical model to capture these
-variations easy.  The image shows the results of training a simple
-material model to the test data.  The trained statistical model captures
-the variability in the experimental data and can then be used to
+The image below shows pyoptmat makes the process of a training a statistical model simple.
+The trained statistical model captures
+the variability in the experimental data and then can
 translate this uncertainty to models of engineering components.  
-Transferring uncertainty quantified in experimental measurements
-to predictions of uncertainty in engineering applications is the main 
-reason pyoptmat was developed.
 
 .. figure:: figures/demonstration.png
    :width: 400
    :alt: Example of fitting a statistical model to data
 
-   Example of what pyoptmat can do: take uncertain experimental data (dashed lines)
-   and use it to train a statistical material model that can predict and extrapolate
-   that uncertaintly (solid line and prediction interval).
+   pyoptmat takes uncertain experimental data and uses it to train a statistical material 
+   model that can predict and extrapolate that uncertainty.
 
-The package is currently geared towards structural material
-models that describe how materials react to mechanical forces.
-Mathematically then, these models are systems of stochastic ordinary
-differential equations.
-However, the underlying mathematical and computational infrastructure
-could work for a variety of models for different types of material properties.
+pyoptmat features
+-----------------
 
+- A complete open source solution for training statistical, ODE models against 
+  uncertain data.
+- Efficient backward pass/gradient calculation using the adjoint method.  This
+  approach vastly outperforms automatic differentiation for time series data. 
+- Implicit time integration algorithms suitable for material models represents
+  as stiff systems of ordinary differential equations.
+- Prebuilt model components aimed at high temperature structural materials.
+- An abstraction that makes it easy to train both deterministic and statistical
+  models, starting from the same base material model form.
+- Examples and tests to help you get started.
 
 Getting started
 ---------------
 
-The :doc:`highlights <highlights>` section contains a high-level
-overview of pyoptmat can do.
-
-To get started start by :doc:`installing pyopmat <install>` and then look at the
+To get started, simply :doc:`install pyopmat <install>` and then review the
 :doc:`complete tutorial <structural_tutorial>`, which takes you through the process of formatting
 experimental data, building a model, and training it against the data.
 If you are interested in the details of how pyopmat efficiently integrates
-ODEs and constructs the sensitivities with an adjoint method, the
+ODEs and constructs the sensitivities using an adjoint method, the
 :doc:`ode module <ode>` documentation outlines that process.  
 The :doc:`flowrules <flowrules>`, :doc:`hardening <hardening>`, 
-and :doc:`damage <damage>` modules contain the current set of prebuilt models, 
+and :doc:`damage <damage>` modules are where to find the current set of prebuilt models, 
 focusing on structural materials.  
 
 .. toctree::
    :maxdepth: 1
    
-   highlights
    install
    structural_tutorial
    examples
@@ -70,8 +71,7 @@ focusing on structural materials.
 Submodule documentation
 -----------------------
 
-After that, the following table provides links to a complete
-API description of each pyoptmat submodule.
+The following are links to the complete API descriptions of each pyoptmat submodule.
 
 .. toctree::
 
