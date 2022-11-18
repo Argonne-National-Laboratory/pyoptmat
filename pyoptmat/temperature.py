@@ -165,6 +165,56 @@ class ShearModulusScaling(TemperatureParameter):
         """
         return self.A.shape
 
+class ShearModulusScalingExp(TemperatureParameter):
+    """
+    Parameter that scales as:
+
+    .. math::
+
+      \exp(A) \\mu
+
+    where :math:`\\mu` further depends on temperature
+
+    Args:
+      A (torch.tensor): actual parameter
+      mu (|TP|):        scalar, temperature-dependent shear modulus
+
+    Keyword Args:
+      A_scale (function):       numerical scaling function for A, defaults to
+                                no scaling
+    """
+
+    def __init__(self, A, mu, *args, A_scale=lambda x: x, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.A = A
+        self.mu = mu
+        self.A_scale = A_scale
+
+    @property
+    def device(self):
+        """
+        Return the device used by the scaling function
+        """
+        return self.A.device
+
+    def value(self, T):
+        """
+        Return the function value
+
+        Args:
+          T (torch.tensor):   current temperature
+
+        Returns:
+          torch.tensor:       value at the given temperatures
+        """
+        return torch.exp(self.A_scale(self.A)) * self.mu(T)
+
+    @property
+    def shape(self):
+        """
+        The shape of the underlying parameter
+        """
+        return self.A.shape
 
 class MTSScaling(TemperatureParameter):
     """
@@ -403,6 +453,99 @@ class KMViscosityScaling(TemperatureParameter):
         """
         return self.B.shape
 
+class KMViscosityScalingGC(TemperatureParameter):
+    """
+    Parameter that varies as
+
+    .. math::
+
+      \\exp{B} \\mu \\dot{\\varepsilon}_0^{-1/n}
+
+    where :math:`B = C - g_0 A` is the Kocks-Mecking intercept parameter
+    and the rest are defined in the
+    :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object.
+
+    :math:`n` is the rate sensitivity, again given by the
+    :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object
+
+    Args:
+      A (torch.tensor):     Kocks-Mecking slope parameter
+      C (torch.tensor):     Kocks-Mecking cutoff parameter
+      g0 (torch.tensor):    Kocks-Mecking critical energy
+      mu (|TP|):            scalar, temperature-dependent shear modulus
+      eps0 (torch.tensor):  scalar, reference strain rate
+      b (torch.tensor):     scalar, Burger's vector
+      k (torch.tensor):     scalar, Boltzmann constant
+
+    Keyword Args:
+      A_scale (function):   numerical scaling function for A, defaults to
+                            no scaling
+      C_scale (function):   numerical scaling function for C, defaults to
+                            no scaling
+      g0_scale (function):  numerical scaling function g0, defaults to no
+                            scaling
+    """
+
+    def __init__(
+        self,
+        A,
+        C,
+        g0,
+        mu,
+        eps0,
+        b,
+        k,
+        *args,
+        A_scale=lambda x: x,
+        C_scale=lambda x: x,
+        g0_scale=lambda x: x,
+        **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.A = A
+        self.C = C
+        self.g0 = g0
+        self.mu = mu
+        self.eps0 = eps0
+        self.b = b
+        self.k = k
+
+        self.A_scale = A_scale
+        self.C_scale = C_scale
+        self.g0_scale = g0_scale
+
+        self.n = KMRateSensitivityScaling(
+            self.A, self.mu, self.b, self.k, A_scale=self.A_scale,
+            cutoff=1000
+        )
+
+    @property
+    def device(self):
+        """
+        Return the device used by the scaling function
+        """
+        return self.A.device
+
+    def value(self, T):
+        """
+        Return the function value
+
+        Args:
+          T (torch.tensor):   current temperature
+
+        Returns:
+          torch.tensor:       value at the given temperatures
+        """
+        n = self.n(T)
+        B = self.C_scale(self.C) - self.g0_scale(self.g0) * self.A_scale(self.A)
+        return torch.exp(B) * self.mu(T) * self.eps0 ** (-1.0 / n)
+
+    @property
+    def shape(self):
+        """
+        Shape of the underlying parameter
+        """
+        return self.B.shape
 
 class KMViscosityScalingCutoff(TemperatureParameter):
     """
