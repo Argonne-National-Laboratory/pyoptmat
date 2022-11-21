@@ -25,10 +25,11 @@ if __name__ == "__main__":
 
         strain = data.strain.data.reshape(-1, data.nrates, data.nsamples)
         stress = data.stress.data.reshape(-1, data.nrates, data.nsamples)
-
-        plt.plot(strain[:, 0], stress[:, 0])
-        plt.xlabel("Strain (mm/mm)")
-        plt.ylabel("Stress (MPa)")
-        plt.title("Scale = %3.2f" % scale)
-        plt.tight_layout()
-        plt.show()
+        
+        for i in range(data.nrates):
+            plt.plot(strain[:, i], stress[:, i])
+            plt.xlabel("Strain (mm/mm)")
+            plt.ylabel("Stress (MPa)")
+            plt.title("Scale = %3.2f" % scale)
+            plt.tight_layout()
+            plt.show()
