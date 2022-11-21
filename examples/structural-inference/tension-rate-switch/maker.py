@@ -32,7 +32,7 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 # Actual parameters
 A_true = -3.4
 C_true = -5.9
-g0_true = 0.55
+g0_true = 0.60
 R_true = 200.0
 d_true = 5.0
 
@@ -42,6 +42,9 @@ k = 1.380649e-20
 b = 2.02e-7
 eps0_ri = 1e-10
 lmbda = 0.99
+steep = 100.0
+n_constant = 2.0
+eta_constant = 100.0
 
 # Scale factor used in the model definition
 sf = 0.5
@@ -125,16 +128,19 @@ def make_model(g0, A, C, R, d, device=torch.device("cpu"), **kwargs):
     )
     
     ri_flowrule_base = flowrules.IsoKinViscoplasticity(
-            n, eta, s0, isotropic, kinematic)
+            CP(torch.tensor(n_constant, device = device)), 
+            CP(torch.tensor(eta_constant, device = device)),
+            s0, isotropic, kinematic)
     ri_flowrule = flowrules.RateIndependentFlowRuleWrapper(
             ri_flowrule_base, lmbda, eps0_ri)
-    flowrule = flowrules.KocksMeckingRegimeFlowRule(
+    flowrule = flowrules.SoftKocksMeckingRegimeFlowRule(
             ri_flowrule, rd_flowrule, 
             torch.tensor(g0, device = device),
             mu, 
             torch.tensor(b, device = device),
             torch.tensor(eps0, device = device),
             torch.tensor(k, device = device),
+            torch.tensor(steep, device = device),
             g0_scale = g0_bound)
 
     model = models.InelasticModel(E, flowrule)
