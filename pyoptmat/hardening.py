@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation, too-many-lines, duplicate-code
+# pylint: disable=abstract-method, useless-super-delegation, too-many-lines, duplicate-code
 
 """
   Modules defining isotropic and kinematic hardening models.

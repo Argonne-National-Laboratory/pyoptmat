@@ -58,15 +58,16 @@ class ScalingFunction(nn.Module):
         """
         raise NotImplementedError("Method pure virtual")
 
+
 class SimpleScalingFunction(ScalingFunction):
     """
     Scaling function where the unscaled parameters are
 
     .. math::
 
-        y = s x 
+        y = s x
 
-    where :math:`s` is the scale factor 
+    where :math:`s` is the scale factor
 
     Args:
         s (torch.tensor):   scale factor
@@ -116,6 +117,7 @@ class SimpleScalingFunction(ScalingFunction):
         msg += "\t" + str(std)
 
         return msg
+
 
 class BoundedScalingFunction(ScalingFunction):
     """

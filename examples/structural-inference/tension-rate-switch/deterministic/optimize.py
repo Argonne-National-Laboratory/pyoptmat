@@ -108,8 +108,8 @@ if __name__ == "__main__":
     print("")
 
     # 6) Setup the optimizer
-    niter = 50
-    lr = 5.0e-3
+    niter = 200
+    lr = 1.0e-3
     max_norm = 1.0e2
     optim = torch.optim.Adam(model.parameters(), lr = lr)
 

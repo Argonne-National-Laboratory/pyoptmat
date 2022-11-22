@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation, line-too-long, duplicate-code, too-many-lines
+# pylint: disable=abstract-method, useless-super-delegation, line-too-long, duplicate-code, too-many-lines
 
 """
   Module containing inelastic flow rules.  These provide the rate of the
@@ -150,12 +150,22 @@ class KocksMeckingRegimeFlowRule(FlowRule):
     Keyword Args:
         eps (float):                            default 1e-20, offset to
                                                 avoid divide-by-zero
-        g0_scale (function):                    scaling function for g0, 
+        g0_scale (function):                    scaling function for g0,
                                                 defaults to no scaling
     """
 
-    def __init__(self, model1, model2, g0, mu, b, eps0, k, 
-            eps = torch.tensor(1e-20), g0_scale = lambda x: x):
+    def __init__(
+        self,
+        model1,
+        model2,
+        g0,
+        mu,
+        b,
+        eps0,
+        k,
+        eps=torch.tensor(1e-20),
+        g0_scale=lambda x: x,
+    ):
         super().__init__()
 
         self.model1 = model1
@@ -196,8 +206,10 @@ class KocksMeckingRegimeFlowRule(FlowRule):
             torch.tensor:       value of the activation energy
         """
         return (
-            self.k * T / (self.mu.value(T) * self.b**3.0
-                ) * torch.log(self.eps0 / (e+self.eps))
+            self.k
+            * T
+            / (self.mu.value(T) * self.b**3.0)
+            * torch.log(self.eps0 / (e + self.eps))
         )
 
     def switch_values(self, vals1, vals2, T, e):
@@ -352,6 +364,7 @@ class KocksMeckingRegimeFlowRule(FlowRule):
             e,
         )
 
+
 class SoftKocksMeckingRegimeFlowRule(FlowRule):
     """
     Switches between two different flow rules depending on the value of the
@@ -372,7 +385,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
     The two models should have compatible internal history vectors.
 
     This version uses a soft blending of the two models rather than a hard switch.  Specifically,
-    
+
     .. math::
 
         M = f M_1 + (1-f) M_2
@@ -403,8 +416,19 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
                                                 defaults to no scaling
     """
 
-    def __init__(self, model1, model2, g0, mu, b, eps0, k, sf,
-            eps = torch.tensor(1e-20), g0_scale = lambda x: x):
+    def __init__(
+        self,
+        model1,
+        model2,
+        g0,
+        mu,
+        b,
+        eps0,
+        k,
+        sf,
+        eps=torch.tensor(1e-20),
+        g0_scale=lambda x: x,
+    ):
         super().__init__()
 
         self.model1 = model1
@@ -447,43 +471,44 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
             torch.tensor:       value of the activation energy
         """
         return (
-            self.k * T / (self.mu.value(T) * self.b**3.0
-                ) * torch.log(self.eps0 / (e+self.eps))
+            self.k
+            * T
+            / (self.mu.value(T) * self.b**3.0)
+            * torch.log(self.eps0 / (e + self.eps))
         )
 
     def dg_e(self, T, e):
         """
         Derivative of the activation energy with respect to
-        the strain rate 
+        the strain rate
 
         Args:
             T (torch.tensor):   temperature
             e (torch.tensor):   total strain rate
 
         Returns:
-            torch.tensor:       derivative of the activation energy 
+            torch.tensor:       derivative of the activation energy
         """
-        return -(
-                self.k * T / (self.mu.value(T) * self.b**3.0
-                    ) / (e + self.eps)
-                )
+        return -(self.k * T / (self.mu.value(T) * self.b**3.0) / (e + self.eps))
 
     def f(self, T, e):
         """
-        The weight function value 
+        The weight function value
 
         Args:
             T (torch.tensor):   temperature
             e (torch.tensor):   total strain rate
 
         Returns:
-            torch.tensor:       value of the weighting function 
+            torch.tensor:       value of the weighting function
         """
-        return (torch.tanh(self.sf*(self.g(T,e) - self.g0_scale(self.g0))) + 1.0) / 2.0
+        return (
+            torch.tanh(self.sf * (self.g(T, e) - self.g0_scale(self.g0))) + 1.0
+        ) / 2.0
 
     def df_e(self, T, e):
         """
-        The derivative of the weight function with respect to 
+        The derivative of the weight function with respect to
         the strain rate
 
         Args:
@@ -493,7 +518,14 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         Returns:
             torch.tensor:       derivative of the weight function
         """
-        return self.sf / (2.0 * torch.cosh(self.sf*(self.g(T,e) - self.g0_scale(self.g0)))**2.0) * self.dg_e(T, e)
+        return (
+            self.sf
+            / (
+                2.0
+                * torch.cosh(self.sf * (self.g(T, e) - self.g0_scale(self.g0))) ** 2.0
+            )
+            * self.dg_e(T, e)
+        )
 
     def blend_values(self, vals1, vals2, T, e):
         """
@@ -505,9 +537,9 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
             T (torch.tensor):       temperatures
             e (torch.tensor):       strain rates
         """
-        f = self.f(T, e)[(...,)+(None,)*(vals1.dim()-1)]
+        f = self.f(T, e)[(...,) + (None,) * (vals1.dim() - 1)]
 
-        return (1-f)*vals1 + f*vals2
+        return (1 - f) * vals1 + f * vals2
 
     def flow_rate(self, s, h, t, T, e):
         """
@@ -574,12 +606,16 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         flow2, _ = self.model2.flow_rate(s, h, t, T, e)
         df = self.df_e(T, e)
 
-        return self.blend_values(
-            self.model1.dflow_derate(s, h, t, T, e),
-            self.model2.dflow_derate(s, h, t, T, e),
-            T,
-            e,
-        ) - df * flow1 + df * flow2
+        return (
+            self.blend_values(
+                self.model1.dflow_derate(s, h, t, T, e),
+                self.model2.dflow_derate(s, h, t, T, e),
+                T,
+                e,
+            )
+            - df * flow1
+            + df * flow2
+        )
 
     def history_rate(self, s, h, t, T, e):
         """
@@ -646,12 +682,16 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
 
         df = self.df_e(T, e).unsqueeze(-1)
 
-        return self.blend_values(
-            self.model1.dhist_derate(s, h, t, T, e),
-            self.model2.dhist_derate(s, h, t, T, e),
-            T,
-            e,
-        ) + (rate2 - rate1) * df
+        return (
+            self.blend_values(
+                self.model1.dhist_derate(s, h, t, T, e),
+                self.model2.dhist_derate(s, h, t, T, e),
+                T,
+                e,
+            )
+            + (rate2 - rate1) * df
+        )
+
 
 class RateIndependentFlowRuleWrapper(FlowRule):
     """
