@@ -35,6 +35,7 @@ C_true = -5.9
 g0_true = 0.60
 R_true = 200.0
 d_true = 5.0
+params_true = [g0_true, A_true, C_true, R_true, d_true]
 
 # Various fixed parameters for the KM model
 eps0 = 1e6
@@ -45,10 +46,6 @@ lmbda = 0.99
 steep = 100.0
 n_constant = 2.0
 eta_constant = 100.0
-
-# Scale factor used in the model definition
-sf = 0.5
-sf_g = 0.1
 
 # Constant temperature to run simulations at 
 T = 550.0 + 273.15
@@ -62,7 +59,7 @@ dev = "cpu"
 device = torch.device(dev)
 
 
-def make_model(g0, A, C, R, d, device=torch.device("cpu"), **kwargs):
+def make_model(g0, A, C, R, d, scale_functions = None, device=torch.device("cpu"), **kwargs):
     """
     Key function for the entire problem: given parameters generate the model
     """
@@ -72,54 +69,35 @@ def make_model(g0, A, C, R, d, device=torch.device("cpu"), **kwargs):
     mu = temperature.PolynomialScaling(
         [-2.60610204e-05, 3.61911162e-02, -4.23765368e01, 8.44212545e04]
     )
-
-    A_bound = optimize.bounded_scale_function(
-            (
-                torch.tensor(A_true * (1 - sf), device=device),
-                torch.tensor(A_true * (1 + sf), device=device)
-            )
-            )
-    C_bound = optimize.bounded_scale_function(
-            (torch.tensor(C_true * (1 - sf), device=device),
-            torch.tensor(C_true * (1 + sf), device=device))
-            )
-    g0_bound = optimize.bounded_scale_function(
-            (torch.tensor(g0_true * (1-sf_g), device = device),
-            torch.tensor(g0_true * (1+sf_g), device = device)))
+    
+    if scale_functions is None:
+        g0_scale = lambda x: x
+        A_scale = lambda x: x
+        C_scale = lambda x: x
+        R_scale = lambda x: x
+        d_scale = lambda x: x
+    else:
+        g0_scale = scale_functions[0]
+        A_scale = scale_functions[1]
+        C_scale = scale_functions[2] 
+        R_scale = scale_functions[3] 
+        d_scale = scale_functions[4]
 
     isotropic = hardening.VoceIsotropicHardeningModel(
-        CP(
-            R,
-            scaling=optimize.bounded_scale_function(
-                (
-                    torch.tensor(R_true * (1 - sf), device=device),
-                    torch.tensor(R_true * (1 + sf), device=device),
-                )
-            ),
-        ),
-        CP(
-            d,
-            scaling=optimize.bounded_scale_function(
-                (
-                    torch.tensor(d_true * (1 - sf), device=device),
-                    torch.tensor(d_true * (1 + sf), device=device),
-                )
-            ),
-        ),
-    )
+        CP(R, scaling=R_scale), CP(d, scaling=d_scale))
 
     kinematic = hardening.NoKinematicHardeningModel()
     
     n = temperature.KMRateSensitivityScaling(A, mu, 
             torch.tensor(b, device = device), torch.tensor(k, device = device),
-            A_scale = A_bound)
+            A_scale = A_scale)
     eta = temperature.KMViscosityScalingGC(A,
             C, g0,
             mu, torch.tensor(eps0, device = device), 
             torch.tensor(b, device = device),
             torch.tensor(k, device = device),
-            A_scale = A_bound, C_scale = C_bound, g0_scale = g0_bound)
-    s0 = temperature.ShearModulusScalingExp(C, mu, A_scale = C_bound)
+            A_scale = A_scale, C_scale = C_scale, g0_scale = g0_scale)
+    s0 = temperature.ShearModulusScalingExp(C, mu, A_scale = C_scale)
 
     rd_flowrule = flowrules.IsoKinViscoplasticity(n, eta,
         CP(torch.tensor(0.0, device = device)),
@@ -141,7 +119,7 @@ def make_model(g0, A, C, R, d, device=torch.device("cpu"), **kwargs):
             torch.tensor(eps0, device = device),
             torch.tensor(k, device = device),
             torch.tensor(steep, device = device),
-            g0_scale = g0_bound)
+            g0_scale = g0_scale)
 
     model = models.InelasticModel(E, flowrule)
 
