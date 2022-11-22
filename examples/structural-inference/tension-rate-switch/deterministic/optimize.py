@@ -17,17 +17,15 @@ import numpy.random as ra
 import xarray as xr
 import torch
 
-from maker import make_model, downsample
+from maker import make_model, downsample, params_true
 
-from pyoptmat import optimize, experiments
+from pyoptmat import optimize, experiments, scaling
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 
 # Don't care if integration fails
 import warnings
-
-import torchviz
 
 warnings.filterwarnings("ignore")
 
@@ -68,38 +66,60 @@ if __name__ == "__main__":
 
     # 2) Setup names for each parameter and the initial conditions
     names = ["g0", "A", "C", "R", "d"]
-    ics = torch.tensor([ra.uniform(0, 1) for i in range(len(names))], device=device)
+    rng = 0.5
+    ics = torch.tensor([ra.uniform((1-rng)*p,(1+rng)*p) for p in params_true])
 
-    print("Initial parameter values:")
-    for n, ic in zip(names, ics):
-        print("%s:\t%3.2f" % (n, ic))
-    print("")
-
-    # 3) Create the actual model
-    model = optimize.DeterministicModel(make, names, ics)
-
-    # 4) Setup the optimizer
-    niter = 100
-    lr = 5.0e-3
-    optim = torch.optim.Adam(model.parameters(), lr = lr)
-
-    # 5) Setup the objective function
+    # 3) Calculate the initial gradient values
+    model = optimize.DeterministicModel(lambda *args: make(*args), names, ics)
     loss = torch.nn.MSELoss(reduction="sum")
 
-    # 5.5) Calculate the initial gradient values
     lossv = loss(model(data, cycles, types, control), results)
     lossv.backward()
     print("Initial parameter gradients:")
+    grads = []
     for n in names:
-        print("%s:\t%.3e" % (n, getattr(model,n).grad))
+        grads.append(getattr(model,n).grad.detach())
+        print("%s:\t%.3e" % (n, grads[-1]))
     print("")
 
-    # 6) Actually do the optimization!
+    # 4) Set up some scaling functions
+    scale_functions = [
+            scaling.SimpleScalingFunction(torch.tensor(1.0, device = device)) for 
+            gv,pv in zip(grads,ics)
+            ]
+    ics = torch.tensor([sf.unscale(i) for i, sf in zip(ics, scale_functions)])
+
+    print("Initial parameter values:")
+    for n, ic, sf in zip(names, ics, scale_functions):
+        print("%s:\t%3.2e -> %3.2f" % (n, ic, sf.scale(ic)))
+    print("")
+
+    # 5) Create the actual model
+    model = optimize.DeterministicModel(lambda *args: make(*args, 
+        scale_functions = scale_functions), names, ics)
+
+    lossv = loss(model(data, cycles, types, control), results)
+    lossv.backward()
+    print("Scaled parameter gradients:")
+    grads = []
+    for n in names:
+        grads.append(getattr(model,n).grad.detach())
+        print("%s:\t%.3e" % (n, grads[-1]))
+    print("")
+
+    # 6) Setup the optimizer
+    niter = 50
+    lr = 5.0e-3
+    max_norm = 1.0e2
+    optim = torch.optim.Adam(model.parameters(), lr = lr)
+
+    # 7) Actually do the optimization!
     def closure():
         optim.zero_grad()
         pred = model(data, cycles, types, control)
         lossv = loss(pred, results)
         lossv.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
         return lossv
 
     t = tqdm(range(niter), total=niter, desc="Loss:    ")
@@ -109,13 +129,13 @@ if __name__ == "__main__":
         loss_history.append(closs.detach().cpu().numpy())
         t.set_description("Loss: %3.2e" % loss_history[-1])
 
-    # 7) Check accuracy of the optimized parameters
+    # 8) Check accuracy of the optimized parameters
     print("")
     print("Optimized parameter accuracy:")
-    for n in names:
-        print("%s:\t%3.2f/0.50" % (n, getattr(model, n).data))
+    for n, sf, tp in zip(names, scale_functions, params_true):
+        print("%s:\t%3.2f/%3.2f" % (n, sf.scale(getattr(model, n).data), tp))
 
-    # 8) Plot the convergence history
+    # 9) Plot the convergence history
     plt.figure()
     plt.plot(loss_history)
     plt.xlabel("Iteration")
