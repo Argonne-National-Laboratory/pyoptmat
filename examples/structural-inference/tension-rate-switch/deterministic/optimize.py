@@ -56,8 +56,8 @@ def make(g0, A, C, R, d, **kwargs):
 if __name__ == "__main__":
     # 1) Load the data for the variance of interest,
     #    cut down to some number of samples, and flatten
-    scale = 0.01
-    nsamples = 10  # at each strain rate
+    scale = 0.0
+    nsamples = 1  # at each strain rate
     input_data = xr.open_dataset(os.path.join("..", "scale-%3.2f.nc" % scale))
     data, results, cycles, types, control = downsample(
         experiments.load_results(input_data, device=device),
@@ -79,11 +79,20 @@ if __name__ == "__main__":
     model = optimize.DeterministicModel(make, names, ics)
 
     # 4) Setup the optimizer
-    niter = 10
-    optim = torch.optim.LBFGS(model.parameters())
+    niter = 100
+    lr = 5.0e-3
+    optim = torch.optim.Adam(model.parameters(), lr = lr)
 
     # 5) Setup the objective function
     loss = torch.nn.MSELoss(reduction="sum")
+
+    # 5.5) Calculate the initial gradient values
+    lossv = loss(model(data, cycles, types, control), results)
+    lossv.backward()
+    print("Initial parameter gradients:")
+    for n in names:
+        print("%s:\t%.3e" % (n, getattr(model,n).grad))
+    print("")
 
     # 6) Actually do the optimization!
     def closure():
