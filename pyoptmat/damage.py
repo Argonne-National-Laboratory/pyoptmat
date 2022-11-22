@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, no-self-use, useless-super-delegation
+# pylint: disable=abstract-method, useless-super-delegation
 """
   Various damage models, which can be tacked onto a InelasticModel to
   degrade the material response over time or accumulated strain.

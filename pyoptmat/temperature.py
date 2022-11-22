@@ -165,13 +165,14 @@ class ShearModulusScaling(TemperatureParameter):
         """
         return self.A.shape
 
+
 class ShearModulusScalingExp(TemperatureParameter):
     """
     Parameter that scales as:
 
     .. math::
 
-      \exp(A) \\mu
+      \\exp(A) \\mu
 
     where :math:`\\mu` further depends on temperature
 
@@ -215,6 +216,7 @@ class ShearModulusScalingExp(TemperatureParameter):
         The shape of the underlying parameter
         """
         return self.A.shape
+
 
 class MTSScaling(TemperatureParameter):
     """
@@ -453,6 +455,7 @@ class KMViscosityScaling(TemperatureParameter):
         """
         return self.B.shape
 
+
 class KMViscosityScalingGC(TemperatureParameter):
     """
     Parameter that varies as
@@ -515,8 +518,7 @@ class KMViscosityScalingGC(TemperatureParameter):
         self.g0_scale = g0_scale
 
         self.n = KMRateSensitivityScaling(
-            self.A, self.mu, self.b, self.k, A_scale=self.A_scale,
-            cutoff=1000
+            self.A, self.mu, self.b, self.k, A_scale=self.A_scale, cutoff=1000
         )
 
     @property
@@ -546,6 +548,7 @@ class KMViscosityScalingGC(TemperatureParameter):
         Shape of the underlying parameter
         """
         return self.B.shape
+
 
 class KMViscosityScalingCutoff(TemperatureParameter):
     """
