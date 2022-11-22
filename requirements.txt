@@ -10,5 +10,5 @@ xarray[io]
 xarray
 click==8.0.4
 black==22.1.0
-nose
+nose2
 pylint==2.12.2
