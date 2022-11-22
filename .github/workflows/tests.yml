@@ -11,6 +11,7 @@ jobs:
                 python-version: '3.10' 
             - run: pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
             - run: pip3 install --user -r requirements.txt
+            - run: export OMP_NUM_THREADS=1
             - run: nose2 --output-buffer
       make-test-package:
             name: Test making the package
