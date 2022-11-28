@@ -29,6 +29,16 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
       torch.tensor, torch.tensor:   solution to system of equations and
                                     Jacobian evaluated at that point
     """
+    # Determine the solver function
+    if x0.shape[-1] == 1:
+        solver = jacobi_iteration_linear_solve
+    elif linsolver == "lu":
+        solver = lu_linear_solve
+    elif linsolver == "diag":
+        solver = jacobi_iteration_linear_solve
+    else:
+        raise ValueError(f"Unknown linear solver type {linsolver}")
+
     x = x0
     R, J = fn(x)
 
@@ -37,7 +47,7 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
     i = 0
 
     while (i < miter) and torch.any(nR > atol) and torch.any(nR / nR0 > rtol):
-        x -= solve_linear_system(J, R)
+        x -= solver(J, R)
         R, J = fn(x)
         nR = torch.norm(R, dim=-1)
         i += 1
@@ -48,23 +58,25 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
     return x, J
 
 
-def solve_linear_system(A, b, method="lu"):
+def lu_linear_solve(A, b):
     """
-    Solve or iterate on a linear system of equations using one of
-    several methods:
-
-    * "lu" -- use :code:`torch.linalg.solve`
-    * "diag" -- do one Jacobi iteration (:code:`b / diag(A)`)
+    Solve a linear system of equations with the built in
+    torch.linalg.solve
 
     Args:
       A (torch.tensor):     block matrix
       b (torch.tensor):     block RHS
-
-    Keyword Args:
-      method (string):      Method to use.  Options outlined above.
     """
-    if method == "diag":
-        return b / torch.diagonal(A, dim1=-2, dim2=-1)
-    if method == "lu":
-        return torch.linalg.solve(A, b)
-    raise ValueError("Unknown solver method!")
+    return torch.linalg.solve(A, b)
+
+
+def jacobi_iteration_linear_solve(A, b):
+    """
+    Do one iteration of the Jacobi method on the provided
+    linear system of equations
+
+    Args:
+      A (torch.tensor):     block matrix
+      b (torch.tensor):     block RHS
+    """
+    return b / torch.diagonal(A, dim1=-2, dim2=-1)
