@@ -5,7 +5,10 @@ jobs:
             runs-on: ubuntu-latest
             steps:
             - uses: actions/checkout@v2
-            - run: sudo apt-get install python3-setuptools python3-pip
+            - uses: actions/setup-python@v4
+              with:
+                python-version: '3.10'
+            - run: pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
             - run: pip3 install --user -r requirements.txt
             - run: pylint pyoptmat
             - run: black --check pyoptmat
