@@ -31,11 +31,11 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
     """
     # Determine the solver function
     if x0.shape[-1] == 1:
-        solver = jacobi_iteration_linear_solve
+        solver = diagonal_linear_solve
     elif linsolver == "lu":
         solver = lu_linear_solve
     elif linsolver == "diag":
-        solver = jacobi_iteration_linear_solve
+        solver = diagonal_linear_solve
     else:
         raise ValueError(f"Unknown linear solver type {linsolver}")
 
@@ -57,7 +57,6 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
 
     return x, J
 
-
 def lu_linear_solve(A, b):
     """
     Solve a linear system of equations with the built in
@@ -66,11 +65,11 @@ def lu_linear_solve(A, b):
     Args:
       A (torch.tensor):     block matrix
       b (torch.tensor):     block RHS
+      x0 (torch.tensor):    guess on solution
     """
     return torch.linalg.solve(A, b)
 
-
-def jacobi_iteration_linear_solve(A, b):
+def diagonal_linear_solve(A, b):
     """
     Do one iteration of the Jacobi method on the provided
     linear system of equations
@@ -78,5 +77,34 @@ def jacobi_iteration_linear_solve(A, b):
     Args:
       A (torch.tensor):     block matrix
       b (torch.tensor):     block RHS
+      x0 (torch.tensor):    guess on solution
     """
     return b / torch.diagonal(A, dim1=-2, dim2=-1)
+
+def jacobi_linear_solve(A, b, atol : float = 1e-12, miter : int = 25):
+    """
+    Solve a system using the Jacobi method
+
+    Args:
+      A (torch.tensor):     block matrix
+      b (torch.tensor):     block RHS
+      x0 (torch.tensor):    guess on solution
+      atol (float):         nonlinear absolute tolerance
+      miter (int):          maximum number of nonlinear iterations
+    """
+    x = torch.zeros_like(b)
+    r = A.bmm(x.unsqueeze(-1)).squeeze(-1) - b
+    nr = torch.norm(r, dim = -1)
+
+    D = torch.diagonal(A, dim1=-2, dim2=-1)
+    L = A - torch.diag_embed(D)
+
+    i = 0
+
+    while torch.any(nr > atol) and (i < miter):
+        x = (b - L.bmm(x.unsqueeze(-1)).squeeze(-1)) / D
+        r = A.bmm(x.unsqueeze(-1)).squeeze(-1) - b
+        nr = torch.norm(r, dim = -1)
+        i += 1
+
+    return x
