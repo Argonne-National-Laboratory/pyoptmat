@@ -23,6 +23,20 @@ class TestLUSolve(unittest.TestCase, CommonLinearSolver):
 
         self.solve_fn = solvers.lu_linear_solve
 
+class TestLUBackSolve(unittest.TestCase, CommonLinearSolver):
+    def setUp(self):
+        self.nsize = 5
+        self.nbatch = 10
+
+        self.solve_fn = solvers.LUBackSolve.apply
+
+    def test_gradients(self):
+        Ap = torch.rand((self.nbatch, self.nsize, self.nsize))/10.0 + torch.diag_embed(torch.ones((self.nbatch,self.nsize)))
+        A = Ap.clone().detach().requires_grad_(True)
+        b = torch.rand((self.nbatch, self.nsize), requires_grad = True)
+        self.assertTrue(torch.autograd.gradcheck(self.solve_fn, (A, b)))
+
+
 class TestDiagonalSolve(unittest.TestCase, CommonLinearSolver):
     def setUp(self):
         self.nsize = 1

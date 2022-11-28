@@ -7,6 +7,30 @@
 import warnings
 import torch
 
+class LUBackSolve(torch.autograd.Function):
+    """
+    This illustrates how to calculate the backward pass of A x = b
+    using adjoints
+
+    This is not currently used because we don't need the backward pass
+    of a linear solve
+    """
+    @staticmethod
+    def forward(ctx, A, b):
+        LU, P = torch.linalg.lu_factor(A)
+        x = torch.linalg.lu_solve(LU, P, b.unsqueeze(-1)).squeeze(-1)
+        ctx.save_for_backward(x, LU, P)
+
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, LU, P = ctx.saved_tensors
+
+        f = torch.linalg.lu_solve(LU, P, grad_output.unsqueeze(-1), adjoint = True).squeeze(-1)
+        z = -torch.einsum('bi,bj->bij', (f, x))
+
+        return z, f
 
 def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
     """
@@ -36,6 +60,8 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
         solver = lu_linear_solve
     elif linsolver == "diag":
         solver = diagonal_linear_solve
+    elif linsolver == "jacobi":
+        solver = jacobi_linear_solve
     else:
         raise ValueError(f"Unknown linear solver type {linsolver}")
 
