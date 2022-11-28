@@ -59,6 +59,66 @@ class ScalingFunction(nn.Module):
         raise NotImplementedError("Method pure virtual")
 
 
+class SimpleScalingFunction(ScalingFunction):
+    """
+    Scaling function where the unscaled parameters are
+
+    .. math::
+
+        y = s x
+
+    where :math:`s` is the scale factor
+
+    Args:
+        s (torch.tensor):   scale factor
+    """
+
+    def __init__(self, s):
+        super().__init__()
+        self.s = s
+
+    def scale(self, x):
+        """
+        Converts the scaled parameter values to the actual
+        parameter scale
+
+        Args:
+            x (torch.tensor):   scaled parameter values
+        """
+        return self.s * x
+
+    def unscale(self, x):
+        """
+        Converts the unscaled parameter values into the
+        scaled values, for initialization
+
+        Args:
+            x (torch.tensor):   unscaled parameter values
+        """
+        return x / self.s
+
+    def scale_stat(self, loc, scale):
+        """
+        Print some information about how the normally-distributed
+        scaled parameters transform into "real" parameter space
+
+        Args:
+            loc (torch.tensor):     scaled loc
+            scale (torch.tensor):   scaled scale
+        """
+        mean = self.scale(loc)
+        std = scale * self.s
+
+        msg = ""
+        msg += "Normal distribution with:\n"
+        msg += "\tloc:\n"
+        msg += "\t" + str(mean) + "\n"
+        msg += "\tscale:\n"
+        msg += "\t" + str(std)
+
+        return msg
+
+
 class BoundedScalingFunction(ScalingFunction):
     """
     Scaling function where the unscaled parameters are
