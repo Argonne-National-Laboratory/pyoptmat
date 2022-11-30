@@ -209,7 +209,7 @@ class KocksMeckingRegimeFlowRule(FlowRule):
             self.k
             * T
             / (self.mu.value(T) * self.b**3.0)
-            * torch.log(self.eps0 / (e + self.eps))
+            * torch.log(self.eps0 / (torch.abs(e) + self.eps))
         )
 
     def switch_values(self, vals1, vals2, T, e):
@@ -474,7 +474,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
             self.k
             * T
             / (self.mu.value(T) * self.b**3.0)
-            * torch.log(self.eps0 / (e + self.eps))
+            * torch.log(self.eps0 / (torch.abs(e) + self.eps))
         )
 
     def dg_e(self, T, e):
@@ -489,7 +489,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         Returns:
             torch.tensor:       derivative of the activation energy
         """
-        return -(self.k * T / (self.mu.value(T) * self.b**3.0) / (e + self.eps))
+        return -(self.k * T / (self.mu.value(T) * self.b**3.0) / (torch.abs(e) + self.eps)) * torch.sign(e)
 
     def f(self, T, e):
         """
@@ -605,7 +605,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         flow1, _ = self.model1.flow_rate(s, h, t, T, e)
         flow2, _ = self.model2.flow_rate(s, h, t, T, e)
         df = self.df_e(T, e)
-
+        
         return (
             self.blend_values(
                 self.model1.dflow_derate(s, h, t, T, e),
@@ -613,8 +613,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
                 T,
                 e,
             )
-            - df * flow1
-            + df * flow2
+            + df * (flow2 - flow1)
         )
 
     def history_rate(self, s, h, t, T, e):
