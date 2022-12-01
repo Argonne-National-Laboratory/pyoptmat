@@ -80,9 +80,10 @@ if __name__ == "__main__":
     ri_flowrule = flowrules.IsoKinViscoplasticity(
         n_constant, eta_constant, s0, iso_hardening, kin_hardening
     )
-
-    flowrule = flowrules.KocksMeckingRegimeFlowRule(
-        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k
+    
+    sf = torch.tensor(10.0)
+    flowrule = flowrules.SoftKocksMeckingRegimeFlowRule(
+        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k, sf
     )
 
     model = models.InelasticModel(E, flowrule)
