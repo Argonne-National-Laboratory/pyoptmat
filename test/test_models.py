@@ -74,6 +74,46 @@ class CommonModel:
 
         self.assertTrue(np.allclose(dv, ddv, rtol=1e-4, atol=1e-4))
 
+    def test_partial_state(self):
+        strain_rates = torch.cat(
+            (
+                torch.zeros(1, self.strains.shape[1]),
+                (self.strains[1:] - self.strains[:-1])
+                / (self.times[1:] - self.times[:-1]),
+            )
+        )
+        strain_rates[torch.isnan(strain_rates)] = 0
+
+        t = self.times[self.step]
+        T = self.temperatures[self.step]
+        erate = strain_rates[self.step]
+
+        _, exact, _, _ = self.model.forward(t, self.state_strain, erate, T)
+        numer = utility.new_differentiate(
+                lambda y: self.model.forward(t, y, erate, T)[0], self.state_strain)
+        
+        self.assertTrue(torch.allclose(exact, numer, atol = 1e-4, rtol = 1e-4))
+
+    def test_partial_erate(self):
+        strain_rates = torch.cat(
+            (
+                torch.zeros(1, self.strains.shape[1]),
+                (self.strains[1:] - self.strains[:-1])
+                / (self.times[1:] - self.times[:-1]),
+            )
+        )
+        strain_rates[torch.isnan(strain_rates)] = 0
+
+        t = self.times[self.step]
+        T = self.temperatures[self.step]
+        erate = strain_rates[self.step]
+
+        _, _, exact, _ = self.model.forward(t, self.state_strain, erate, T)
+        numer = utility.new_differentiate(
+                lambda y: self.model.forward(t, self.state_strain, y, T)[0], erate).squeeze(-1)
+
+        self.assertTrue(torch.allclose(exact, numer, atol = 1e-4, rtol = 1e-4))
+
 
 class TestPerfectViscoplasticity(unittest.TestCase, CommonModel):
     def setUp(self):
@@ -104,7 +144,7 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonModel):
 
         self.flowrule = flowrules.PerfectViscoplasticity(CP(self.n), CP(self.eta))
         self.model = models.InelasticModel(CP(self.E), self.flowrule)
-
+        self.step = 2
 
 class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel):
     def setUp(self):
@@ -154,6 +194,7 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel):
         )
 
         self.t = self.times[2]
+        self.step = 2
 
 
 class TestIsoKinViscoplasticityRecovery(unittest.TestCase, CommonModel):
@@ -209,6 +250,7 @@ class TestIsoKinViscoplasticityRecovery(unittest.TestCase, CommonModel):
         )
 
         self.t = self.times[2]
+        self.step = 2
 
 
 class TestDamage(unittest.TestCase, CommonModel):
@@ -260,6 +302,7 @@ class TestDamage(unittest.TestCase, CommonModel):
         )
 
         self.t = self.times[2]
+        self.step = 2
 
 
 class TestAll(unittest.TestCase, CommonModel):
@@ -319,3 +362,4 @@ class TestAll(unittest.TestCase, CommonModel):
         )
 
         self.t = self.times[2]
+        self.step = 2
