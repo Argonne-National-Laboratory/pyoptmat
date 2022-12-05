@@ -532,7 +532,7 @@ class ImplicitSolver(FixedGridSolver):
         Returns:
           (torch.tensor, torch.tensor): the solution and Jacobian evaluated at the solution
         """
-        return solvers.newton_raphson(
+        return solvers.newton_raphson_bt(
             system,
             guess,
             linsolver=self.solver_method,

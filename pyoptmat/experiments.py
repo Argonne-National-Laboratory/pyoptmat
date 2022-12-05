@@ -119,7 +119,7 @@ def load_results(xdata, device=torch.device("cpu")):
         [control_map[t] for t in xdata["control"].values], device=device
     )
 
-    data = torch.empty((4,) + time.shape, device=device)
+    data = torch.empty((3,) + time.shape, device=device)
 
     data[0] = time
     data[1] = temp
