@@ -3,6 +3,9 @@
 import torch
 import torch.nn as nn
 
+import torch.jit
+from torch.profiler import ProfilerActivity
+
 import matplotlib.pyplot as plt
 
 from pyoptmat import ode, experiments, utility
@@ -14,7 +17,6 @@ if torch.cuda.is_available():
     dev = "cuda:0"
 else:
     dev = "cpu"
-dev = "cpu"
 device = torch.device(dev)
 
 def driving_current(I_max, R, rate, thold, chold, Ncycles, nload,
@@ -90,7 +92,7 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
         # n
         ydot[...,3::4] = (self.n_inf - n) / self.tau_n
 
-        J = torch.zeros(y.shape + y.shape[-1:])
+        J = torch.zeros(y.shape + y.shape[-1:], device = ydot.device)
         
         # V, V
         J[...,0::4,0::4] = torch.diag_embed(1.0 / self.C[None,...] * (
@@ -99,8 +101,9 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
                 -self.g_K[None,...]*n**4.0))
         # Coupling term
         J[...,0::4,0::4] -= self.g_C[None,...] / self.C[None,...] 
-        J[...,0::4,0::4] += torch.repeat_interleave(torch.eye(self.n_neurons).unsqueeze(0), ydot.shape[0], 0
-                ) * self.g_C / self.C * self.n_neurons
+        J[...,0::4,0::4] += torch.repeat_interleave(torch.eye(self.n_neurons, 
+            device = ydot.device).unsqueeze(0), ydot.shape[0], 0
+                ) * torch.sum(self.g_C / self.C)
         
         # V, m
         J[...,0::4,1::4] = torch.diag_embed(-1.0 / self.C[None,...] * (
@@ -128,9 +131,9 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    nbatch = 11
-    neq = 6
-    N = 2
+    nbatch = 100
+    neq = 10
+    N = 5
     n = 10
     
     current, times = driving_current([0.1,1],
@@ -144,25 +147,33 @@ if __name__ == "__main__":
             nbatch)
 
     model = HodgkinHuxleyCoupledNeurons(
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device) * 5.0,
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device) * 15.0,
-            torch.ones((neq,), device = device),
-            torch.ones((neq,), device = device) * 10.0,
-            torch.ones((neq,), device = device) * 0.01,
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device) * 5.0,
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device) * 15.0,
+            torch.rand((neq,), device = device),
+            torch.rand((neq,), device = device) * 10.0,
+            torch.rand((neq,), device = device) * 0.01,
             current)
 
     y0 = torch.rand((nbatch,model.n_equations), device = device)
     
-    res_imp = ode.odeint_adjoint(model, y0, times)
+    with torch.profiler.profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/tracer'),
+            with_stack=True):
+    
+        for i in range(1):
+            res_imp = ode.odeint_adjoint(model, y0, times)
+            loss = torch.norm(res_imp)
+            loss.backward()
 
-    plt.plot(times[:,0].detach().numpy(), res_imp[:,0,0::4].detach().numpy())
-    plt.show()
+    #plt.plot(times[:,0].detach().numpy(), res_imp[:,0,0::4].detach().numpy())
+    #plt.show()
