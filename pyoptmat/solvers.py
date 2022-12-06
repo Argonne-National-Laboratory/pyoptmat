@@ -131,7 +131,7 @@ def lu_linear_solve(A, b):
       A (torch.tensor):     block matrix
       b (torch.tensor):     block RHS
     """
-    return torch.linalg.solve(A, b)
+    return torch.linalg.solve_ex(A, b)
 
 
 def jacobi_iteration_linear_solve(A, b):
