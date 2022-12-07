@@ -152,8 +152,7 @@ class NoOp():
     def dot(self, x):
         return x
 
-def gmres(A, b, x0 = None, M = NoOp(),
-        tol = 1e-10, maxiter = 20, restart = 50):
+def gmres(A, b, x0 = None, tol = 1e-10, maxiter = 100, check = 5):
     """
     Solve a linear system of equations using GMRES
 
@@ -163,10 +162,9 @@ def gmres(A, b, x0 = None, M = NoOp(),
 
     Keyword Args:
         x0 (torch.tensor):  initial guess, defaults to zeros
-        M (LinearOperator): preconditioner operator, defaults to identity
         tol (float):        absolute tolerance for solve
         maxiter (int):      maximum number of iterations
-        restart (int):      number of iterations between restarts
+        check (int):        how often to check the residual
 
     Returns:
         x (torch.tensor):   block results
@@ -181,9 +179,6 @@ def gmres(A, b, x0 = None, M = NoOp(),
     # Initial residual
     r = b - A.bmm(x.unsqueeze(-1)).squeeze(-1)
 
-    # Compute preconditioned residual
-    #r = Mr
-
     # Basis
     V = torch.zeros((nbatch, b.shape[-1], maxiter+1), device = A.device)
     V[...,:,0] = r / torch.linalg.norm(r, dim = -1)[:,None]
@@ -194,10 +189,12 @@ def gmres(A, b, x0 = None, M = NoOp(),
     # Residual norm
     nR = torch.linalg.norm(r, dim = -1)
 
+    # Unit vector
+    e1 = torch.zeros((nbatch,maxiter+1))
+    e1[:,0] = nR
+
     # Start iterating
-    k = 0
-    
-    while torch.any(nR > tol) and (k < maxiter):
+    for k in range(maxiter):
         # A \cdot v
         w = A.bmm(V[...,:,k].unsqueeze(-1)).squeeze(-1)
         
@@ -209,24 +206,18 @@ def gmres(A, b, x0 = None, M = NoOp(),
         # Next Arnoldi vector
         H[...,k+1,k] = torch.linalg.norm(w, axis = -1)
         V[...,:,k+1] = w / H[...,k+1, k][:,None]
-
-        k += 1
-
-    # Solve least square problem
-    e1 = torch.zeros((nbatch,maxiter+1))
-    e1[:,0] = nR
-    y, _, _, _ = torch.linalg.lstsq(H, e1, rcond = None)
-
-    # Update the solution vector
-    x = V[...,:,:-1].bmm(y.unsqueeze(-1)).squeeze(-1) + x0
         
-    # Residual vector
-    #r = b - A.bmm(x.unsqueeze(-1)).squeeze(-1)
-
-    # Preconditioner
-    #z = r
-
-    # Residual norm
-    #nR = torch.linalg.norm(r, dim = -1)
+        # If it's time, check the new residual value
+        if (k % check == 0 and k != 0) or k == maxiter:
+            # Project onto our basis
+            y, _, _, _ = torch.linalg.lstsq(H[...,:k+1,:k], e1[...,:k+1], rcond = None)
+            # Calculate the value of x
+            x = V[...,:,:k].bmm(y.unsqueeze(-1)).squeeze(-1) + x0
+            # Calculate the residual and the norm of the residual
+            r = b - A.bmm(x.unsqueeze(-1)).squeeze(-1)
+            nRc = torch.linalg.norm(r, dim = -1)
+            # Check for convergence
+            if torch.all(nRc < tol):
+                break
 
     return x
