@@ -131,7 +131,7 @@ def lu_linear_solve(A, b):
       A (torch.tensor):     block matrix
       b (torch.tensor):     block RHS
     """
-    return torch.linalg.solve_ex(A, b)
+    return torch.linalg.solve_ex(A, b)[0]
 
 
 def jacobi_iteration_linear_solve(A, b):
@@ -144,3 +144,89 @@ def jacobi_iteration_linear_solve(A, b):
       b (torch.tensor):     block RHS
     """
     return b / torch.diagonal(A, dim1=-2, dim2=-1)
+
+class NoOp():
+    def __init__(self):
+        pass
+
+    def dot(self, x):
+        return x
+
+def gmres(A, b, x0 = None, M = NoOp(),
+        tol = 1e-10, maxiter = 20, restart = 50):
+    """
+    Solve a linear system of equations using GMRES
+
+    Args:
+        A (torch.tensor):   black matrix
+        b (torch.tensor):   black RHS
+
+    Keyword Args:
+        x0 (torch.tensor):  initial guess, defaults to zeros
+        M (LinearOperator): preconditioner operator, defaults to identity
+        tol (float):        absolute tolerance for solve
+        maxiter (int):      maximum number of iterations
+        restart (int):      number of iterations between restarts
+
+    Returns:
+        x (torch.tensor):   block results
+    """
+    nbatch = A.shape[0]
+
+    # Initial guess
+    if not x0:
+        x0 = torch.zeros_like(b)
+    x = x0
+
+    # Initial residual
+    r = b - A.bmm(x.unsqueeze(-1)).squeeze(-1)
+
+    # Compute preconditioned residual
+    #r = Mr
+
+    # Basis
+    V = torch.zeros((nbatch, b.shape[-1], maxiter+1), device = A.device)
+    V[...,:,0] = r / torch.linalg.norm(r, dim = -1)[:,None]
+
+    # Hessenberg matrix
+    H = torch.zeros((nbatch, maxiter + 1, maxiter))
+
+    # Residual norm
+    nR = torch.linalg.norm(r, dim = -1)
+
+    # Start iterating
+    k = 0
+    
+    while torch.any(nR > tol) and (k < maxiter):
+        # A \cdot v
+        w = A.bmm(V[...,:,k].unsqueeze(-1)).squeeze(-1)
+        
+        # Orthogonalize
+        for j in range(k+1):
+            H[...,j,k] = V[...,:,j].unsqueeze(-2).bmm(w.unsqueeze(-1)).squeeze(-2).squeeze(-1)
+            w -= H[...,j,k].unsqueeze(-1) * V[...,:,j]
+
+        # Next Arnoldi vector
+        H[...,k+1,k] = torch.linalg.norm(w, axis = -1)
+        V[...,:,k+1] = w / H[...,k+1, k][:,None]
+
+        k += 1
+
+    # Solve least square problem
+    e1 = torch.zeros((nbatch,maxiter+1))
+    e1[:,0] = nR
+    y, _, _, _ = torch.linalg.lstsq(H, e1, rcond = None)
+
+    # Update the solution vector
+    x = V[...,:,:-1].bmm(y.unsqueeze(-1)).squeeze(-1) + x0
+        
+    # Residual vector
+    #r = b - A.bmm(x.unsqueeze(-1)).squeeze(-1)
+
+    # Preconditioner
+    #z = r
+
+    # Residual norm
+    #nR = torch.linalg.norm(r, dim = -1)
+
+    return x
