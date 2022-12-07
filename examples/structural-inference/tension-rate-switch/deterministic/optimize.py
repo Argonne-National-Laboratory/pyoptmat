@@ -54,8 +54,8 @@ def make(g0, A, C, R, d, **kwargs):
 if __name__ == "__main__":
     # 1) Load the data for the variance of interest,
     #    cut down to some number of samples, and flatten
-    scale = 0.0
-    nsamples = 1  # at each strain rate
+    scale = 0.01
+    nsamples = 10  # at each strain rate
     input_data = xr.open_dataset(os.path.join("..", "scale-%3.2f.nc" % scale))
     data, results, cycles, types, control = downsample(
         experiments.load_results(input_data, device=device),
@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     # 2) Setup names for each parameter and the initial conditions
     names = ["g0", "A", "C", "R", "d"]
-    rng = 0.5
+    rng = 0.1
     ics = torch.tensor([ra.uniform((1-rng)*p,(1+rng)*p) for p in params_true])
 
     # 3) Calculate the initial gradient values
@@ -84,9 +84,10 @@ if __name__ == "__main__":
 
     # 4) Set up some scaling functions
     scale_functions = [
-            scaling.SimpleScalingFunction(torch.tensor(1.0, device = device)) for 
-            gv,pv in zip(grads,ics)
-            ]
+            scaling.BoundedScalingFunction(
+                torch.tensor(pv*(1-rng), device = device),
+                torch.tensor(pv*(1+rng))) for 
+            pv in ics]
     ics = torch.tensor([sf.unscale(i) for i, sf in zip(ics, scale_functions)])
 
     print("Initial parameter values:")
@@ -109,9 +110,11 @@ if __name__ == "__main__":
 
     # 6) Setup the optimizer
     niter = 200
-    lr = 1.0e-3
+    lr = 3.0e-3
     max_norm = 1.0e2
     optim = torch.optim.Adam(model.parameters(), lr = lr)
+    #optim = torch.optim.LBFGS(model.parameters())
+
 
     # 7) Actually do the optimization!
     def closure():
