@@ -343,7 +343,6 @@ def gmres(A, b, x0 = None, M = NoOp(), tol = 1e-10, maxiter : int = 100,
             # Check for convergence
             if torch.all(nRc < tol):
                 break
-
     return x, k
 
 class PreconditionerReuseNonlinearSolver:
@@ -358,7 +357,7 @@ class PreconditionerReuseNonlinearSolver:
     def _update_preconditioner(self, J):
         self.stored_preconditioner = LUPreconitionerOperator(J)
 
-    def solve(self, fn, x0, rtol=1e-6, atol=1e-10, miter=100, ltol = 1e-6):
+    def solve(self, fn, x0, rtol=1e-6, atol=1e-10, miter=100, ltol = 1e-10):
         """
         Solve the nonlinear system
         """
@@ -373,8 +372,8 @@ class PreconditionerReuseNonlinearSolver:
         i = 0
 
         l_miter = J.shape[-1] + 1
-        l_check = 1 
-        l_refactor = J.shape[-1]
+        l_check = max(1,(J.shape[-1] +1) // 10)
+        l_refactor = (J.shape[-1] * 2) // 3
      
         while (i < miter) and torch.any(nR > atol) and torch.any(nR / nR0 > rtol):
             dx, niter = gmres(J, R, x0 = x, M = self.stored_preconditioner, maxiter = l_miter, 

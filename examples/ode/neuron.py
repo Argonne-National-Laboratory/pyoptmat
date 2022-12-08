@@ -9,6 +9,7 @@ from torch.profiler import ProfilerActivity
 import matplotlib.pyplot as plt
 
 from pyoptmat import ode, experiments, utility
+import time
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
@@ -131,10 +132,10 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    nbatch = 100
+    nbatch = 1000
     neq = 10
     N = 5
-    n = 10
+    n = 40
     
     current, times = driving_current([0.1,1],
             [-1,0.9], 
@@ -146,6 +147,8 @@ if __name__ == "__main__":
             n,
             nbatch)
 
+    nsteps = times.shape[0]
+    
     model = HodgkinHuxleyCoupledNeurons(
             torch.rand((neq,), device = device),
             torch.rand((neq,), device = device),
@@ -165,15 +168,17 @@ if __name__ == "__main__":
 
     y0 = torch.rand((nbatch,model.n_equations), device = device)
     
-    with torch.profiler.profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-            on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/tracer'),
-            with_stack=True):
-    
-        for i in range(1):
-            res_imp = ode.odeint_adjoint(model, y0, times)
-            loss = torch.norm(res_imp)
-            loss.backward()
 
-    #plt.plot(times[:,0].detach().numpy(), res_imp[:,0,0::4].detach().numpy())
+    # Include a backward pass to give a better example of timing
+    t1 = time.time()
+    res_imp = ode.odeint_adjoint(model, y0, times, iterative_linear_solver = True)
+    loss = torch.norm(res_imp)
+    loss.backward()
+    etime = time.time() - t1
+    
+    print("%i batch size, %i neurons, %i time steps: %f s" % (nbatch, neq, nsteps, etime))
+
+    #plt.plot(times[:,0].detach().cpu().numpy(), res_imp[:,0,0::4].detach().cpu().numpy())
+    #plt.xlabel("Time")
+    #plt.ylabel("Voltage")
     #plt.show()
