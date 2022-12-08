@@ -459,17 +459,20 @@ class ImplicitSolver(FixedGridSolver):
     Superclass of all implicit solvers
 
     Keyword Args:
-      rtol (float):             solver relative tolerance
-      atol (float):             solver absolute tolerance
-      miter (int):              maximum nonlinear iterations
-      solver_method (string):   how to solve linear equations, `"diag"` or `"lu"`
-                                `"diag"` uses just the diagonal of the
-                                Jacobian -- the dumbest Newton-Krylov scheme ever.
-                                `"lu"` uses the full LU factorization
+      iterative_linear_solver (bool):   if true, solve with an iterative linear scheme 
+      rtol (float):                     solver relative tolerance
+      atol (float):                     solver absolute tolerance
+      miter (int):                      maximum nonlinear iterations
+      solver_method (string):           how to solve linear equations, `"diag"` or `"lu"`
+                                        `"diag"` uses just the diagonal of the
+                                        Jacobian -- the dumbest Newton-Krylov scheme ever.
+                                        `"lu"` uses the full LU factorization, ignored
+                                        if using an iterative linear solver
     """
 
     def __init__(
-        self, *args, rtol=1.0e-6, atol=1.0e-10, miter=100, solver_method="lu", **kwargs
+        self, *args, iterative_linear_solver = False, rtol=1.0e-6, atol=1.0e-10, miter=100, 
+        solver_method="lu", **kwargs
     ):
         super().__init__(*args, **kwargs)
 
@@ -477,11 +480,13 @@ class ImplicitSolver(FixedGridSolver):
             raise ValueError(
                 "Implicit solvers can only be used if the model returns the jacobian"
             )
+        
+        self.ils = iterative_linear_solver
 
-        #if solver_method not in ["lu", "diag"]:
-        #    raise ValueError(f"Solver method {solver_method} not in available options!")
-        #self.solver_method = solver_method
-        self.solver = solvers.PreconditionerReuseNonlinearSolver()
+        if not self.ils:
+            self.solver_method = solver_method
+        else:
+            self.solver = solvers.PreconditionerReuseNonlinearSolver()
 
         self.rtol = rtol
         self.atol = atol
@@ -533,14 +538,15 @@ class ImplicitSolver(FixedGridSolver):
         Returns:
           (torch.tensor, torch.tensor): the solution and Jacobian evaluated at the solution
         """
-        #return solvers.newton_raphson(
-        #    system,
-        #    guess,
-        #    linsolver=self.solver_method,
-        #    rtol=self.rtol,
-        #    atol=self.atol,
-        #    miter=self.miter,
-        #)
+        if not self.ils:
+            return solvers.newton_raphson(
+                system,
+                guess,
+                linsolver=self.solver_method,
+                rtol=self.rtol,
+                atol=self.atol,
+                miter=self.miter,
+            )
         return self.solver.solve(system, guess, rtol = self.rtol, atol = self.atol, miter = self.miter)
 
 
