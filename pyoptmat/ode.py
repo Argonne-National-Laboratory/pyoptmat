@@ -459,7 +459,7 @@ class ImplicitSolver(FixedGridSolver):
     Superclass of all implicit solvers
 
     Keyword Args:
-      iterative_linear_solver (bool):   if true, solve with an iterative linear scheme 
+      iterative_linear_solver (bool):   if true, solve with an iterative linear scheme
       rtol (float):                     solver relative tolerance
       atol (float):                     solver absolute tolerance
       miter (int):                      maximum nonlinear iterations
@@ -471,8 +471,14 @@ class ImplicitSolver(FixedGridSolver):
     """
 
     def __init__(
-        self, *args, iterative_linear_solver = False, rtol=1.0e-6, atol=1.0e-10, miter=100, 
-        solver_method="lu", **kwargs
+        self,
+        *args,
+        iterative_linear_solver=False,
+        rtol=1.0e-6,
+        atol=1.0e-10,
+        miter=100,
+        solver_method="lu",
+        **kwargs
     ):
         super().__init__(*args, **kwargs)
 
@@ -480,7 +486,7 @@ class ImplicitSolver(FixedGridSolver):
             raise ValueError(
                 "Implicit solvers can only be used if the model returns the jacobian"
             )
-        
+
         self.ils = iterative_linear_solver
 
         if not self.ils:
@@ -547,7 +553,9 @@ class ImplicitSolver(FixedGridSolver):
                 atol=self.atol,
                 miter=self.miter,
             )
-        return self.solver.solve(system, guess, rtol = self.rtol, atol = self.atol, miter = self.miter)
+        return self.solver.solve(
+            system, guess, rtol=self.rtol, atol=self.atol, miter=self.miter
+        )
 
 
 class BackwardEuler(ImplicitSolver):
