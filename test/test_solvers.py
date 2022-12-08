@@ -26,7 +26,21 @@ class TestLU(unittest.TestCase, LinearSolverBase):
 
 class TestGMRES(unittest.TestCase, LinearSolverBase):
     def setUp(self):
-        self.nbatch = 10
-        self.N = 8
+        self.nbatch = 20
+        self.N = 25
 
-        self.method = solvers.gmres 
+        self.method = solvers.gmres
+
+class TestGMRESDiag(unittest.TestCase, LinearSolverBase):
+    def setUp(self):
+        self.nbatch = 20
+        self.N = 25
+
+        self.method = solvers.jacobi_gmres
+
+class TestGMRESLU(unittest.TestCase, LinearSolverBase):
+    def setUp(self):
+        self.nbatch = 20
+        self.N = 25
+
+        self.method = solvers.lu_gmres
