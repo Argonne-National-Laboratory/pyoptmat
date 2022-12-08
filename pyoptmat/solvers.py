@@ -19,9 +19,11 @@ def newton_raphson_bt(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100,
       x0 (torch.tensor):    starting point
 
     Keyword Args:
-      linsolver (string):   method to use to solve the linear system, options are
-                            "diag" or "lu".  Defaults to "lu".  See
-                            :py:func:`pyoptmat.solvers.solve_linear_system`
+      linsolver (string or function):   method to use to solve the linear system,
+                                        strain options are "diag" or "lu". 
+                                        Defaults to "lu".  Alternatively, you can
+                                        provide a function to solve the linear 
+                                        system directly
       rtol (float):         nonlinear relative tolerance
       atol (float):         nonlinear absolute tolerance
       miter (int):          maximum number of nonlinear iterations
@@ -39,7 +41,7 @@ def newton_raphson_bt(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100,
     elif linsolver == "diag":
         solver = jacobi_iteration_linear_solve
     else:
-        raise ValueError(f"Unknown linear solver type {linsolver}")
+        solver = linsolver
 
     x = x0
     R, J = fn(x)
@@ -146,13 +148,120 @@ def jacobi_iteration_linear_solve(A, b):
     return b / torch.diagonal(A, dim1=-2, dim2=-1)
 
 class NoOp():
+    """
+    Linear operator that does nothing
+    """
     def __init__(self):
         pass
 
     def dot(self, x):
+        """
+        Batched matrix-vector product
+
+        Here just returns the input unmodified
+
+        Args:
+            x (torch.tensor):       input to linear operator
+
+        Returns:
+            y (torch.tensor):       result of the linear operator
+        """
         return x
 
-def gmres(A, b, x0 = None, tol = 1e-10, maxiter = 100, check = 5):
+class JacobiPreconitionerOperator():
+    """
+    Jacobi preconditioning based on another matrix
+
+    Args:
+        A (torch.tensor):       operator to take diagonal from
+    """
+    def __init__(self, A):
+        self.diag_A = A.diagonal(dim1=-2, dim2=-1)
+
+    def dot(self, x):
+        """
+        Batched matrix-vector product
+
+        This object returns x_i / A_ii
+
+        Args:
+            x (torch.tensor):       input to linear operator
+
+        Returns:
+            y (torch.tensor):       result of the linear operator
+        """
+        return x / self.diag_A
+
+class LUPreconitionerOperator():
+    """
+    Full LU preconditioning based on another matrix
+
+    Args:
+        A (torch.tensor):       operator to LU factorize
+    """
+    def __init__(self, A):
+        self.LU, self.pivots = torch.linalg.lu_factor(A)
+
+    def dot(self, x):
+        """
+        Batched matrix-vector product
+
+        This object does the backsolves to calculate (LU)^-1 \cdot x 
+
+        Args:
+            x (torch.tensor):       input to linear operator
+
+        Returns:
+            y (torch.tensor):       result of the linear operator
+        """
+        return torch.linalg.lu_solve(self.LU, self.pivots, x.unsqueeze(-1)).squeeze(-1)
+
+def lu_gmres(A, *args, **kwargs):
+    """
+    Solve a linear system of equations using LU preconditioned GMRES
+
+    This is an entirely pointless operation, but useful in testing
+
+    Args:
+        A (torch.tensor):   black matrix
+        b (torch.tensor):   black RHS
+
+    Keyword Args:
+        x0 (torch.tensor):  initial guess, defaults to zeros
+        M (LinearOperator): preconditioning operator
+        tol (float):        absolute tolerance for solve
+        maxiter (int):      maximum number of iterations
+        check (int):        how often to check the residual
+
+    Returns:
+        x (torch.tensor):   block results
+    """
+    M = LUPreconitionerOperator(A)
+    return gmres(A, *args, M = M, check = 1, **kwargs)
+
+def jacobi_gmres(A, *args, **kwargs):
+    """
+    Solve a linear system of equations using Jacobi preconditioned GMRES
+
+    Args:
+        A (torch.tensor):   black matrix
+        b (torch.tensor):   black RHS
+
+    Keyword Args:
+        x0 (torch.tensor):  initial guess, defaults to zeros
+        M (LinearOperator): preconditioning operator
+        tol (float):        absolute tolerance for solve
+        maxiter (int):      maximum number of iterations
+        check (int):        how often to check the residual
+
+    Returns:
+        x (torch.tensor):   block results
+    """
+    M = JacobiPreconitionerOperator(A)
+    return gmres(A, *args, M = M, **kwargs)
+
+def gmres(A, b, x0 = None, M = NoOp(), tol = 1e-10, maxiter = 100, 
+    check = 5):
     """
     Solve a linear system of equations using GMRES
 
@@ -162,6 +271,7 @@ def gmres(A, b, x0 = None, tol = 1e-10, maxiter = 100, check = 5):
 
     Keyword Args:
         x0 (torch.tensor):  initial guess, defaults to zeros
+        M (LinearOperator): preconditioning operator
         tol (float):        absolute tolerance for solve
         maxiter (int):      maximum number of iterations
         check (int):        how often to check the residual
@@ -169,7 +279,13 @@ def gmres(A, b, x0 = None, tol = 1e-10, maxiter = 100, check = 5):
     Returns:
         x (torch.tensor):   block results
     """
+    # Should fix code at some point to treat batch dimensions right
     nbatch = A.shape[0]
+    N = A.shape[-2]
+
+    # No point in running more iterations than the matrix size
+    if maxiter > N + 1:
+        maxiter = N + 1
 
     # Initial guess
     if not x0:
@@ -183,6 +299,10 @@ def gmres(A, b, x0 = None, tol = 1e-10, maxiter = 100, check = 5):
     V = torch.zeros((nbatch, b.shape[-1], maxiter+1), device = A.device)
     V[...,:,0] = r / torch.linalg.norm(r, dim = -1)[:,None]
 
+    # Preconditioned basis
+    Z = torch.zeros((nbatch, b.shape[-1], maxiter+1), device = A.device)
+    Z[...,:,0] = M.dot(V[...,:,0])
+    
     # Hessenberg matrix
     H = torch.zeros((nbatch, maxiter + 1, maxiter))
 
@@ -196,7 +316,7 @@ def gmres(A, b, x0 = None, tol = 1e-10, maxiter = 100, check = 5):
     # Start iterating
     for k in range(maxiter):
         # A \cdot v
-        w = A.bmm(V[...,:,k].unsqueeze(-1)).squeeze(-1)
+        w = A.bmm(Z[...,:,k].unsqueeze(-1)).squeeze(-1)
         
         # Orthogonalize
         for j in range(k+1):
@@ -206,13 +326,15 @@ def gmres(A, b, x0 = None, tol = 1e-10, maxiter = 100, check = 5):
         # Next Arnoldi vector
         H[...,k+1,k] = torch.linalg.norm(w, axis = -1)
         V[...,:,k+1] = w / H[...,k+1, k][:,None]
+        # Preconditioned
+        Z[...,:,k+1] = M.dot(V[...,:,k+1])
         
         # If it's time, check the new residual value
         if (k % check == 0 and k != 0) or k == maxiter:
             # Project onto our basis
             y, _, _, _ = torch.linalg.lstsq(H[...,:k+1,:k], e1[...,:k+1], rcond = None)
             # Calculate the value of x
-            x = V[...,:,:k].bmm(y.unsqueeze(-1)).squeeze(-1) + x0
+            x = Z[...,:,:k].bmm(y.unsqueeze(-1)).squeeze(-1) + x0
             # Calculate the residual and the norm of the residual
             r = b - A.bmm(x.unsqueeze(-1)).squeeze(-1)
             nRc = torch.linalg.norm(r, dim = -1)
