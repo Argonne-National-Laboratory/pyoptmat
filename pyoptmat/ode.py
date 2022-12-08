@@ -478,9 +478,10 @@ class ImplicitSolver(FixedGridSolver):
                 "Implicit solvers can only be used if the model returns the jacobian"
             )
 
-        if solver_method not in ["lu", "diag"]:
-            raise ValueError(f"Solver method {solver_method} not in available options!")
-        self.solver_method = solver_method
+        #if solver_method not in ["lu", "diag"]:
+        #    raise ValueError(f"Solver method {solver_method} not in available options!")
+        #self.solver_method = solver_method
+        self.solver = solvers.PreconditionerReuseNonlinearSolver()
 
         self.rtol = rtol
         self.atol = atol
@@ -532,14 +533,15 @@ class ImplicitSolver(FixedGridSolver):
         Returns:
           (torch.tensor, torch.tensor): the solution and Jacobian evaluated at the solution
         """
-        return solvers.newton_raphson_bt(
-            system,
-            guess,
-            linsolver=self.solver_method,
-            rtol=self.rtol,
-            atol=self.atol,
-            miter=self.miter,
-        )
+        #return solvers.newton_raphson(
+        #    system,
+        #    guess,
+        #    linsolver=self.solver_method,
+        #    rtol=self.rtol,
+        #    atol=self.atol,
+        #    miter=self.miter,
+        #)
+        return self.solver.solve(system, guess, rtol = self.rtol, atol = self.atol, miter = self.miter)
 
 
 class BackwardEuler(ImplicitSolver):
