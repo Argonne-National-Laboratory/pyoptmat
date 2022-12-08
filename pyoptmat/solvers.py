@@ -153,6 +153,7 @@ class NoOp:
     """
     Linear operator that does nothing
     """
+
     def __init__(self):
         pass
 
@@ -328,7 +329,9 @@ def gmres(
 
     # Check for an initial zero
     if torch.all(nR < tol):
-        return x0, 0
+        if return_iters:
+            return x0, 0
+        return x0
 
     # Unit vector
     e1 = torch.zeros((nbatch, maxiter + 1), device=A.device)
@@ -367,7 +370,10 @@ def gmres(
             # Check for convergence
             if torch.all(nRc < tol):
                 break
-    return x, k
+
+    if return_iters:
+        return x, k
+    return x
 
 
 class PreconditionerReuseNonlinearSolver:
