@@ -21,9 +21,7 @@ def newton_raphson_bt(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100,
     Keyword Args:
       linsolver (string or function):   method to use to solve the linear system,
                                         strain options are "diag" or "lu". 
-                                        Defaults to "lu".  Alternatively, you can
-                                        provide a function to solve the linear 
-                                        system directly
+                                        Defaults to "lu".  
       rtol (float):         nonlinear relative tolerance
       atol (float):         nonlinear absolute tolerance
       miter (int):          maximum number of nonlinear iterations
@@ -41,7 +39,7 @@ def newton_raphson_bt(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100,
     elif linsolver == "diag":
         solver = jacobi_iteration_linear_solve
     else:
-        solver = linsolver
+        raise ValueError(f"Unknown linear solver type {linsolver}")
 
     x = x0
     R, J = fn(x)
@@ -124,7 +122,7 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
 
     return x, J
 
-def lu_linear_solve(A, b):
+def lu_linear_solve(A, b, return_iters = False):
     """
     Solve a linear system of equations with the built in
     torch.linalg.solve
@@ -134,7 +132,6 @@ def lu_linear_solve(A, b):
       b (torch.tensor):     block RHS
     """
     return torch.linalg.solve_ex(A, b)[0]
-
 
 def jacobi_iteration_linear_solve(A, b):
     """
@@ -147,7 +144,7 @@ def jacobi_iteration_linear_solve(A, b):
     """
     return b / torch.diagonal(A, dim1=-2, dim2=-1)
 
-class NoOp():
+class NoOp:
     """
     Linear operator that does nothing
     """
@@ -168,7 +165,7 @@ class NoOp():
         """
         return x
 
-class JacobiPreconitionerOperator():
+class JacobiPreconitionerOperator:
     """
     Jacobi preconditioning based on another matrix
 
@@ -192,7 +189,7 @@ class JacobiPreconitionerOperator():
         """
         return x / self.diag_A
 
-class LUPreconitionerOperator():
+class LUPreconitionerOperator:
     """
     Full LU preconditioning based on another matrix
 
@@ -237,6 +234,7 @@ def lu_gmres(A, *args, **kwargs):
         x (torch.tensor):   block results
     """
     M = LUPreconitionerOperator(A)
+    kwargs.pop('check', None)
     return gmres(A, *args, M = M, check = 1, **kwargs)
 
 def jacobi_gmres(A, *args, **kwargs):
@@ -260,8 +258,8 @@ def jacobi_gmres(A, *args, **kwargs):
     M = JacobiPreconitionerOperator(A)
     return gmres(A, *args, M = M, **kwargs)
 
-def gmres(A, b, x0 = None, M = NoOp(), tol = 1e-10, maxiter = 100, 
-    check = 5):
+def gmres(A, b, x0 = None, M = NoOp(), tol = 1e-10, maxiter : int = 100, 
+    check = 5, return_iters = False, eps = 1.0e-15):
     """
     Solve a linear system of equations using GMRES
 
@@ -270,25 +268,24 @@ def gmres(A, b, x0 = None, M = NoOp(), tol = 1e-10, maxiter = 100,
         b (torch.tensor):   black RHS
 
     Keyword Args:
-        x0 (torch.tensor):  initial guess, defaults to zeros
-        M (LinearOperator): preconditioning operator
-        tol (float):        absolute tolerance for solve
-        maxiter (int):      maximum number of iterations
-        check (int):        how often to check the residual
+        x0 (torch.tensor):      initial guess, defaults to zeros
+        M (LinearOperator):     preconditioning operator
+        tol (float):            absolute tolerance for solve
+        maxiter (int):          maximum number of iterations
+        check (int):            how often to check the residual
+        return_iters (bool):    return iteration count along with solution
+        eps (float):            small number to avoid zero vectors
 
     Returns:
         x (torch.tensor):   block results
+        k (int, optional):  iteration count
     """
     # Should fix code at some point to treat batch dimensions right
     nbatch = A.shape[0]
     N = A.shape[-2]
 
-    # No point in running more iterations than the matrix size
-    if maxiter > N + 1:
-        maxiter = N + 1
-
     # Initial guess
-    if not x0:
+    if x0 is None:
         x0 = torch.zeros_like(b)
     x = x0
 
@@ -298,48 +295,98 @@ def gmres(A, b, x0 = None, M = NoOp(), tol = 1e-10, maxiter = 100,
     # Basis
     V = torch.zeros((nbatch, b.shape[-1], maxiter+1), device = A.device)
     V[...,:,0] = r / torch.linalg.norm(r, dim = -1)[:,None]
-
+    
     # Preconditioned basis
     Z = torch.zeros((nbatch, b.shape[-1], maxiter+1), device = A.device)
     Z[...,:,0] = M.dot(V[...,:,0])
-    
+
     # Hessenberg matrix
-    H = torch.zeros((nbatch, maxiter + 1, maxiter))
+    H = torch.zeros((nbatch, maxiter + 1, maxiter), device = A.device)
 
     # Residual norm
-    nR = torch.linalg.norm(r, dim = -1)
+    nR = torch.linalg.vector_norm(r, dim = -1)
+    
+    # Check for an initial zero
+    if torch.all(nR < tol):
+        return x0, 0
 
     # Unit vector
-    e1 = torch.zeros((nbatch,maxiter+1))
+    e1 = torch.zeros((nbatch,maxiter+1), device = A.device)
     e1[:,0] = nR
 
     # Start iterating
     for k in range(maxiter):
         # A \cdot v
         w = A.bmm(Z[...,:,k].unsqueeze(-1)).squeeze(-1)
-        
+
         # Orthogonalize
         for j in range(k+1):
             H[...,j,k] = V[...,:,j].unsqueeze(-2).bmm(w.unsqueeze(-1)).squeeze(-2).squeeze(-1)
             w -= H[...,j,k].unsqueeze(-1) * V[...,:,j]
-
+        
         # Next Arnoldi vector
-        H[...,k+1,k] = torch.linalg.norm(w, axis = -1)
+        H[...,k+1,k] = torch.linalg.vector_norm(w, dim = -1) + eps
         V[...,:,k+1] = w / H[...,k+1, k][:,None]
+        
         # Preconditioned
         Z[...,:,k+1] = M.dot(V[...,:,k+1])
-        
+
         # If it's time, check the new residual value
-        if (k % check == 0 and k != 0) or k == maxiter:
+        if (k+1) % check == 0 or (k+1) == maxiter:
             # Project onto our basis
             y, _, _, _ = torch.linalg.lstsq(H[...,:k+1,:k], e1[...,:k+1], rcond = None)
             # Calculate the value of x
             x = Z[...,:,:k].bmm(y.unsqueeze(-1)).squeeze(-1) + x0
             # Calculate the residual and the norm of the residual
             r = b - A.bmm(x.unsqueeze(-1)).squeeze(-1)
-            nRc = torch.linalg.norm(r, dim = -1)
+            nRc = torch.linalg.vector_norm(r, dim = -1)
             # Check for convergence
             if torch.all(nRc < tol):
                 break
 
-    return x
+    return x, k
+
+class PreconditionerReuseNonlinearSolver:
+    """
+    Maintains preconditioner reuse through subsequent linear solves
+    """
+    def __init__(self, nonlinear_solver = newton_raphson):
+        self.nonlinear_solver = nonlinear_solver
+
+        self.stored_preconditioner = None
+
+    def _update_preconditioner(self, J):
+        self.stored_preconditioner = LUPreconitionerOperator(J)
+
+    def solve(self, fn, x0, rtol=1e-6, atol=1e-10, miter=100, ltol = 1e-6):
+        """
+        Solve the nonlinear system
+        """
+        x = x0
+        R, J = fn(x)
+
+        if not self.stored_preconditioner:
+            self._update_preconditioner(J)
+
+        nR = torch.norm(R, dim=-1)
+        nR0 = nR
+        i = 0
+
+        l_miter = J.shape[-1] + 1
+        l_check = 1 
+        l_refactor = J.shape[-1]
+     
+        while (i < miter) and torch.any(nR > atol) and torch.any(nR / nR0 > rtol):
+            dx, niter = gmres(J, R, x0 = x, M = self.stored_preconditioner, maxiter = l_miter, 
+                    check = l_check, return_iters = True, tol = ltol)
+            x -= dx
+            R, J = fn(x)
+            if niter > l_refactor:
+                self._update_preconditioner(J)
+            nR = torch.norm(R, dim=-1)
+            i += 1
+
+        if i == miter:
+            warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
+
+        return x, J
