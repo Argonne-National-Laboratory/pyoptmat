@@ -19,7 +19,7 @@ import torch
 
 from maker import make_model, downsample
 
-from pyoptmat import optimize, experiments
+from pyoptmat import optimize, experiments, optimizers
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
@@ -37,6 +37,7 @@ if torch.cuda.is_available():
     dev = "cuda:0"
 else:
     dev = "cpu"
+dev = "cpu"
 device = torch.device(dev)
 
 # Maker function returns the ODE model given the parameters
@@ -77,7 +78,8 @@ if __name__ == "__main__":
 
     # 4) Setup the optimizer
     niter = 10
-    optim = torch.optim.LBFGS(model.parameters())
+    optim = optimizers.Adam2BFGS(model.parameters(), 5, 
+            adam_params = {'lr': 1.0e-3})
 
     # 5) Setup the objective function
     loss = torch.nn.MSELoss(reduction="sum")
