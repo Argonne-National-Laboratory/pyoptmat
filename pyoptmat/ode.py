@@ -61,6 +61,99 @@ def linear(t0, t1, y0, y1, t):
     )
 
 
+class BlockSolver:
+    """
+    Will merge into below...
+    
+    Args:
+      func (function):      function returning the time rate of change and,
+                            optionally, the jacobian
+      y0 (torch.tensor):    initial condition
+
+    Keyword Args:
+      n (int):              target block size
+
+    """
+    def __init__(self, func, y0, block_size = 1):
+        # Store basic info about the system
+        self.func = func
+        self.y0 = y0
+        self.n = block_size
+
+        self.batch_size = self.y0.shape[0]
+        self.prob_size = self.y0.shape[1]
+
+    def integrate(self, t, cache_adjoint=False):
+        """
+        Main method: actually integrate through the times :code:`t`.
+
+        Args:
+          t (torch.tensor):       timesteps to report results at
+          n (int):                target time block size
+
+        Keyword Args:
+          cache_adjoint (bool):   store the info we'll need for the
+                                  adjoint pass, default `False`
+
+        Returns:
+          torch.tensor:       integrated results at times :code:`t`
+        """
+        result = torch.empty(t.shape[0], *self.y0.shape, dtype = self.y0.dtype,
+                device = self.y0.device)
+        result[0] = self.y0
+
+        for k in range(1, t.shape[0], self.n):
+            result[k:k+self.n] = self.block_update(t[k:k+self.n], result[k-1])
+
+        return result
+
+    def block_update(self, t, y_start):
+        """
+        Solve a block of times all at once with backward Euler
+
+        Args:
+            t (torch.tensor):       block of times
+            y_start (torch.tensor): start of block
+        """
+        # Various useful sizes
+        n = t.shape[0] # Number of time steps to do at once
+        b = n * self.batch_size # Size of megabatch
+        k = n * self.prob_size # Size of operators
+
+        # Guess of zeros, why not
+        y_guess = torch.zeros(b, self.prob_size, 
+                dtype = t.dtype, device = t.device)
+
+        def RJ(dy):
+            # Get the actual y values
+            y = dy + y_start.repeat_interleave(n, dim = 0)
+            
+            print(y_start.shape)
+            print(y.shape)
+            print(t.view(b).shape)
+            print(y.view(b,-1).shape)
+
+            # Batch update the rate and jacobian
+            yd, yJ = self.func(t.view(b), y.view(b, -1))
+
+            # Form the overall residual, could be done better with something like the following
+            #R = y.view(self.batch_size, k) - yd.view(self.batch_size, k)
+            #R[:,self.prob_size:] -= y[1:].view(self.batch_size, (n-1)*self.prob_size)
+            R = torch.zeros(self.batch_size, k, dtype = t.dtype, device = t.device)
+
+            # Form the overall jacobian, this could probably be done better
+            J = torch.zeros(self.batch_size, k, k, dtype = t.dtype, device = t.device)
+            
+            return R, J
+        
+        R1, J1 = RJ(y_guess)
+        print(R1.shape)
+        print(J1.shape)
+
+        return y_guess.view(n, self.batch_size, self.prob_size)
+
+        #return solvers.newton_raphson(RJ, y_guess).view(n, self.batch_size, self.prob_size)
+
 class FixedGridSolver:
     """
     Superclass of all solvers that use a fixed grid (versus an adaptive method)
@@ -71,6 +164,7 @@ class FixedGridSolver:
       y0 (torch.tensor):    initial condition
 
     Keyword Args:
+      adjoint_params        parameters to track for the adjoint backward pass
       substep (int):        subdivide each provided timestep into some number
                             of subdivisions for integration.  Default is `None`
                             (i.e. no subdivision)
@@ -624,7 +718,7 @@ class BackwardEuler(ImplicitSolver):
 
 
 # Available solver methods mapped to the objects
-methods = {"forward-euler": ForwardEuler, "backward-euler": BackwardEuler}
+methods = {"forward-euler": ForwardEuler, "backward-euler": BackwardEuler, "block-backward-euler": BlockSolver}
 
 
 def odeint(func, y0, times, method="backward-euler", extra_params=None, **kwargs):
