@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 # -- Project information -----------------------------------------------------
 
 project = 'pyoptmat'
-copyright = '2022, Argonne National Laboratory'
+copyright = '2023, Argonne National Laboratory'
 author = 'Argonne National Laboratory'
 
 # The full version, including alpha/beta/rc tags
@@ -32,7 +32,7 @@ release = '1.1.3'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinxcontrib.napoleon',
+    'sphinx.ext.napoleon',
     'sphinxcontrib.bibtex'
 ]
 
