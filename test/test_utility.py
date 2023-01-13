@@ -7,6 +7,26 @@ import numpy as np
 import numpy.random as ra
 import scipy.interpolate as inter
 
+class TestArbitraryBatchTimeSeriesInterpolator(unittest.TestCase):
+    def setUp(self):
+        self.ntime = 100
+        self.nbatch = 50
+        self.times = np.empty((self.ntime, self.nbatch))
+        self.values = np.empty((self.ntime, self.nbatch))
+        for i in range(self.nbatch):
+            tmax = ra.random()
+            self.times[:, i] = np.linspace(0, tmax, self.ntime)
+            self.values[:, i] = ra.random((self.ntime,))
+
+        self.ref_obj = utility.BatchTimeSeriesInterpolator(
+            torch.tensor(self.times), torch.tensor(self.values)
+        )
+        self.obj = utility.ArbitraryBatchTimeSeriesInterpolator(
+                torch.tensor(self.times), torch.tensor(self.values))
+
+    def test_interpolate(self):
+        pass
+
 
 class TestInterpolateBatchTimesObject(unittest.TestCase):
     def setUp(self):
@@ -14,7 +34,6 @@ class TestInterpolateBatchTimesObject(unittest.TestCase):
         self.nbatch = 50
         self.times = np.empty((self.ntime, self.nbatch))
         self.values = np.empty((self.ntime, self.nbatch))
-        self.X = np.empty((self.ntime, self.nbatch, 2))
         for i in range(self.nbatch):
             tmax = ra.random()
             self.times[:, i] = np.linspace(0, tmax, self.ntime)
@@ -63,7 +82,6 @@ class TestCheaterInterpolateBatchTimesObject(unittest.TestCase):
         self.nbatch = 50
         self.times = np.empty((self.ntime, self.nbatch))
         self.values = np.empty((self.ntime, self.nbatch))
-        self.X = np.empty((self.ntime, self.nbatch, 2))
         for i in range(self.nbatch):
             tmax = ra.random()
             self.times[:, i] = np.linspace(0, tmax, self.ntime)
@@ -92,7 +110,6 @@ class TestInterpolateBatchTimes(unittest.TestCase):
         self.nbatch = 50
         self.times = np.empty((self.ntime, self.nbatch))
         self.values = np.empty((self.ntime, self.nbatch))
-        self.X = np.empty((self.ntime, self.nbatch, 2))
         for i in range(self.nbatch):
             tmax = ra.random()
             self.times[:, i] = np.linspace(0, tmax, self.ntime)
@@ -144,7 +161,6 @@ class TestInterpolateSingleTimes(unittest.TestCase):
         self.nbatch = 50
         self.times = np.linspace(0, ra.random(), self.ntime)
         self.values = np.empty((self.ntime, self.nbatch))
-        self.X = np.empty((self.ntime, self.nbatch, 2))
         for i in range(self.nbatch):
             self.values[:, i] = ra.random((self.ntime,))
 

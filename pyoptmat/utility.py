@@ -160,6 +160,55 @@ def differentiate(fn, x0, eps=1.0e-6):
 
     return d
 
+class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
+    """
+    Interpolate :code:`data` located at discrete :code:`times`
+    linearly to point :code:`t`.
+
+    This version handles batched of arbitrary size -- only the rightmost 
+    batch dimension must agree with the input data.  All other dimensions are 
+    broadcast.
+
+    Precache a lot of the work required to interpolate in time vs
+    :func:`pyoptmat.utility.timeseries_interpolate_batch_times`
+
+    Args:
+      times (torch.tensor):     input time series as a code:`(ntime,nbatch)`
+                                array
+      values (torch.tensor):    input values series as a code:`(ntime,nbatch)`
+                                array
+    """
+
+    def __init__(self, times, data):
+        super().__init__()
+        self.times = times
+        self.values = data
+
+        self.ntime = self.times.shape[0]
+        self.nbatch_native = self.times.shape[1]
+
+    def forward(self, t):
+        """
+        Calculate the linearly-interpolated current values
+
+        Args:
+          t (torch.tensor):   batched times as :code:`(...,nbatch,)` array
+
+        Returns:
+          torch.tensor:       batched values at :code:`t`
+        """
+        tgt = t.shape[:-1]
+
+        slopes = torch.diff(self.values.expand(*tgt), dim=0
+                ) / torch.diff(self.times.expand(*tgt), dim=0)
+
+
+        gi = torch.remainder(
+            torch.sum((self.times - t) <= 0, dim=0), self.times.shape[0]
+        )
+        return torch.diagonal(self.values[gi - 1]) + torch.diagonal(
+            self.slopes[gi - 1]
+        ) * (t - torch.diagonal(self.times[gi - 1]))
 
 class BatchTimeSeriesInterpolator(nn.Module):
     """
