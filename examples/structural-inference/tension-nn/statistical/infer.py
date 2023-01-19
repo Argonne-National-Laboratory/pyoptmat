@@ -16,7 +16,7 @@ import numpy.random as ra
 import xarray as xr
 import torch
 
-from maker import make_model, downsample
+from maker import make_model, downsample, nsize
 
 from pyoptmat import optimize, experiments
 from tqdm import tqdm
@@ -39,14 +39,15 @@ if torch.cuda.is_available():
     dev = "cuda:0"
 else:
     dev = "cpu"
+dev = "cpu"
 device = torch.device(dev)
 
 # Don't try to optimize for the Young's modulus
-def make(n, eta, s0, R, d, **kwargs):
+def make(*args, **kwargs):
     """
         Maker with Young's modulus fixed
     """
-    return make_model(torch.tensor(0.5), n, eta, s0, R, d, device=device, **kwargs).to(
+    return make_model(torch.tensor(0.5), *args, device=device, **kwargs).to(
         device
     )
 
@@ -65,22 +66,18 @@ if __name__ == "__main__":
     )
 
     # 2) Setup names for each parameter and the priors
-    names = ["n", "eta", "s0", "R", "d"]
-    loc_loc_priors = [
-        torch.tensor(ra.random(), device=device) for i in range(len(names))
-    ]
-    loc_scale_priors = [torch.tensor(0.15, device=device) for i in range(len(names))]
-    scale_scale_priors = [torch.tensor(0.15, device=device) for i in range(len(names))]
+    names = ["n", "eta", "s0", "weights1", "biases1", "weights2", "biases2", "weights3", "biases3"]
+    loc_loc_priors = [torch.tensor(ra.uniform(0, 1), device = device) for i in range(3)] + [
+            torch.rand(nsize,1, device = device),
+            torch.rand(nsize, device = device),
+            torch.rand(nsize, nsize, device = device),
+            torch.rand(nsize, device = device),
+            torch.rand(1, nsize, device = device),
+            torch.rand(1, device = device)]
+    loc_scale_priors = [torch.ones_like(l)*0.15 for l in loc_loc_priors]
+    scale_scale_priors = [torch.ones_like(l)*0.15 for l in loc_loc_priors]
 
     eps = torch.tensor(1.0e-4, device=device)
-
-    print("Initial parameter values:")
-    print("\tloc loc\t\tloc scale\tscale scale")
-    for n, llp, lsp, sp in zip(
-        names, loc_loc_priors, loc_scale_priors, scale_scale_priors
-    ):
-        print("%s:\t%3.2f\t\t%3.2f\t\t%3.2f" % (n, llp, lsp, sp))
-    print("")
 
     # 3) Create the actual model
     model = optimize.HierarchicalStatisticalModel(
@@ -110,16 +107,6 @@ if __name__ == "__main__":
         loss = svi.step(data, cycles, types, control, results)
         loss_hist.append(loss)
         t.set_description("Loss %3.2e" % loss)
-
-    # 7) Print out results
-    print("")
-    print("Inferred distributions:")
-    print("\tloc\t\tscale")
-    for n in names:
-        s = pyro.param(n + model.scale_suffix + model.param_suffix).data
-        m = pyro.param(n + model.loc_suffix + model.param_suffix).data
-        print("%s:\t%3.2f/0.50\t%3.2f/%3.2f" % (n, m, s, scale))
-    print("")
 
     # 8) Plot convergence
     plt.figure()

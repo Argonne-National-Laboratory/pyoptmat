@@ -42,16 +42,26 @@ s0_true = 50.0
 # Scale factor used in the model definition
 sf = 0.5
 
-# Select device to run on
-if torch.cuda.is_available():
-    dev = "cuda:0"
-else:
-    dev = "cpu"
-device = torch.device(dev)
-
 nsize = 10
-iscale = 1.0/10000.0
-oscale = 5.0
+nscale = torch.tensor(1.0e-5)
+bscale = torch.tensor(0.1)
+
+class Lin(nn.Module):
+    def __init__(self, weight, bias):
+        super().__init__()
+        self.weight = weight
+        self.bias = bias
+
+        if self.weight.dim() == 3:
+            self.squeeze = True
+        else:
+            self.squeeze = False
+
+    def forward(self, x):
+        if self.squeeze:
+            return self.weight.bmm(x.unsqueeze(-1)).squeeze(-1) + self.bias
+        else:
+            return x.matmul(self.weight.t()) + self.bias
 
 class Scale(nn.Module):
     def __init__(self, scale):
@@ -75,6 +85,15 @@ class Abs(nn.Module):
     def forward(self, x):
         return torch.abs(x)
 
+class Div(nn.Module):
+    def __init__(self, val):
+        super().__init__()
+        self.val = val
+
+    def forward(self, x):
+        return 1.0/(x+self.val)
+
+
 class NNIsotropicHardeningModel(hardening.IsotropicHardeningModel):
     """
     Voce isotropic hardening, defined by
@@ -94,20 +113,16 @@ class NNIsotropicHardeningModel(hardening.IsotropicHardeningModel):
         super().__init__()
 
         self.model = torch.nn.Sequential(
-                nn.Linear(1, nsize),
+                Scale(nscale),
+                Div(1.0e-3),
+                Lin(weights1, biases1),
                 nn.ReLU(),
-                nn.Linear(nsize, nsize),
+                Lin(weights2, biases2),
                 nn.ReLU(),
-                nn.Linear(nsize, 1),
-                Abs())
+                Lin(weights3, biases3),
+                Abs(),
+                Scale(bscale))
        
-        self.model[0].weight = weights1
-        self.model[0].bias = biases1
-        self.model[2].weight = weights2
-        self.model[2].bias = biases2
-        self.model[4].weight = weights3
-        self.model[4].bias = biases3
-
     def value(self, h):
         """
         Map from the vector of internal variables to the isotropic hardening
@@ -145,7 +160,7 @@ class NNIsotropicHardeningModel(hardening.IsotropicHardeningModel):
         return self.model(x)
 
     def model_derivative(self, x):
-        return vmap(jacrev(self.model))(x)
+        return jacrev(self.model)(x).diagonal(dim1=0,dim2=2).transpose(0,-1)
 
     def history_rate(self, s, h, t, ep, T, e):
         """

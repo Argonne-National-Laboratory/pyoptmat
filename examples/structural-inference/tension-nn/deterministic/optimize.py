@@ -90,8 +90,10 @@ if __name__ == "__main__":
     plt.show()
 
     # 4) Setup the optimizer
-    niter = 10
-    optim = torch.optim.LBFGS(model.parameters())
+    niter = 500
+    lr = 1.0e-3
+    #optim = torch.optim.LBFGS(model.parameters(), history_size = 400, max_iter = 40)
+    optim = torch.optim.AdamW(model.parameters(), lr)
 
     # 5) Setup the objective function
     loss = torch.nn.MSELoss(reduction="sum")
@@ -126,7 +128,7 @@ if __name__ == "__main__":
 
     # 8) Plot the convergence history
     plt.figure()
-    plt.plot(loss_history)
+    plt.loglog(loss_history)
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
     plt.tight_layout()
