@@ -90,7 +90,7 @@ if __name__ == "__main__":
     plt.show()
 
     # 4) Setup the optimizer
-    niter = 500
+    niter = 2000
     lr = 1.0e-3
     #optim = torch.optim.LBFGS(model.parameters(), history_size = 400, max_iter = 40)
     optim = torch.optim.AdamW(model.parameters(), lr)

@@ -88,9 +88,9 @@ if __name__ == "__main__":
     guide = model.make_guide()
 
     # 5) Setup the optimizer and loss
-    lr = 1.0e-2
+    lr = 1.0e-3
     g = 1.0
-    niter = 200
+    niter = 3500
     lrd = g ** (1.0 / niter)
     num_samples = 1
 
@@ -107,6 +107,9 @@ if __name__ == "__main__":
         loss = svi.step(data, cycles, types, control, results)
         loss_hist.append(loss)
         t.set_description("Loss %3.2e" % loss)
+
+    # Save parameters
+    pyro.get_param_store().save("model.pyro")
 
     # 8) Plot convergence
     plt.figure()
