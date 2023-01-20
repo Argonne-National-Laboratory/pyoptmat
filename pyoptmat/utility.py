@@ -169,9 +169,6 @@ class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
     batch dimension must agree with the input data.  All other dimensions are 
     broadcast.
 
-    Precache a lot of the work required to interpolate in time vs
-    :func:`pyoptmat.utility.timeseries_interpolate_batch_times`
-
     Args:
       times (torch.tensor):     input time series as a code:`(ntime,nbatch)`
                                 array
@@ -197,18 +194,30 @@ class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
         Returns:
           torch.tensor:       batched values at :code:`t`
         """
-        tgt = t.shape[:-1]
+        #print("HERE")
+        #print(self.times.shape)
+        #print(t.shape)
+        #print("DONE")
 
-        slopes = torch.diff(self.values.expand(*tgt), dim=0
-                ) / torch.diff(self.times.expand(*tgt), dim=0)
-
-
+        tp = t.t() # Transpose so the common dimension is first
+        tgt = self.values.shape + tp.shape[1:]
+        nexp = len(tgt) - 2 # Values always has dim 2...
+        
+        # Expand both the reference times and values
+        t = self.times[(...,)+(None,)*nexp].expand(tgt).flatten(start_dim = 1)
+        v = self.values[(...,)+(None,)*nexp].expand(tgt).flatten(start_dim = 1)
+        
+        # Calculate slopes, offsets, and values as usual but then 
+        # reshape at the very end...
+        slopes = torch.diff(v, dim=0) / torch.diff(t, dim=0)
+       
         gi = torch.remainder(
-            torch.sum((self.times - t) <= 0, dim=0), self.times.shape[0]
+            torch.sum((t - tp.flatten()) <= 0, dim=0), self.times.shape[0]
         )
-        return torch.diagonal(self.values[gi - 1]) + torch.diagonal(
-            self.slopes[gi - 1]
-        ) * (t - torch.diagonal(self.times[gi - 1]))
+
+        return (torch.diagonal(v[gi - 1]) + torch.diagonal(
+            slopes[gi - 1]
+        ) * (tp.flatten() - torch.diagonal(t[gi - 1]))).reshape(tp.shape).t()
 
 class BatchTimeSeriesInterpolator(nn.Module):
     """
