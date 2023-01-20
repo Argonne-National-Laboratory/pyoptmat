@@ -7,6 +7,8 @@ import numpy as np
 import numpy.random as ra
 import scipy.interpolate as inter
 
+torch.set_default_tensor_type(torch.DoubleTensor)
+
 class TestArbitraryBatchTimeSeriesInterpolator(unittest.TestCase):
     def setUp(self):
         self.ntime = 100
@@ -25,7 +27,25 @@ class TestArbitraryBatchTimeSeriesInterpolator(unittest.TestCase):
                 torch.tensor(self.times), torch.tensor(self.values))
 
     def test_interpolate(self):
-        pass
+        y = 10
+        X = torch.zeros((y,self.nbatch))
+        for i in range(self.nbatch):
+            tmin,tmax = sorted(list(ra.uniform(0, np.max(self.times[:,i]), 
+                size = (2,))))
+            X[:,i] = torch.linspace(tmin, tmax, y)
+
+        # Answer done one at a time
+        Y1 = torch.zeros((y,self.nbatch))
+        for i in range(y):
+            Y1[i] = self.ref_obj(X[i])
+        
+        # With the new object
+        Y2 = self.obj(X)
+
+        print(Y2.shape)
+
+        self.assertTrue(torch.allclose(Y1,Y2))
+
 
 
 class TestInterpolateBatchTimesObject(unittest.TestCase):

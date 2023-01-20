@@ -103,16 +103,17 @@ class BlockSolver:
         result[0] = self.y0
 
         for k in range(1, t.shape[0], self.n):
-            result[k:k+self.n] = self.block_update(t[k:k+self.n], result[k-1])
+            result[k:k+self.n] = self.block_update(t[k:k+self.n], t[k-1], result[k-1])
 
         return result
 
-    def block_update(self, t, y_start):
+    def block_update(self, t, t_start, y_start):
         """
         Solve a block of times all at once with backward Euler
 
         Args:
             t (torch.tensor):       block of times
+            t_start (torch.tensor): time at start of block
             y_start (torch.tensor): start of block
         """
         # Various useful sizes
@@ -121,38 +122,48 @@ class BlockSolver:
         k = n * self.prob_size # Size of operators
 
         # Guess of zeros, why not
-        y_guess = torch.zeros(b, self.prob_size, 
+        y_guess = torch.zeros(self.batch_size, k, 
                 dtype = t.dtype, device = t.device)
 
         def RJ(dy):
-            # Get the actual y values
-            y = dy + y_start.repeat_interleave(n, dim = 0)
-            
-            print(y_start.shape)
-            print(y.shape)
-            print(t.view(b).shape)
-            print(y.view(b,-1).shape)
+            # Make things into a more rational shape
+            dy = dy.reshape(self.batch_size, n, self.prob_size).transpose(0,1)
+            # Add a zero to the first dimension of dy
+            dy = torch.vstack((torch.zeros_like(y_start).unsqueeze(0), dy))
+            # Get actual values of state
+            y = dy[1:] + y_start.unsqueeze(0).expand(n,-1,-1)
+            # Calculate the time steps
+            dt = torch.vstack((t_start.unsqueeze(0), t)).diff(dim = 0)
 
             # Batch update the rate and jacobian
-            yd, yJ = self.func(t.view(b), y.view(b, -1))
+            yd, yJ = self.func(t, y)
 
-            # Form the overall residual, could be done better with something like the following
-            #R = y.view(self.batch_size, k) - yd.view(self.batch_size, k)
-            #R[:,self.prob_size:] -= y[1:].view(self.batch_size, (n-1)*self.prob_size)
-            R = torch.zeros(self.batch_size, k, dtype = t.dtype, device = t.device)
+            # Multiply by the time step
+            yd *= dt.unsqueeze(-1)
+            yJ *= dt.unsqueeze(-1).unsqueeze(-1)
+            
+            # Form the overall residual
+            # R = dy_k - dy_{k-1} - ydot(y) * dt
+            # However, to unsqueeze it we need to combine the 0th and the 2nd dimension
+            R = (dy[1:] - dy[:-1] - yd).transpose(0,1).flatten(start_dim=1)
 
-            # Form the overall jacobian, this could probably be done better
+            # Form the overall jacobian
+            # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
+            I = torch.eye(self.prob_size, device = t.device).expand(n,self.batch_size,-1,-1)
             J = torch.zeros(self.batch_size, k, k, dtype = t.dtype, device = t.device)
+            # Eh, for loop for now, but we can do better with sparse matrices later
+            for i in range(n):
+                J[:,i*self.prob_size:(i+1)*self.prob_size,i*self.prob_size:(i+1)*self.prob_size] = I[i] - yJ[i]
+            for i in range(n-1):
+                J[:,(i+1)*self.prob_size:(i+2)*self.prob_size,i*self.prob_size:(i+1)*self.prob_size] = -I[i]
             
             return R, J
         
         R1, J1 = RJ(y_guess)
-        print(R1.shape)
-        print(J1.shape)
 
-        return y_guess.view(n, self.batch_size, self.prob_size)
+        dy = solvers.newton_raphson(RJ, y_guess)[0].view(n, self.batch_size, self.prob_size)
 
-        #return solvers.newton_raphson(RJ, y_guess).view(n, self.batch_size, self.prob_size)
+        return dy + y_start.unsqueeze(0).expand(n,-1,-1)
 
 class FixedGridSolver:
     """

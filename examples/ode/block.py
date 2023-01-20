@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import sys
+sys.path.append('../..')
+
 import torch
 import torch.nn as nn
 
@@ -33,7 +36,7 @@ def driving_current(I_max, R, rate, thold, chold, Ncycles, nload,
         times[:,i] = torch.tensor(ti)
         I[:,i] = torch.tensor(Ii)
     
-    return utility.BatchTimeSeriesInterpolator(
+    return utility.ArbitraryBatchTimeSeriesInterpolator(
             times.to(device), I.to(device)), times.to(device)
 
 class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
@@ -102,9 +105,9 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
                 -self.g_K[None,...]*n**4.0))
         # Coupling term
         J[...,0::4,0::4] -= self.g_C[None,...] / self.C[None,...] 
-        J[...,0::4,0::4] += torch.repeat_interleave(torch.eye(self.n_neurons, 
-            device = ydot.device).unsqueeze(0), ydot.shape[0], 0
-                ) * torch.sum(self.g_C / self.C)
+        
+        J[...,0::4,0::4] += torch.eye(self.n_neurons, device = ydot.device).expand(
+                *ydot.shape[:-1], -1, -1) * torch.sum(self.g_C / self.C)
         
         # V, m
         J[...,0::4,1::4] = torch.diag_embed(-1.0 / self.C[None,...] * (
@@ -148,7 +151,7 @@ if __name__ == "__main__":
             nbatch)
 
     nsteps = times.shape[0]
-    
+
     model = HodgkinHuxleyCoupledNeurons(
             torch.rand((neq,), device = device),
             torch.rand((neq,), device = device),
@@ -167,10 +170,15 @@ if __name__ == "__main__":
             current)
 
     y0 = torch.rand((nbatch,model.n_equations), device = device)
-    n = 5
+    n = 2
     
     with torch.no_grad():
         res_no_block = ode.odeint(model, y0, times, 
                 method = "backward-euler")
         res_block = ode.odeint(model, y0, times, 
                 method = "block-backward-euler", block_size = n)
+    
+    print(times.shape)
+    plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
+    plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy())
+    plt.show()
