@@ -132,6 +132,7 @@ class BlockSolver:
             dy = torch.vstack((torch.zeros_like(y_start).unsqueeze(0), dy))
             # Get actual values of state
             y = dy[1:] + y_start.unsqueeze(0).expand(n,-1,-1)
+
             # Calculate the time steps
             dt = torch.vstack((t_start.unsqueeze(0), t)).diff(dim = 0)
 
@@ -159,9 +160,7 @@ class BlockSolver:
             
             return R, J
         
-        R1, J1 = RJ(y_guess)
-
-        dy = solvers.newton_raphson(RJ, y_guess)[0].view(n, self.batch_size, self.prob_size)
+        dy = solvers.newton_raphson(RJ, y_guess)[0].reshape(self.batch_size, n, self.prob_size).transpose(0,1)
 
         return dy + y_start.unsqueeze(0).expand(n,-1,-1)
 
