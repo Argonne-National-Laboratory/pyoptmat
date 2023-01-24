@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import sys
 sys.path.append('../..')
@@ -169,8 +169,9 @@ if __name__ == "__main__":
             torch.rand((neq,), device = device) * 0.01,
             current)
 
+
     y0 = torch.rand((nbatch,model.n_equations), device = device)
-    n = 2
+    n = 10
     
     with torch.no_grad():
         res_no_block = ode.odeint(model, y0, times, 
@@ -178,7 +179,6 @@ if __name__ == "__main__":
         res_block = ode.odeint(model, y0, times, 
                 method = "block-backward-euler", block_size = n)
     
-    print(times.shape)
     plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
-    plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy())
+    plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')
     plt.show()
