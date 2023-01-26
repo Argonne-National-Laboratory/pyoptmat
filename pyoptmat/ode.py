@@ -33,7 +33,7 @@
 
 import torch
 
-from pyoptmat import solvers, utility
+from pyoptmat import solvers, utility, spsolve
 
 
 def linear(t0, t1, y0, y1, t):
@@ -72,13 +72,15 @@ class BlockSolver:
 
     Keyword Args:
       n (int):              target block size
+      sparse_linear_solver: method to solve batched sparse Ax = b
 
     """
-    def __init__(self, func, y0, block_size = 1):
+    def __init__(self, func, y0, block_size = 1, sparse_linear_solver = spsolve.dense_solve):
         # Store basic info about the system
         self.func = func
         self.y0 = y0
         self.n = block_size
+        self.solver = sparse_linear_solver
 
         self.batch_size = self.y0.shape[0]
         self.prob_size = self.y0.shape[1]
@@ -151,16 +153,12 @@ class BlockSolver:
             # Form the overall jacobian
             # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
             I = torch.eye(self.prob_size, device = t.device).expand(n,self.batch_size,-1,-1)
-            J = torch.zeros(self.batch_size, k, k, dtype = t.dtype, device = t.device)
-            # Eh, for loop for now, but we can do better with sparse matrices later
-            for i in range(n):
-                J[:,i*self.prob_size:(i+1)*self.prob_size,i*self.prob_size:(i+1)*self.prob_size] = I[i] - yJ[i]
-            for i in range(n-1):
-                J[:,(i+1)*self.prob_size:(i+2)*self.prob_size,i*self.prob_size:(i+1)*self.prob_size] = -I[i]
-            
+            J = spsolve.SquareBatchedBlockDiagonalMatrix([I - yJ, -I[1:]], [0, -1])
+
             return R, J
         
-        dy = solvers.newton_raphson(RJ, y_guess)[0].reshape(self.batch_size, n, self.prob_size).transpose(0,1)
+        dy = spsolve.newton_raphson_sparse(RJ, y_guess,
+                                           solver = self.solver)[0].reshape(self.batch_size, n, self.prob_size).transpose(0,1)
 
         return dy + y_start.unsqueeze(0).expand(n,-1,-1)
 
