@@ -171,13 +171,19 @@ if __name__ == "__main__":
 
 
     y0 = torch.rand((nbatch,model.n_equations), device = device)
-    n = 10
+    n = 8
     
     with torch.no_grad():
+        t1 = time.time()
         res_no_block = ode.odeint(model, y0, times, 
                 method = "backward-euler")
+        t2 = time.time()
         res_block = ode.odeint(model, y0, times, 
                 method = "block-backward-euler", block_size = n)
+        t3 = time.time()
+
+    print("Unblocked: %e" % (t2-t1))
+    print("Blocked: %e" % (t3-t2))
     
     plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
     plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')
