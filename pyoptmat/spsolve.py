@@ -1,5 +1,8 @@
 import torch
 import numpy as np
+import cupy as cp
+import cupyx
+import cupyx.scipy.sparse.linalg as cuspla
 
 def dense_solve(A, b):
     """
@@ -10,6 +13,43 @@ def dense_solve(A, b):
         b (torch.tensor): batch of tensors
     """
     return torch.linalg.solve_ex(A.to_dense(), b)[0]
+
+def cupy_sequential_direct_sparse(A, b):
+    """
+    Solve a sparse linear system by converting to unbatched CSR matrices
+    and solving those systems one at a time with the cupy sparse solvers
+    """
+    y = torch.empty_like(b)
+    for i, Ai in enumerate(A.to_unrolled_csr()):
+        bi = cp.asarray(b[i])
+        values = cp.asarray(Ai.values())
+        cinds = cp.asarray(Ai.col_indices())
+        rptrs = cp.asarray(Ai.crow_indices())
+        Si = cupyx.scipy.sparse.csr_matrix(
+                (values, cinds, rptrs),
+                shape = tuple(Ai.shape))
+        y[i] = torch.as_tensor(
+                cuspla.spsolve(Si, bi),
+                device = b.device)
+
+    return y
+
+def special_form(A, b):
+    """
+        Our highly specialized solver for the block lower diagonal
+        structure
+    """
+    B = A.data[1]
+    lu, pivots, info = torch.linalg.lu_factor_ex(B)
+    y = torch.empty_like(b)
+    i = 0
+    s = A.sblk
+    y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(lu[i], pivots[i], b[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
+    for i in range(1, A.nblk):
+        y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(lu[i], pivots[i], (b[:,i*s:(i+1)*s] + y[:,(i-1)*s:i*s]).unsqueeze(-1)).squeeze(-1)
+
+    return y
+
 
 def newton_raphson_sparse(fn, x0, solver=dense_solve, rtol=1e-6, atol=1e-10, miter=100):
     """
