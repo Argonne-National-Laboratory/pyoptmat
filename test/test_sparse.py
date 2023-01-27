@@ -38,4 +38,7 @@ class TestBasicSparseSetup(unittest.TestCase):
         od = self.sp.to_dense()
 
         for i in range(self.sbatch):
+            #print(csr_list[i].crow_indices())
+            #print(csr_list[i].col_indices())
+            #print(csr_list[i].values())
             self.assertTrue(torch.allclose(csr_list[i].to_dense(), od[i]))

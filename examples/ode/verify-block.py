@@ -173,57 +173,14 @@ if __name__ == "__main__":
 
 
     y0 = torch.rand((nbatch,model.n_equations), device = device)
-    ns = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40]
-    
+    ni = 5 
     with torch.no_grad():
-        t1 = time.time()
         res_no_block = ode.odeint(model, y0, times, 
                 method = "backward-euler")
-        t2 = time.time()
-        reference = t2 - t1
-        reference = [reference] * len(ns)
+        res_block = ode.odeint(model, y0, times, 
+                method = "block-backward-euler", block_size = ni,
+                sparse_linear_solver = spsolve.special_form)
 
-    direct = []
-    seq_sparse = []
-    special = []
-
-    with torch.no_grad():
-        for ni in ns:
-            print(ni)
-            t1 = time.time()
-            res_block = ode.odeint(model, y0, times, 
-                    method = "block-backward-euler", block_size = ni,
-                    sparse_linear_solver = spsolve.cupy_sequential_direct_sparse)
-            t2 = time.time()
-            seq_sparse.append(t2-t1)
-            t1 = time.time()
-            res_block = ode.odeint(model, y0, times, 
-                    method = "block-backward-euler", block_size = ni,
-                    sparse_linear_solver = spsolve.dense_solve)
-            t2 = time.time()
-            direct.append(t2-t1)
-            t1 = time.time()
-            res_block = ode.odeint(model, y0, times, 
-                    method = "block-backward-euler", block_size = ni,
-                    sparse_linear_solver = spsolve.special_form)
-            t2 = time.time()
-            special.append(t2-t1)
-
-    data = np.vstack([ns, reference, direct, seq_sparse, special])
-    np.savetxt("results.txt", data)
-
-    plt.plot(ns, reference, label = "Reference")
-    plt.plot(ns, direct, label = "Dense, direct, batched")
-    plt.plot(ns, seq_sparse, label = "Sparse, direct, sequential")
-    plt.plot(ns, special, label = "Lower diagonal")
-    plt.legend(loc='best')
-    plt.xlabel("Block size")
-    plt.ylabel("Wall time (s)")
-    plt.savefig("block-initial-results.png")
-
-    #print("Unblocked: %e" % (t2-t1))
-    #print("Blocked: %e" % (t3-t2))
-    
-    #plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
-    #plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')
-    #plt.show()
+    plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
+    plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')
+    plt.show()
