@@ -179,7 +179,7 @@ if __name__ == "__main__":
                 method = "backward-euler")
         res_block = ode.odeint(model, y0, times, 
                 method = "block-backward-euler", block_size = ni,
-                sparse_linear_solver = spsolve.special_form)
+                linear_solve_method = "direct")
 
     plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
     plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')

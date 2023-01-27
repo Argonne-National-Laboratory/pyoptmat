@@ -1,4 +1,4 @@
-from pyoptmat import spsolve
+from pyoptmat import chunktime
 
 import torch
 
@@ -23,7 +23,7 @@ class TestBasicSparseSetup(unittest.TestCase):
         for i in range(self.nblk-1):
             self.l[i] = -(i + 1) * 1.0
 
-        self.sp = spsolve.SquareBatchedBlockDiagonalMatrix([self.d, self.l, self.u],
+        self.sp = chunktime.SquareBatchedBlockDiagonalMatrix([self.d, self.l, self.u],
                                                            [0, -1, 2])
 
     def test_coo(self):
@@ -38,7 +38,4 @@ class TestBasicSparseSetup(unittest.TestCase):
         od = self.sp.to_dense()
 
         for i in range(self.sbatch):
-            #print(csr_list[i].crow_indices())
-            #print(csr_list[i].col_indices())
-            #print(csr_list[i].values())
             self.assertTrue(torch.allclose(csr_list[i].to_dense(), od[i]))
