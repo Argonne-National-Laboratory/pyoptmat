@@ -56,7 +56,7 @@ class ChunkTimeOperatorSolverContext:
         if solve_method not in ["dense", "direct", "gmres"]:
             raise ValueError("Solve method must be one of dense, direct, or gmres")
         self.solve_method = solve_method
-        self.J = None
+        self.cached_preconditioner = None
 
     def solve(self, J, R):
         """
@@ -91,29 +91,7 @@ class ChunkTimeOperatorSolverContext:
             J (ChunkTimeOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
-        lu, pivots, _ = torch.linalg.lu_factor_ex(J.diag)
-        return block_thomas(lu, pivots, J, R)
-
-def block_thomas(lu, pivots, J, R):
-    """
-    Specialized version of Thomas's algorithm for our block banded 
-    structure.
-
-    Args:
-        lu:                     lu from torch.linalg.factor_ex
-        pivots:                 pivots from torch.linalg.factor_ex
-        J (ChunkTimeOperator):  actual operator
-        R (torch.tensor):       right hand side
-    """
-    y = torch.empty_like(R)
-    i = 0
-    s = J.sblk
-    y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(lu[i], pivots[i], R[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
-    for i in range(1, J.nblk):
-        y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(lu[i], pivots[i], (R[:,i*s:(i+1)*s] + y[:,(i-1)*s:i*s]).unsqueeze(-1)).squeeze(-1)
-
-    return y
-        
+        return J.dot_inv(R)
 
 class ChunkTimeOperator:
     """
@@ -144,6 +122,9 @@ class ChunkTimeOperator:
         self.nblk = self.diag.shape[0]
         self.sbat = self.diag.shape[1]
         self.sblk = self.diag.shape[3]
+
+        self.lu = None
+        self.pivots = None
 
     @property
     def dtype(self):
@@ -184,6 +165,34 @@ class ChunkTimeOperator:
                     torch.eye(self.sblk, device = self.device).expand(self.nblk-1,self.sbat,-1,-1)
                 ], 
                 [0, -1])
+
+    def factorize(self):
+        """
+        Do the expensive LU factorization needed to make the sweep $A^{-1} \dot v$ work
+        """
+        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.diag)
+
+    def dot_inv(self, v):
+        """
+        $A^{-1} \dot v$ with the prefactorized diagonal blocks
+
+        This applies a modified version of Thomas's algorithm
+
+        Args:
+            v (torch.tensor):   batch of vectors
+        """
+        # This can be very expensive
+        if self.lu is None:
+            self.factorize()
+
+        y = torch.empty_like(v)
+        i = 0
+        s = self.sblk
+        y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
+        for i in range(1, self.nblk):
+            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], (v[:,i*s:(i+1)*s] + y[:,(i-1)*s:i*s]).unsqueeze(-1)).squeeze(-1)
+
+        return y
 
 class SquareBatchedBlockDiagonalMatrix:
     """
