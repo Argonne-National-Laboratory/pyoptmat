@@ -168,13 +168,25 @@ class ChunkTimeOperator:
 
     def factorize(self):
         """
-        Do the expensive LU factorization needed to make the sweep $A^{-1} \dot v$ work
+        Do the expensive LU factorization needed to make the sweep $A^{-1} \cdot v$ work
         """
         self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.diag)
 
+    def dot(self, v):
+        """
+        $A \cdot v$ in an efficient manner
+
+        Args:
+            v (torch.tensor):   batch of vectors
+        """
+        # Reshaped and padded v 
+        vp = torch.vstack(torch.zeros(1, self.sbat, self.sblk, dtype = self.dtype, device = self.device), v.reshape(self.sbat, self.nblk, self.sblk).transpose(0,1))
+
+
+
     def dot_inv(self, v):
         """
-        $A^{-1} \dot v$ with the prefactorized diagonal blocks
+        $A^{-1} \cdot v$ with the prefactorized diagonal blocks
 
         This applies a modified version of Thomas's algorithm
 
