@@ -162,7 +162,7 @@ class ChunkTimeOperator:
         return SquareBatchedBlockDiagonalMatrix(
                 [
                     self.diag,
-                    torch.eye(self.sblk, device = self.device).expand(self.nblk-1,self.sbat,-1,-1)
+                    -torch.eye(self.sblk, device = self.device).expand(self.nblk-1,self.sbat,-1,-1)
                 ], 
                 [0, -1])
 

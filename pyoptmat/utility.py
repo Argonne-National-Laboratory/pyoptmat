@@ -89,7 +89,7 @@ def new_differentiate(fn, x0, eps=1.0e-6):
         flatten = False
     fs2 = (nbatch,) + s2
 
-    d = torch.empty((nbatch,) + s1 + s2)
+    d = torch.empty((nbatch,) + s1 + s2, device = x0.device)
 
     v0 = v0.reshape(fs1)
 

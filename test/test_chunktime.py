@@ -6,6 +6,23 @@ import unittest
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
+class TestBlockDiagMatVec(unittest.TestCase):
+    def setUp(self):
+        self.sblk = 4
+        self.nblk = 5
+        self.sbat = 3
+
+        blk = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
+
+        self.A = chunktime.ChunkTimeOperator(blk)
+        self.b = torch.rand(self.sbat, self.nblk * self.sblk)
+
+    def test_inv_mat_vec(self):
+        one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+        two = self.A.dot_inv(self.b)
+
+        self.assertTrue(torch.allclose(one,two))
+
 class TestBasicSparseSetup(unittest.TestCase):
     def setUp(self):
         self.sblk = 4
