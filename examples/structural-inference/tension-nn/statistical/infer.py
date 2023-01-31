@@ -65,20 +65,24 @@ if __name__ == "__main__":
         input_data.nsamples,
     )
 
+    means_from_det = [
+            torch.tensor(0.8519), torch.tensor(0.2102), torch.tensor(0.4641),
+            torch.tensor([[ -6.2718],
+        [ -0.6339],
+        [ -7.2345],
+        [-12.0008]]),
+            torch.tensor([ 6.2697e+00,  1.2768e+02, -1.6904e-02, -2.2699e-01]),
+            torch.tensor([[-5.4647, -6.7747, 11.3725, 10.6105]]),
+            torch.tensor([15.0104])]
+
     # 2) Setup names for each parameter and the priors
-    names = ["n", "eta", "s0", "weights1", "biases1", "weights2", "biases2", "weights3", "biases3"]
-    loc_loc_priors = [torch.tensor(ra.uniform(0, 1), device = device) for i in range(3)] + [
-            torch.rand(nsize,1, device = device),
-            torch.rand(nsize, device = device),
-            torch.rand(nsize, nsize, device = device),
-            torch.rand(nsize, device = device),
-            torch.rand(1, nsize, device = device),
-            torch.rand(1, device = device)]
-    loc_scale_priors = [torch.ones_like(l)*0.15 for l in loc_loc_priors]
-    scale_scale_priors = [torch.ones_like(l)*0.15 for l in loc_loc_priors]
+    names = ["n", "eta", "s0", "weights1", "biases1", "weights2", "biases2"]
+    loc_loc_priors = means_from_det 
+    loc_scale_priors = [torch.abs(v)*0.15 for v in loc_loc_priors]
+    scale_scale_priors = [torch.abs(v)*0.15 for v in loc_loc_priors]
 
     eps = torch.tensor(1.0e-4, device=device)
-
+    
     # 3) Create the actual model
     model = optimize.HierarchicalStatisticalModel(
         make, names, loc_loc_priors, loc_scale_priors, scale_scale_priors, eps
@@ -88,9 +92,9 @@ if __name__ == "__main__":
     guide = model.make_guide()
 
     # 5) Setup the optimizer and loss
-    lr = 1.0e-3
+    lr = 1.0e-2
     g = 1.0
-    niter = 3500
+    niter = 1000
     lrd = g ** (1.0 / niter)
     num_samples = 1
 
@@ -107,6 +111,7 @@ if __name__ == "__main__":
         loss = svi.step(data, cycles, types, control, results)
         loss_hist.append(loss)
         t.set_description("Loss %3.2e" % loss)
+        pyro.get_param_store().save("checkpt.pyro")
 
     # Save parameters
     pyro.get_param_store().save("model.pyro")

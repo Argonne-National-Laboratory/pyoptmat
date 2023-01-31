@@ -42,7 +42,7 @@ s0_true = 50.0
 # Scale factor used in the model definition
 sf = 0.5
 
-nsize = 10
+nsize = 4
 nscale = torch.tensor(1.0e-5)
 bscale = torch.tensor(0.1)
 
@@ -52,16 +52,8 @@ class Lin(nn.Module):
         self.weight = weight
         self.bias = bias
 
-        if self.weight.dim() == 3:
-            self.squeeze = True
-        else:
-            self.squeeze = False
-
     def forward(self, x):
-        if self.squeeze:
-            return self.weight.bmm(x.unsqueeze(-1)).squeeze(-1) + self.bias
-        else:
-            return x.matmul(self.weight.t()) + self.bias
+        return torch.einsum('...ij,...j->...i', self.weight, x) + self.bias
 
 class Scale(nn.Module):
     def __init__(self, scale):
@@ -109,19 +101,14 @@ class NNIsotropicHardeningModel(hardening.IsotropicHardeningModel):
       d (|TP|): parameter controlling the rate of saturation
     """
 
-    def __init__(self, weights1, biases1, weights2, biases2, weights3, biases3):
+    def __init__(self, weights1, biases1, weights2, biases2):
         super().__init__()
 
         self.model = torch.nn.Sequential(
-                Scale(nscale),
-                Div(1.0e-3),
                 Lin(weights1, biases1),
                 nn.ReLU(),
                 Lin(weights2, biases2),
-                nn.ReLU(),
-                Lin(weights3, biases3),
-                Abs(),
-                Scale(bscale))
+                Abs())
        
     def value(self, h):
         """
@@ -233,11 +220,11 @@ class NNIsotropicHardeningModel(hardening.IsotropicHardeningModel):
             self.model_value(h) * torch.sign(ep).unsqueeze(-1), 1
         )
 
-def make_model(E, n, eta, s0, weights1, biases1, weights2, biases2, weights3, biases3, device=torch.device("cpu"), **kwargs):
+def make_model(E, n, eta, s0, weights1, biases1, weights2, biases2, device=torch.device("cpu"), **kwargs):
     """
     Key function for the entire problem: given parameters generate the model
     """
-    isotropic = NNIsotropicHardeningModel(weights1, biases1, weights2, biases2, weights3, biases3)
+    isotropic = NNIsotropicHardeningModel(weights1, biases1, weights2, biases2)
     kinematic = hardening.NoKinematicHardeningModel()
     flowrule = flowrules.IsoKinViscoplasticity(
         CP(

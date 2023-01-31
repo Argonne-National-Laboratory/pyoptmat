@@ -65,14 +65,12 @@ if __name__ == "__main__":
     )
 
     # 2) Setup names for each parameter and the initial conditions
-    names = ["n", "eta", "s0", "weights1", "biases1", "weights2", "biases2", "weights3", "biases3"]
+    names = ["n", "eta", "s0", "weights1", "biases1", "weights2", "biases2"]
     ics = [torch.tensor(ra.uniform(0, 1), device = device) for i in range(3)] + [
-            torch.rand(nsize,1, device = device),
-            torch.rand(nsize, device = device),
-            torch.rand(nsize, nsize, device = device),
-            torch.rand(nsize, device = device),
-            torch.rand(1, nsize, device = device),
-            torch.rand(1, device = device)]
+            -torch.rand(nsize,1, device = device)*10,
+            torch.rand(nsize, device = device)*5-2.5,
+            torch.rand(1, nsize, device = device)*20-10,
+            torch.rand(1, device = device)*20]
 
     print("Initial parameter values:")
     for n, ic in zip(names, ics):
@@ -90,10 +88,10 @@ if __name__ == "__main__":
     plt.show()
 
     # 4) Setup the optimizer
-    niter = 2000
+    niter = 5
     lr = 1.0e-3
-    #optim = torch.optim.LBFGS(model.parameters(), history_size = 400, max_iter = 40)
-    optim = torch.optim.AdamW(model.parameters(), lr)
+    optim = torch.optim.LBFGS(model.parameters(), history_size = 400, max_iter = 40)
+    #optim = torch.optim.AdamW(model.parameters(), lr)
 
     # 5) Setup the objective function
     loss = torch.nn.MSELoss(reduction="sum")
