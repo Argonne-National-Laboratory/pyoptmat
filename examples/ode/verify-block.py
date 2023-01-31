@@ -13,7 +13,7 @@ from torch.profiler import ProfilerActivity
 
 import matplotlib.pyplot as plt
 
-from pyoptmat import ode, experiments, utility, spsolve
+from pyoptmat import ode, experiments, utility
 import time
 
 torch.set_default_tensor_type(torch.DoubleTensor)
