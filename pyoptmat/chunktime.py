@@ -2,6 +2,7 @@ import warnings
 
 import torch
 import numpy as np
+from math import log2
 
 def gmres_operators(Av, b, x0 = None, Mv = lambda x: x, tol = 1e-10, 
         maxiter = 100, check = 5, eps = 1.0e-15, return_info = False):
@@ -207,7 +208,7 @@ class ChunkTimeOperatorSolverContext:
             J (BackwardEulerChunkTimeOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
-        return J.dot_inv(R)
+        return J.dot_inv_thomas(R)
 
     def solve_gmres(self, J, R):
         """
@@ -225,7 +226,7 @@ class ChunkTimeOperatorSolverContext:
             self._new_preconditioner(J)
         
         b, info = gmres_operators(lambda x: J.dot(x), R, 
-                Mv = lambda x: self.cached_preconditioner.dot_inv(x),
+                Mv = lambda x: self.cached_preconditioner.dot_inv_thomas(x),
                 tol = self.gmres_tol,
                 maxiter = self.gmres_miter,
                 check = self.gmres_check,
@@ -243,7 +244,7 @@ class ChunkTimeOperatorSolverContext:
             J (Operator): new operator to factor
         """
         self.cached_preconditioner = J
-        self.cached_preconditioner.factorize()
+        self.cached_preconditioner.factorize_thomas()
 
 class BackwardEulerChunkTimeOperator:
     """
@@ -277,6 +278,8 @@ class BackwardEulerChunkTimeOperator:
 
         self.lu = None
         self.pivots = None
+
+        self.cyclic_factorization = None
 
     @property
     def dtype(self):
@@ -318,7 +321,7 @@ class BackwardEulerChunkTimeOperator:
                 ], 
                 [0, -1])
 
-    def factorize(self):
+    def factorize_thomas(self):
         """
         Do the expensive LU factorization needed to make the sweep $A^{-1} \cdot v$ work
         """
@@ -339,7 +342,7 @@ class BackwardEulerChunkTimeOperator:
 
         return b.transpose(1,0).flatten(start_dim=1)
         
-    def dot_inv(self, v):
+    def dot_inv_thomas(self, v):
         """
         $A^{-1} \cdot v$ with the prefactorized diagonal blocks
 
@@ -350,7 +353,7 @@ class BackwardEulerChunkTimeOperator:
         """
         # This can be very expensive
         if self.lu is None:
-            self.factorize()
+            self.factorize_thomas()
 
         y = torch.empty_like(v)
         i = 0
@@ -360,6 +363,59 @@ class BackwardEulerChunkTimeOperator:
             y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], (v[:,i*s:(i+1)*s] + y[:,(i-1)*s:i*s]).unsqueeze(-1)).squeeze(-1)
 
         return y
+
+    def dot_inv_cyclic(self, v):
+        """
+        $A^{-1} \codt v$ with cyclic factorization
+
+        Args:
+            v (torch.tensor): batch of vectors
+        """
+        if self.cyclic_factorization is None:
+            self.cyclic_factorization = CyclicFactorization(self.diag)
+
+        return self.cyclic_factorization.backsolve(v)
+
+class CyclicFactorization:
+    """
+    Manages the data needed to solve our special system via cyclic factorization
+
+    Args:
+        diag (torch.tensor): diagonal blocks of shape (nblk,sbat,sblk,sblk)
+
+    """
+    def __init__(self, diag):
+        self.nblk = diag.shape[0]
+        self.sbat = diag.shape[1]
+        self.sblk = diag.shape[3]
+
+        if bin(self.nblk).count('1') != 1:
+            raise ValueError("Ya ya, need to handle odd case")
+
+        self._setup_factorization(diag)
+
+    def backsolve(self, v):
+        """
+        Complete the backsolve for a given right hand side
+
+        Args:
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+        """
+        return torch.zeros_like(v)
+
+    def _setup_factorization(self, diag):
+        """
+        Form the factorization...
+
+        Args:
+            diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
+        """
+        factorization = torch.clone(diag)
+        for i in range(int(log2(self.nblk))-1):
+            inc = 2**(i+1)
+            for 
+            print(inc) 
+        
 
 class SquareBatchedBlockDiagonalMatrix:
     """
