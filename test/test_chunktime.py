@@ -9,17 +9,23 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
     def setUp(self):
         self.sblk = 4
-        self.nblk = 5
-        self.sbat = 3
+        self.nblk = 8
+        self.sbat = 5
 
         blk = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
 
         self.A = chunktime.BackwardEulerChunkTimeOperator(blk)
         self.b = torch.rand(self.sbat, self.nblk * self.sblk)
 
-    def test_inv_mat_vec(self):
+    def test_inv_mat_vec_thomas(self):
         one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
-        two = self.A.dot_inv(self.b)
+        two = self.A.dot_inv_thomas(self.b)
+
+        self.assertTrue(torch.allclose(one,two))
+
+    def test_inv_mat_vec_thomas(self):
+        one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+        two = self.A.dot_inv_cyclic(self.b)
 
         self.assertTrue(torch.allclose(one,two))
 
