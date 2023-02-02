@@ -75,7 +75,7 @@ class BlockSolver:
       sparse_linear_solver: method to solve batched sparse Ax = b
 
     """
-    def __init__(self, func, y0, block_size = 1, linear_solve_method = "direct"):
+    def __init__(self, func, y0, block_size = 1, linear_solve_method = "direct", **kwargs):
         # Store basic info about the system
         self.func = func
         self.y0 = y0
@@ -84,7 +84,7 @@ class BlockSolver:
         self.batch_size = self.y0.shape[0]
         self.prob_size = self.y0.shape[1]
 
-        self.linear_solve_context = chunktime.ChunkTimeOperatorSolverContext(linear_solve_method)
+        self.linear_solve_context = chunktime.ChunkTimeOperatorSolverContext(linear_solve_method, **kwargs)
 
     def integrate(self, t, cache_adjoint=False):
         """
@@ -154,7 +154,7 @@ class BlockSolver:
             # Form the overall jacobian
             # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
             I = torch.eye(self.prob_size, device = t.device).expand(n,self.batch_size,-1,-1)
-            J = chunktime.ChunkTimeOperator(I - yJ)
+            J = chunktime.BackwardEulerChunkTimeOperator(I - yJ)
 
             return R, J
         
