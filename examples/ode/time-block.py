@@ -137,10 +137,10 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    nbatch = 10
+    nbatch = 100
     neq = 5
-    N = 5
-    n = 40
+    N = 10
+    n = 50
     
     current, times = driving_current([0.1,1],
             [-1,0.9], 
@@ -173,14 +173,32 @@ if __name__ == "__main__":
 
 
     y0 = torch.rand((nbatch,model.n_equations), device = device)
-    ni = 5 
+    
+    n = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]
+    methods = ["direct", "gmres"]
+    gmres_miter = 30
+    reuse_iter = 20
+    gmres_check = 2
+
+    solve_times = np.zeros((4, len(n)))
+
     with torch.no_grad():
+        print("Reference case...")
+        t = time.time()
         res_no_block = ode.odeint(model, y0, times, 
                 method = "backward-euler")
-        res_block = ode.odeint(model, y0, times, 
-                method = "block-backward-euler", block_size = ni,
-                linear_solve_method = "gmres")
+        solve_times[0] = time.time() - t
+        for k,ni in enumerate(n):
+            print(ni)
+            for i, m in enumerate(methods):
+                t = time.time()
+                res_block = ode.odeint(model, y0, times, 
+                        method = "block-backward-euler", block_size = ni,
+                        linear_solve_method = "gmres", gmres_miter = gmres_miter,
+                        gmres_reuse_iters = reuse_iter, gmres_check = gmres_check)
+                solve_times[i+1,k] = time.time() - t
 
-    plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
-    plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')
-    plt.show()
+    with open("results.txt", 'w') as f:
+        f.write(" ".join(["Unblocked"] + methods) + "\n")
+        f.write(" ".join(map(str, n)) + "\n")
+        np.savetxt(f, solve_times)

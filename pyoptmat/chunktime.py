@@ -3,16 +3,114 @@ import warnings
 import torch
 import numpy as np
 
+def gmres_operators(Av, b, x0 = None, Mv = lambda x: x, tol = 1e-10, 
+        maxiter = 100, check = 5, eps = 1.0e-15, return_info = False):
+    """
+    Solve a linear system of equations using GMRES.
+
+    Args:
+        Av (function):  function providing $A \cdot v$
+        b (torch.tensor): right hand side
+
+    Keyword Args:
+        x0 (torch.tensor): initial guess, defaults to zero
+        Mv (function): function provide $M^{-1} \cdot v$
+        tol (float): absolute solver tolerance
+        maxiter (int): maximum number of iterations
+        check (int): check residual every check iterations
+        eps (float): small number to avoid zero vectors
+        return_info (bool): if True return additional information
+            on the solve process
+
+    Returns:
+        x (torch.tensor): result
+        info (dict): dictionary with
+            'niter' number of iterations required
+            'max_res' maximum norm of the residual
+    """
+    # Should fix code at some point to treat batch dimensions right
+    nbatch = b.shape[0]
+
+    # Initial guess
+    if x0 is None:
+        x0 = torch.zeros_like(b)
+    x = x0
+
+    # Initial residual
+    r = b - Av(x)
+
+    # Basis
+    V = torch.zeros((nbatch, b.shape[-1], maxiter + 1), device=b.device)
+    V[..., :, 0] = r / torch.linalg.norm(r, dim=-1)[:, None]
+
+    # Preconditioned basis
+    Z = torch.zeros((nbatch, b.shape[-1], maxiter + 1), device=b.device)
+    Z[..., :, 0] = Mv(V[..., :, 0])
+
+    # Hessenberg matrix
+    H = torch.zeros((nbatch, maxiter + 1, maxiter), device=b.device)
+
+    # Residual norm
+    nR = torch.linalg.vector_norm(r, dim=-1)
+
+    # Check for an initial zero
+    if torch.all(nR < tol):
+        if return_info:
+            return x0, {'niter': 0, 'max_res': 0.0}
+        return x0
+
+    # Unit vector
+    e1 = torch.zeros((nbatch, maxiter + 1), device=b.device)
+    e1[:, 0] = nR
+
+    # Start iterating
+    for k in range(maxiter):
+        # A \cdot v
+        w = Av(Z[..., :, k].unsqueeze(-1)).squeeze(-1)
+
+        # Orthogonalize
+        for j in range(k + 1):
+            H[..., j, k] = (
+                V[..., :, j].unsqueeze(-2).bmm(w.unsqueeze(-1)).squeeze(-2).squeeze(-1)
+            )
+            w -= H[..., j, k].unsqueeze(-1) * V[..., :, j]
+
+        # Next Arnoldi vector
+        H[..., k + 1, k] = torch.linalg.vector_norm(w, dim=-1) + eps
+        V[..., :, k + 1] = w / H[..., k + 1, k][:, None]
+
+        # Preconditioned
+        Z[..., :, k + 1] = Mv(V[..., :, k + 1])
+
+        # If it's time, check the new residual value
+        if (k + 1) % check == 0 or (k + 1) == maxiter:
+            # Project onto our basis
+            y, _, _, _ = torch.linalg.lstsq(
+                H[..., : k + 1, :k], e1[..., : k + 1], rcond=None
+            )
+            # Calculate the value of x
+            x = Z[..., :, :k].bmm(y.unsqueeze(-1)).squeeze(-1) + x0
+            # Calculate the residual and the norm of the residual
+            r = b - Av(x.unsqueeze(-1)).squeeze(-1)
+            nRc = torch.linalg.vector_norm(r, dim=-1)
+            # Check for convergence
+            if torch.all(nRc < tol):
+                break
+    
+    if return_info:
+        return x, {"niter": k, "max_res": torch.max(nRc)}
+    return x
+
 def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
     """
-    Solve a nonlinear system with Newton's method with a ChunkTimeOperatorSolverContext
+    Solve a nonlinear system with Newton's method with a BackwardEulerChunkTimeOperatorSolverContext
     context manager.  Return the
     solution and the last Jacobian
 
     Args:
       fn (function):        function that returns R, J, and the solver context
       x0 (torch.tensor):    starting point
-      solver (ChunkTimeOperatorSolverContext): solver context
+      solver (BackwardEulerChunkTimeOperatorSolverContext): solver context
 
     Keyword Args:
       linsolver (string):   method to use to solve the linear system, options are
@@ -46,30 +144,48 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
 
 class ChunkTimeOperatorSolverContext:
     """
-    Context manager for solving our special ChunkTimeOperator system
+    Context manager for solving our special BackwardEulerChunkTimeOperator system
     using GMRES with preconditioner reuse.
 
     Args:
         solve_method:   one of "dense", "direct", or "gmres"
+
+    Keyword Args:
+        gmres_reuse_iters (int): number of gmres iterations to trigger a new preconditioner
+        gmres_tol (float): absolute tolerance for GMRES
+        gmres_miter (int): number of iterations to allow for GMRES
+        gmres_check (int): interval for checking residual in GMRES
     """
-    def __init__(self, solve_method):
+    def __init__(self, solve_method, gmres_reuse_iters = 50,
+            gmres_tol = 1.0e-10, gmres_miter = 100,
+            gmres_check = 5):
+
         if solve_method not in ["dense", "direct", "gmres"]:
             raise ValueError("Solve method must be one of dense, direct, or gmres")
         self.solve_method = solve_method
+
+        self.gmres_reuse_iters = gmres_reuse_iters
+        self.gmres_tol = gmres_tol
+        self.gmres_miter = gmres_miter
+        self.gmres_check = gmres_check
+
         self.cached_preconditioner = None
+        self.last_iters = 0
 
     def solve(self, J, R):
         """
         Actually solve Jx = R
 
         Args:
-            J (ChunkTimeOperator):  matrix operator
+            J (BackwardEulerChunkTimeOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
         if self.solve_method == "dense":
             return self.solve_dense(J, R)
         elif self.solve_method == "direct":
             return self.solve_direct(J, R)
+        elif self.solve_method == "gmres":
+            return self.solve_gmres(J, R)
         else:
             raise RuntimeError("Unknown solver method...")
 
@@ -78,7 +194,7 @@ class ChunkTimeOperatorSolverContext:
         Highly inefficient solve where we first convert to a dense tensor
 
         Args:
-            J (ChunkTimeOperator):  matrix operator
+            J (BackwardEulerChunkTimeOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
         return torch.linalg.solve_ex(J.to_diag().to_dense(), R)[0]
@@ -88,12 +204,48 @@ class ChunkTimeOperatorSolverContext:
         Solve with Thomas's algorithm applied to our special case
 
         Args:
-            J (ChunkTimeOperator):  matrix operator
+            J (BackwardEulerChunkTimeOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
         return J.dot_inv(R)
 
-class ChunkTimeOperator:
+    def solve_gmres(self, J, R):
+        """
+        Solve with GMRES using a preconditioner reuse heuristic
+
+        Args:
+            J (BackwardEulerChunkTimeOperator):  matrix operator
+            R (torch.tensor):       right hand side
+        """
+        if (
+                self.cached_preconditioner is None or 
+                self.cached_preconditioner.shape != J.shape or
+                self.last_iters > self.gmres_reuse_iters
+            ):
+            self._new_preconditioner(J)
+        
+        b, info = gmres_operators(lambda x: J.dot(x), R, 
+                Mv = lambda x: self.cached_preconditioner.dot_inv(x),
+                tol = self.gmres_tol,
+                maxiter = self.gmres_miter,
+                check = self.gmres_check,
+                return_info = True)
+
+        self.last_iters = info['niter']
+
+        return b
+
+    def _new_preconditioner(self, J):
+        """
+        Factor a new preconditioner
+
+        Args:
+            J (Operator): new operator to factor
+        """
+        self.cached_preconditioner = J
+        self.cached_preconditioner.factorize()
+
+class BackwardEulerChunkTimeOperator:
     """
     A batched block banded matrix of the form:
     A1   0   0   0   ...   0
@@ -180,10 +332,12 @@ class ChunkTimeOperator:
             v (torch.tensor):   batch of vectors
         """
         # Reshaped and padded v 
-        vp = torch.vstack(torch.zeros(1, self.sbat, self.sblk, dtype = self.dtype, device = self.device), v.reshape(self.sbat, self.nblk, self.sblk).transpose(0,1))
+        vp = torch.vstack((torch.zeros(1, self.sbat, self.sblk, dtype = self.dtype, device = self.device), v.reshape(self.sbat, self.nblk, self.sblk).transpose(0,1)))
 
+        b = torch.einsum('bsij,bsj->bsi', self.diag, vp[1:]) - vp[:-1]
 
-
+        return b.transpose(1,0).flatten(start_dim=1)
+        
     def dot_inv(self, v):
         """
         $A^{-1} \cdot v$ with the prefactorized diagonal blocks
