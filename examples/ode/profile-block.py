@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 from pyoptmat import ode, experiments, utility
 import time
 
+from torch.profiler import profile, record_function, ProfilerActivity
+
 torch.set_default_tensor_type(torch.DoubleTensor)
 
 # Select device to run on
@@ -139,8 +141,8 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
 if __name__ == "__main__":
     nbatch = 100
     neq = 5
-    N = 10
-    n = 50
+    N = 1
+    n = 20
     
     current, times = driving_current([0.1,1],
             [-1,0.9], 
@@ -174,31 +176,34 @@ if __name__ == "__main__":
 
     y0 = torch.rand((nbatch,model.n_equations), device = device)
     
-    n = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]
-    methods = ["direct", "gmres"]
+    nblk = 20
+    method = "gmres"
     gmres_miter = 30
     reuse_iter = 20
     gmres_check = 2
-
-    solve_times = np.zeros((4, len(n)))
-
+    
+    print("Timing...")
+    t1 = time.time()
     with torch.no_grad():
-        print("Reference case...")
-        t = time.time()
-        res_no_block = ode.odeint(model, y0, times, 
-                method = "backward-euler")
-        solve_times[0] = time.time() - t
-        for k,ni in enumerate(n):
-            print(ni)
-            for i, m in enumerate(methods):
-                t = time.time()
-                res_block = ode.odeint(model, y0, times, 
-                        method = "block-backward-euler", block_size = ni,
-                        linear_solve_method = m, gmres_miter = gmres_miter,
-                        gmres_reuse_iters = reuse_iter, gmres_check = gmres_check)
-                solve_times[i+1,k] = time.time() - t
+        res_block = ode.odeint(model, y0, times, 
+                method = "block-backward-euler", block_size = nblk,
+                linear_solve_method = method, gmres_miter = gmres_miter,
+                gmres_reuse_iters = reuse_iter, gmres_check = gmres_check)
+    elsp = time.time() - t1
 
-    with open("results.txt", 'w') as f:
-        f.write(" ".join(["Unblocked"] + methods) + "\n")
-        f.write(" ".join(map(str, n)) + "\n")
-        np.savetxt(f, solve_times)
+    print("Time: %3.2f" % elsp)
+
+    print("Profiling...")
+    """
+    with profile(activities=[
+            ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            record_shapes=True, profile_memory = True,
+            with_stack = True, 
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/%s' % method)) as prof:
+        with torch.no_grad():
+            res_block = ode.odeint(model, y0, times, 
+                    method = "block-backward-euler", block_size = nblk,
+                    linear_solve_method = method, gmres_miter = gmres_miter,
+                    gmres_reuse_iters = reuse_iter, gmres_check = gmres_check)
+    """
+
