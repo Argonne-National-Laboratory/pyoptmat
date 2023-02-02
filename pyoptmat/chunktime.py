@@ -332,9 +332,10 @@ class BackwardEulerChunkTimeOperator:
             v (torch.tensor):   batch of vectors
         """
         # Reshaped and padded v 
-        vp = torch.vstack((torch.zeros(1, self.sbat, self.sblk, dtype = self.dtype, device = self.device), v.reshape(self.sbat, self.nblk, self.sblk).transpose(0,1)))
+        vp = v.reshape(self.sbat, self.nblk, self.sblk).transpose(0,1)
 
-        b = torch.einsum('bsij,bsj->bsi', self.diag, vp[1:]) - vp[:-1]
+        b = torch.einsum('bsij,bsj->bsi', self.diag, vp)
+        b[1:] -= vp[:-1]
 
         return b.transpose(1,0).flatten(start_dim=1)
         
