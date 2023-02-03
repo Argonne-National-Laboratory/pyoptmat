@@ -13,7 +13,7 @@ from torch.profiler import ProfilerActivity
 
 import matplotlib.pyplot as plt
 
-from pyoptmat import ode, experiments, utility
+from pyoptmat import ode, experiments, utility, chunktime
 import time
 
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -179,7 +179,8 @@ if __name__ == "__main__":
                 method = "backward-euler")
         res_block = ode.odeint(model, y0, times, 
                 method = "block-backward-euler", block_size = ni,
-                linear_solve_method = "gmres")
+                linear_solve_method = "gmres", 
+                factorization = chunktime.DirectFactorization)
 
     plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
     plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')

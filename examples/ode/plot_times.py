@@ -15,3 +15,9 @@ if __name__ == "__main__":
     plt.legend(loc='best')
     plt.show()
 
+    speedup = data[1,0] / data[2]
+    plt.plot(data[0], speedup)
+    plt.xlabel("Chunk size")
+    plt.ylabel("Speedup")
+    plt.show()
+
