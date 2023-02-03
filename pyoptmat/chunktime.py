@@ -401,7 +401,8 @@ class CyclicFactorization:
         Args:
             v (torch.tensor): tensor of shape (sbat, sblk*nblk)
         """
-        return torch.zeros_like(v)
+        vp = self.operator.bmm(v.unsqueeze(-1)).squeeze(-1).view(self.sbat,self.nblk, self.sblk).transpose(0,1)
+        return torch.einsum('abij,abj->abi', self.inv_operator, vp).transpose(0,1).flatten(start_dim = 1)
 
     def _setup_factorization(self, diag):
         """
@@ -411,10 +412,18 @@ class CyclicFactorization:
             diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
         """
         factorization = torch.clone(diag)
-        for i in range(int(log2(self.nblk))-1):
-            inc = 2**(i+1)
-            for 
-            print(inc) 
+        self.operator = torch.zeros((self.sbat, self.nblk, self.sblk, self.nblk, self.sblk))
+        self.operator[:,:,:,0,:] = torch.eye(self.sblk).unsqueeze(0).unsqueeze(0).expand(self.sbat, self.nblk, self.sblk, self.sblk)
+        
+        for i in range(1,self.nblk):
+            curr = torch.bmm(self.operator[:,i-1,:,i-1], diag[i-1])
+            self.operator[:,i:,:,i] = curr.unsqueeze(1).expand(self.sbat, self.nblk - i, self.sblk, self.sblk)
+            factorization[i] = torch.bmm(factorization[i-1], factorization[i])
+
+        self.operator = self.operator.view(self.sbat, self.nblk*self.sblk, self.nblk*self.sblk)
+
+        self.inv_operator, _ = torch.linalg.inv_ex(factorization) 
+
         
 
 class SquareBatchedBlockDiagonalMatrix:

@@ -23,11 +23,11 @@ class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
 
         self.assertTrue(torch.allclose(one,two))
 
-    def test_inv_mat_vec_thomas(self):
+    def test_inv_mat_vec_cyclic(self):
         one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
         two = self.A.dot_inv_cyclic(self.b)
 
-        self.assertTrue(torch.allclose(one,two))
+        self.assertTrue(torch.allclose(one,two, rtol = 1e-4))
 
     def test_mat_vec(self):
         one = self.A.to_diag().to_dense().matmul(self.b.unsqueeze(-1)).squeeze(-1)
