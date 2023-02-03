@@ -8,12 +8,9 @@ import torch.nn as nn
 
 import numpy as np
 
-import torch.jit
-from torch.profiler import ProfilerActivity
-
 import matplotlib.pyplot as plt
 
-from pyoptmat import ode, experiments, utility
+from pyoptmat import ode, experiments, utility, chunktime
 import time
 
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -176,6 +173,7 @@ if __name__ == "__main__":
     
     n = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]
     methods = ["direct", "gmres"]
+    factors = [chunktime.ThomasFactorization, chunktime.DirectFactorization]
     gmres_miter = 30
     reuse_iter = 20
     gmres_check = 2
@@ -190,12 +188,13 @@ if __name__ == "__main__":
         solve_times[0] = time.time() - t
         for k,ni in enumerate(n):
             print(ni)
-            for i, m in enumerate(methods):
+            for i, (m,f) in enumerate(zip(methods, factors)):
                 t = time.time()
                 res_block = ode.odeint(model, y0, times, 
                         method = "block-backward-euler", block_size = ni,
                         linear_solve_method = m, gmres_miter = gmres_miter,
-                        gmres_reuse_iters = reuse_iter, gmres_check = gmres_check)
+                        gmres_reuse_iters = reuse_iter, gmres_check = gmres_check,
+                        factorization = f)
                 solve_times[i+1,k] = time.time() - t
 
     with open("results.txt", 'w') as f:

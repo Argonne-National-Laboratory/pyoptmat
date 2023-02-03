@@ -13,7 +13,7 @@ from torch.profiler import ProfilerActivity
 
 import matplotlib.pyplot as plt
 
-from pyoptmat import ode, experiments, utility
+from pyoptmat import ode, experiments, utility, chunktime
 import time
 
 from torch.profiler import profile, record_function, ProfilerActivity
@@ -177,10 +177,11 @@ if __name__ == "__main__":
     y0 = torch.rand((nbatch,model.n_equations), device = device)
     
     nblk = 20
-    method = "gmres"
-    gmres_miter = 30
-    reuse_iter = 20
-    gmres_check = 2
+    method = "direct"
+    gmres_miter = 100
+    reuse_iter = 50
+    gmres_check = 5
+    factorization = chunktime.ThomasFactorization
     
     print("Timing...")
     t1 = time.time()
@@ -188,13 +189,14 @@ if __name__ == "__main__":
         res_block = ode.odeint(model, y0, times, 
                 method = "block-backward-euler", block_size = nblk,
                 linear_solve_method = method, gmres_miter = gmres_miter,
-                gmres_reuse_iters = reuse_iter, gmres_check = gmres_check)
+                gmres_reuse_iters = reuse_iter, gmres_check = gmres_check,
+                factorization = factorization)
     elsp = time.time() - t1
 
     print("Time: %3.2f" % elsp)
-
-    print("Profiling...")
+    
     """
+    print("Profiling...")
     with profile(activities=[
             ProfilerActivity.CPU, ProfilerActivity.CUDA],
             record_shapes=True, profile_memory = True,
@@ -204,6 +206,6 @@ if __name__ == "__main__":
             res_block = ode.odeint(model, y0, times, 
                     method = "block-backward-euler", block_size = nblk,
                     linear_solve_method = method, gmres_miter = gmres_miter,
-                    gmres_reuse_iters = reuse_iter, gmres_check = gmres_check)
+                    gmres_reuse_iters = reuse_iter, gmres_check = gmres_check,
+                    factorization = factorization)
     """
-

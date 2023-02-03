@@ -140,111 +140,101 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
     
     if i == miter:
         warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
-
+    
     return x, J
 
-class ChunkTimeOperatorSolverContext:
+class Factorization:
     """
-    Context manager for solving our special BackwardEulerChunkTimeOperator system
-    using GMRES with preconditioner reuse.
+    A generic factorization object used to efficiently calculate $A^{-1} \cdot y$
 
     Args:
-        solve_method:   one of "dense", "direct", or "gmres"
-
-    Keyword Args:
-        gmres_reuse_iters (int): number of gmres iterations to trigger a new preconditioner
-        gmres_tol (float): absolute tolerance for GMRES
-        gmres_miter (int): number of iterations to allow for GMRES
-        gmres_check (int): interval for checking residual in GMRES
+        A (BackwardEulerChunkTimeOperator): base operator
     """
-    def __init__(self, solve_method, gmres_reuse_iters = 50,
-            gmres_tol = 1.0e-10, gmres_miter = 100,
-            gmres_check = 5):
+    def __init__(self, A):
+        self.nblk = A.nblk
+        self.sbat = A.sbat
+        self.sblk = A.sblk
 
-        if solve_method not in ["dense", "direct", "gmres"]:
-            raise ValueError("Solve method must be one of dense, direct, or gmres")
-        self.solve_method = solve_method
+        self.shape = A.shape
 
-        self.gmres_reuse_iters = gmres_reuse_iters
-        self.gmres_tol = gmres_tol
-        self.gmres_miter = gmres_miter
-        self.gmres_check = gmres_check
+        self._setup_factorization(A.diag)
 
-        self.cached_preconditioner = None
-        self.last_iters = 0
+class ThomasFactorization(Factorization):
+    """
+    Manages the data needed to solve our special system via Thomas factorization
 
-    def solve(self, J, R):
+    Args:
+        A (BackwardEulerChunkTimeOperator): base operator
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def dot(self, v):
         """
-        Actually solve Jx = R
+        Complete the backsolve for a given right hand side
 
         Args:
-            J (BackwardEulerChunkTimeOperator):  matrix operator
-            R (torch.tensor):       right hand side
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
         """
-        if self.solve_method == "dense":
-            return self.solve_dense(J, R)
-        elif self.solve_method == "direct":
-            return self.solve_direct(J, R)
-        elif self.solve_method == "gmres":
-            return self.solve_gmres(J, R)
-        else:
-            raise RuntimeError("Unknown solver method...")
+        y = torch.empty_like(v)
+        i = 0
+        s = self.sblk
+        y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
+        for i in range(1, self.nblk):
+            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], (v[:,i*s:(i+1)*s] + y[:,(i-1)*s:i*s]).unsqueeze(-1)).squeeze(-1)
 
-    def solve_dense(self, J, R):
-        """
-        Highly inefficient solve where we first convert to a dense tensor
+        return y
 
-        Args:
-            J (BackwardEulerChunkTimeOperator):  matrix operator
-            R (torch.tensor):       right hand side
+    def _setup_factorization(self, diag):
         """
-        return torch.linalg.solve_ex(J.to_diag().to_dense(), R)[0]
-
-    def solve_direct(self, J, R):
-        """
-        Solve with Thomas's algorithm applied to our special case
+        Form the factorization...
 
         Args:
-            J (BackwardEulerChunkTimeOperator):  matrix operator
-            R (torch.tensor):       right hand side
+            diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
         """
-        return J.dot_inv_thomas(R)
+        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(diag)
 
-    def solve_gmres(self, J, R):
+class DirectFactorization(Factorization):
+    """
+    Manages the data needed to solve our special system via direct factorization
+
+    Args:
+        diag (torch.tensor): diagonal blocks of shape (nblk,sbat,sblk,sblk)
+
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def dot(self, v):
         """
-        Solve with GMRES using a preconditioner reuse heuristic
+        Complete the backsolve for a given right hand side
 
         Args:
-            J (BackwardEulerChunkTimeOperator):  matrix operator
-            R (torch.tensor):       right hand side
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
         """
-        if (
-                self.cached_preconditioner is None or 
-                self.cached_preconditioner.shape != J.shape or
-                self.last_iters > self.gmres_reuse_iters
-            ):
-            self._new_preconditioner(J)
+        vp = self.operator.bmm(v.unsqueeze(-1)).squeeze(-1).view(self.sbat,self.nblk, self.sblk).transpose(0,1)
+        return torch.linalg.lu_solve(self.lu, self.pivots, vp.unsqueeze(-1)).squeeze(-1).transpose(0,1).flatten(start_dim = 1)
+
+    def _setup_factorization(self, diag):
+        """
+        Form the factorization...
+
+        Args:
+            diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
+        """
+        factorization = torch.zeros_like(diag)
+        self.operator = torch.zeros((self.sbat, self.nblk, self.sblk, self.nblk, self.sblk), device = diag.device, dtype = diag.dtype)
+        factorization[0] = torch.eye(self.sblk).unsqueeze(0).expand(self.sbat, self.sblk, self.sblk)
         
-        b, info = gmres_operators(lambda x: J.dot(x), R, 
-                Mv = lambda x: self.cached_preconditioner.dot_inv_thomas(x),
-                tol = self.gmres_tol,
-                maxiter = self.gmres_miter,
-                check = self.gmres_check,
-                return_info = True)
+        for i in range(self.nblk):
+            self.operator[:,i:,:,i] = factorization[i].unsqueeze(1).expand(self.sbat, self.nblk - i, self.sblk, self.sblk)
+            factorization[i] = torch.bmm(factorization[i], diag[i])
+            if i != self.nblk - 1:
+                factorization[i+1] = factorization[i]
 
-        self.last_iters = info['niter']
+        self.operator = self.operator.view(self.sbat, self.nblk*self.sblk, self.nblk*self.sblk)
+        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(factorization) 
 
-        return b
-
-    def _new_preconditioner(self, J):
-        """
-        Factor a new preconditioner
-
-        Args:
-            J (Operator): new operator to factor
-        """
-        self.cached_preconditioner = J
-        self.cached_preconditioner.factorize_thomas()
 
 class BackwardEulerChunkTimeOperator:
     """
@@ -269,17 +259,12 @@ class BackwardEulerChunkTimeOperator:
         data (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
             storing the nblk diagonal blocks
     """
-    def __init__(self, diag):
+    def __init__(self, diag, factorization = ThomasFactorization):
         self.diag = diag
 
         self.nblk = self.diag.shape[0]
         self.sbat = self.diag.shape[1]
         self.sblk = self.diag.shape[3]
-
-        self.lu = None
-        self.pivots = None
-
-        self.cyclic_factorization = None
 
     @property
     def dtype(self):
@@ -321,12 +306,6 @@ class BackwardEulerChunkTimeOperator:
                 ], 
                 [0, -1])
 
-    def factorize_thomas(self):
-        """
-        Do the expensive LU factorization needed to make the sweep $A^{-1} \cdot v$ work
-        """
-        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.diag)
-
     def dot(self, v):
         """
         $A \cdot v$ in an efficient manner
@@ -334,97 +313,109 @@ class BackwardEulerChunkTimeOperator:
         Args:
             v (torch.tensor):   batch of vectors
         """
-        # Reshaped and padded v 
-        vp = v.reshape(self.sbat, self.nblk, self.sblk).transpose(0,1)
-
-        b = torch.einsum('bsij,bsj->bsi', self.diag, vp)
+        # Reshaped v 
+        vp = v.view(self.sbat, self.nblk, self.sblk).transpose(0,1)
+        
+        b = torch.bmm(self.diag.view(-1,self.sblk,self.sblk),
+                vp.reshape(self.sbat*self.nblk,self.sblk).unsqueeze(-1)).squeeze(-1).view(self.nblk,self.sbat,self.sblk)
         b[1:] -= vp[:-1]
 
         return b.transpose(1,0).flatten(start_dim=1)
-        
-    def dot_inv_thomas(self, v):
-        """
-        $A^{-1} \cdot v$ with the prefactorized diagonal blocks
 
-        This applies a modified version of Thomas's algorithm
-
-        Args:
-            v (torch.tensor):   batch of vectors
-        """
-        # This can be very expensive
-        if self.lu is None:
-            self.factorize_thomas()
-
-        y = torch.empty_like(v)
-        i = 0
-        s = self.sblk
-        y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
-        for i in range(1, self.nblk):
-            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], (v[:,i*s:(i+1)*s] + y[:,(i-1)*s:i*s]).unsqueeze(-1)).squeeze(-1)
-
-        return y
-
-    def dot_inv_cyclic(self, v):
-        """
-        $A^{-1} \codt v$ with cyclic factorization
-
-        Args:
-            v (torch.tensor): batch of vectors
-        """
-        if self.cyclic_factorization is None:
-            self.cyclic_factorization = CyclicFactorization(self.diag)
-
-        return self.cyclic_factorization.backsolve(v)
-
-class CyclicFactorization:
+class ChunkTimeOperatorSolverContext:
     """
-    Manages the data needed to solve our special system via cyclic factorization
+    Context manager for solving our special BackwardEulerChunkTimeOperator system
+    using GMRES with preconditioner reuse.
 
     Args:
-        diag (torch.tensor): diagonal blocks of shape (nblk,sbat,sblk,sblk)
+        solve_method:   one of "dense", "direct", or "gmres"
 
+    Keyword Args:
+        gmres_reuse_iters (int): number of gmres iterations to trigger a new preconditioner
+        gmres_tol (float): absolute tolerance for GMRES
+        gmres_miter (int): number of iterations to allow for GMRES
+        gmres_check (int): interval for checking residual in GMRES
     """
-    def __init__(self, diag):
-        self.nblk = diag.shape[0]
-        self.sbat = diag.shape[1]
-        self.sblk = diag.shape[3]
+    def __init__(self, solve_method, gmres_reuse_iters = 50,
+            gmres_tol = 1.0e-10, gmres_miter = 100,
+            gmres_check = 5, factorization = ThomasFactorization):
 
-        if bin(self.nblk).count('1') != 1:
-            raise ValueError("Ya ya, need to handle odd case")
+        if solve_method not in ["dense", "direct", "gmres"]:
+            raise ValueError("Solve method must be one of dense, direct, or gmres")
+        self.solve_method = solve_method
 
-        self._setup_factorization(diag)
+        self.gmres_reuse_iters = gmres_reuse_iters
+        self.gmres_tol = gmres_tol
+        self.gmres_miter = gmres_miter
+        self.gmres_check = gmres_check
+        self.factorization = factorization
 
-    def backsolve(self, v):
+        self.M = None
+        self.last_iters = 0
+
+    def solve(self, J, R):
         """
-        Complete the backsolve for a given right hand side
+        Actually solve Jx = R
 
         Args:
-            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+            J (BackwardEulerChunkTimeOperator):  matrix operator
+            R (torch.tensor):       right hand side
         """
-        vp = self.operator.bmm(v.unsqueeze(-1)).squeeze(-1).view(self.sbat,self.nblk, self.sblk).transpose(0,1)
-        return torch.einsum('abij,abj->abi', self.inv_operator, vp).transpose(0,1).flatten(start_dim = 1)
+        if self.solve_method == "dense":
+            return self.solve_dense(J, R)
+        elif self.solve_method == "direct":
+            return self.solve_direct(J, R)
+        elif self.solve_method == "gmres":
+            return self.solve_gmres(J, R)
+        else:
+            raise RuntimeError("Unknown solver method...")
 
-    def _setup_factorization(self, diag):
+    def solve_dense(self, J, R):
         """
-        Form the factorization...
+        Highly inefficient solve where we first convert to a dense tensor
 
         Args:
-            diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
+            J (BackwardEulerChunkTimeOperator):  matrix operator
+            R (torch.tensor):       right hand side
         """
-        factorization = torch.clone(diag)
-        self.operator = torch.zeros((self.sbat, self.nblk, self.sblk, self.nblk, self.sblk))
-        self.operator[:,:,:,0,:] = torch.eye(self.sblk).unsqueeze(0).unsqueeze(0).expand(self.sbat, self.nblk, self.sblk, self.sblk)
+        return torch.linalg.solve_ex(J.to_diag().to_dense(), R)[0]
+
+    def solve_direct(self, J, R):
+        """
+        Solve with a direct factorization
+
+        Args:
+            J (BackwardEulerChunkTimeOperator):  matrix operator
+            R (torch.tensor):       right hand side
+        """
+        M = self.factorization(J)
+        return M.dot(R)
+
+    def solve_gmres(self, J, R):
+        """
+        Solve with GMRES using a preconditioner reuse heuristic
+
+        Args:
+            J (BackwardEulerChunkTimeOperator):  matrix operator
+            R (torch.tensor):       right hand side
+        """
+        if (
+                self.M is None or 
+                self.M.shape != J.shape or
+                self.last_iters > self.gmres_reuse_iters
+            ):
+            self.M = self.factorization(J)
         
-        for i in range(1,self.nblk):
-            curr = torch.bmm(self.operator[:,i-1,:,i-1], diag[i-1])
-            self.operator[:,i:,:,i] = curr.unsqueeze(1).expand(self.sbat, self.nblk - i, self.sblk, self.sblk)
-            factorization[i] = torch.bmm(factorization[i-1], factorization[i])
+        b, info = gmres_operators(lambda x: J.dot(x), R, 
+                Mv = lambda x: self.M.dot(x),
+                tol = self.gmres_tol,
+                maxiter = self.gmres_miter,
+                check = self.gmres_check,
+                return_info = True)
 
-        self.operator = self.operator.view(self.sbat, self.nblk*self.sblk, self.nblk*self.sblk)
+        self.last_iters = info['niter']
 
-        self.inv_operator, _ = torch.linalg.inv_ex(factorization) 
-
-        
+        return b
 
 class SquareBatchedBlockDiagonalMatrix:
     """
