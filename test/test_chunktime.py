@@ -12,28 +12,28 @@ class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
         self.nblk = 4
         self.sbat = 3
 
-        blk = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
+        self.blk = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
 
-        self.A = chunktime.BackwardEulerChunkTimeOperator(blk)
+        self.A = chunktime.BackwardEulerForwardOperator(self.blk)
         self.b = torch.rand(self.sbat, self.nblk * self.sblk)
 
     def test_inv_mat_vec_thomas(self):
-        M = chunktime.ThomasFactorization(self.A)
+        M = chunktime.BackwardEulerThomasFactorization(self.blk)
         one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
-        two = M.dot(self.b)
+        two = M(self.b)
 
         self.assertTrue(torch.allclose(one,two))
 
-    def test_inv_mat_vec_direct(self):
-        M = chunktime.DirectFactorization(self.A)
+    def test_inv_mat_vec_LU(self):
+        M = chunktime.BackwardEulerLUFactorization(self.blk)
         one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
-        two = M.dot(self.b)
+        two = M(self.b)
 
         self.assertTrue(torch.allclose(one,two))
 
     def test_mat_vec(self):
         one = self.A.to_diag().to_dense().matmul(self.b.unsqueeze(-1)).squeeze(-1)
-        two = self.A.dot(self.b)
+        two = self.A(self.b)
 
         self.assertTrue(torch.allclose(one, two))
 
