@@ -154,9 +154,8 @@ class BlockSolver:
             # Form the overall jacobian
             # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
             I = torch.eye(self.prob_size, device = t.device).expand(n,self.batch_size,-1,-1)
-            J = chunktime.BackwardEulerChunkTimeOperator(I - yJ)
 
-            return R, J
+            return R, I - yJ
         
         dy = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context
                 )[0].reshape(self.batch_size, n, self.prob_size).transpose(0,1)
