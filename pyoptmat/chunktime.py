@@ -195,6 +195,12 @@ class BackwardEulerForwardOperator(BackwardEulerOperator):
 
         return b.transpose(1,0).flatten(start_dim=1)
 
+    def inverse(self):
+        """
+        Return an inverse operator
+        """
+        return BackwardEulerThomasFactorization(self.diag)
+
 class ChunkTimeOperatorSolverContext:
     """
     Context manager for solving our special BackwardEulerChunkTimeOperator system
@@ -202,13 +208,11 @@ class ChunkTimeOperatorSolverContext:
     Args:
         solve_method:   one of "dense" or "direct"
     """
-    def __init__(self, solve_method,
-            factorization = BackwardEulerThomasFactorization):
+    def __init__(self, solve_method):
 
         if solve_method not in ["dense", "direct"]:
             raise ValueError("Solve method must be one of dense or direct")
         self.solve_method = solve_method
-        self.factorization = factorization
 
     def solve(self, J, R):
         """
@@ -233,7 +237,7 @@ class ChunkTimeOperatorSolverContext:
             J (BackwardEulerChunkTimeOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
-        return torch.linalg.solve_ex(BackwardEulerForwardOperator(J).to_diag().to_dense(), R)[0]
+        return torch.linalg.solve_ex(J.to_diag().to_dense(), R)[0]
 
     def solve_direct(self, J, R):
         """
@@ -243,7 +247,7 @@ class ChunkTimeOperatorSolverContext:
             J (BackwardEulerChunkTimeOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
-        M = self.factorization(J)
+        M = J.inverse()
         return M(R)
 
 class SquareBatchedBlockDiagonalMatrix:
