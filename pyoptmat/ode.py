@@ -60,30 +60,92 @@ def linear(t0, t1, y0, y1, t):
         + (y1 - y0) / (t1 - t0)[(...,) + (None,) * n] * (t - t0)[(...,) + (None,) * n]
     )
 
-
-class BlockSolver:
+class TimeIntegrationScheme:
     """
-    Will merge into below...
+    Takes the current residual and Jacobian values for a batch of time
+    and sets up the appropriate operator.
+    """
+    def __init__(self):
+        pass
+
+class BackwardEulerScheme(TimeIntegrationScheme):
+    """
+    Integration with the backward Euler method
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.requires_jacobian = True
+
+    def form_operators(self, dy, yd, yJ, dt):
+        """
+        Form the residual and sparse Jacobian of the batched system
+
+        Args:
+            dy (torch.tensor): (ntime+1, nbatch, nsize) tensor with the increments in y
+            yd (torch.tensor): (ntime, nbatch, nsize) tensor giving the ODE rate
+            yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
+                of the ODE
+            dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+
+        Returns:
+            R (torch.tensor): residual tensor of shape (nbatch, ntime * nsize)
+            J (tensor.tensor): sparse Jacobian tensor of logical size (nbatch, ntime*nsize, ntime*nsize)
+        """
+        # Basic shape info
+        ntime = dy.shape[0] - 1
+        prob_size = dy.shape[-1]
+        batch_size = dy.shape[-2]
+
+        # Multiply by the time step
+        yd *= dt.unsqueeze(-1)
+        yJ *= dt.unsqueeze(-1).unsqueeze(-1)
+        
+        # Form the overall residual
+        # R = dy_k - dy_{k-1} - ydot(y) * dt
+        # However, to unsqueeze it we need to combine the 0th and the 2nd dimension
+        R = (dy[1:] - dy[:-1] - yd).transpose(0,1).flatten(start_dim=1)
+
+        # Form the overall jacobian
+        # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
+        I = torch.eye(prob_size, device = dt.device).expand(ntime,batch_size,-1,-1)
+
+        return R, chunktime.BackwardEulerForwardOperator(I - yJ)
+
+class FixedGridBlockSolver:
+    """
+    Parent class of solvers which operate on a fixed grid (i.e. non-adaptive methods) 
     
     Args:
-      func (function):      function returning the time rate of change and,
-                            optionally, the jacobian
-      y0 (torch.tensor):    initial condition
+        func (function): function returning the time rate of change and the jacobian
+        y0 (torch.tensor): initial condition
 
     Keyword Args:
-      n (int):              target block size
-      sparse_linear_solver: method to solve batched sparse Ax = b
-
+        scheme (TimeIntegrationScheme):  time integration scheme, default is 
+            backward euler
+        block_size (int): target block size
+        sparse_linear_solver (str): method to solve batched sparse Ax = b, options
+            are currently "direct" or "dense"
+        adjoint_params: parameters to track for the adjoint backward pass
     """
-    def __init__(self, func, y0, block_size = 1, linear_solve_method = "direct", **kwargs):
+    def __init__(self, func, y0, scheme = BackwardEulerScheme(), block_size = 1,
+            linear_solve_method = "direct", adjoint_params=None, **kwargs):
         # Store basic info about the system
         self.func = func
         self.y0 = y0
-        self.n = block_size
-
+        
+        # Time integration scheme
+        self.scheme = scheme
+        
+        # Size information
         self.batch_size = self.y0.shape[0]
         self.prob_size = self.y0.shape[1]
+        self.n = block_size
 
+        # Store for later
+        self.adjoint_params = adjoint_params
+        
+        # Setup the linear solver context
         self.linear_solve_context = chunktime.ChunkTimeOperatorSolverContext(linear_solve_method, **kwargs)
 
     def integrate(self, t, cache_adjoint=False):
@@ -106,7 +168,7 @@ class BlockSolver:
         result[0] = self.y0
 
         for k in range(1, t.shape[0], self.n):
-            result[k:k+self.n] = self.block_update(t[k:k+self.n], t[k-1], result[k-1])
+            result[k:k+self.n], Jlast = self.block_update(t[k:k+self.n], t[k-1], result[k-1])
 
         return result
 
@@ -142,25 +204,11 @@ class BlockSolver:
             # Batch update the rate and jacobian
             yd, yJ = self.func(t, y)
 
-            # Multiply by the time step
-            yd *= dt.unsqueeze(-1)
-            yJ *= dt.unsqueeze(-1).unsqueeze(-1)
-            
-            # Form the overall residual
-            # R = dy_k - dy_{k-1} - ydot(y) * dt
-            # However, to unsqueeze it we need to combine the 0th and the 2nd dimension
-            R = (dy[1:] - dy[:-1] - yd).transpose(0,1).flatten(start_dim=1)
+            return self.scheme.form_operators(dy, yd, yJ, dt)
 
-            # Form the overall jacobian
-            # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
-            I = torch.eye(self.prob_size, device = t.device).expand(n,self.batch_size,-1,-1)
+        dy, Jlast = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context)
 
-            return R, I - yJ
-        
-        dy = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context
-                )[0].reshape(self.batch_size, n, self.prob_size).transpose(0,1)
-
-        return dy + y_start.unsqueeze(0).expand(n,-1,-1)
+        return dy.reshape(self.batch_size, n, self.prob_size).transpose(0,1) + y_start.unsqueeze(0).expand(n,-1,-1), Jlast
 
 class FixedGridSolver:
     """
@@ -726,7 +774,8 @@ class BackwardEuler(ImplicitSolver):
 
 
 # Available solver methods mapped to the objects
-methods = {"forward-euler": ForwardEuler, "backward-euler": BackwardEuler, "block-backward-euler": BlockSolver}
+methods = {"forward-euler": ForwardEuler, "backward-euler": BackwardEuler}
+int_methods = {"block-backward-euler": BackwardEulerScheme()}
 
 
 def odeint(func, y0, times, method="backward-euler", extra_params=None, **kwargs):
@@ -759,7 +808,10 @@ def odeint(func, y0, times, method="backward-euler", extra_params=None, **kwargs
       kwargs:                               keyword arguments passed on to specific
                                             solver methods
     """
-    solver = methods[method](func, y0, **kwargs)
+    if method.split("-")[0] == "block":
+        solver = FixedGridBlockSolver(func, y0, scheme = int_methods[method], **kwargs)
+    else:
+        solver = methods[method](func, y0, **kwargs)
 
     return solver.integrate(times)
 
