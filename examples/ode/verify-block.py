@@ -184,3 +184,16 @@ if __name__ == "__main__":
     plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
     plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')
     plt.show()
+
+    y0 = torch.rand((nbatch,model.n_equations), device = device)
+    ni = 5 
+    with torch.no_grad():
+        res_no_block = ode.odeint(model, y0, times, 
+                method = "forward-euler")
+        res_block = ode.odeint(model, y0, times, 
+                method = "block-forward-euler", block_size = ni,
+                linear_solve_method = "direct")
+
+    plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
+    plt.plot(times[:,0].cpu().numpy(), res_block[:,0,0].cpu().numpy(), ls = '--')
+    plt.show()

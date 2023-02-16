@@ -8,17 +8,18 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 
 class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
     def setUp(self):
-        self.sblk = 5
+        self.sblk = 6
         self.nblk = 4
-        self.sbat = 3
+        self.sbat = 2
 
-        self.blk = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
+        self.blk_A = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
+        self.blk_B = torch.rand(self.nblk-1, self.sbat, self.sblk, self.sblk) / 10 # Diagonal dominance
 
-        self.A = chunktime.BackwardEulerForwardOperator(self.blk)
+        self.A = chunktime.BidiagonalForwardOperator(self.blk_A, self.blk_B)
         self.b = torch.rand(self.sbat, self.nblk * self.sblk)
 
     def test_inv_mat_vec_thomas(self):
-        M = chunktime.BackwardEulerThomasFactorization(self.blk)
+        M = chunktime.BidiagonalThomasFactorization(self.blk_A, self.blk_B)
         one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
         two = M(self.b)
 

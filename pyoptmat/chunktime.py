@@ -45,19 +45,18 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
 
     return x, J
 
-class BackwardEulerOperator(torch.nn.Module):
+class BidiagonalOperator(torch.nn.Module):
     """
     An object working with a Batched block diagonal operator of the type
     A1   0   0   0   ...   0
-    -I   A2  0   0   ...   0
-    0    -I  A3  0   ...   0
+    B1   A2  0   0   ...   0
+    0    B1  A3  0   ...   0
     .    .   .   .   ...   0
     .    .   .   .   ...   0
-    0    0   0   0    -I   An
+    0    0   0   0    Bn   An
     
     that is, a blocked banded system with the main
-    diagonal some arbitrary list of tensor blocks and the
-    1st block lower diagonal minus the identity.
+    diagonal and the first lower diagonal filled 
 
     We use the following sizes:
         nblk:   number of blocks in the square matrix
@@ -65,29 +64,32 @@ class BackwardEulerOperator(torch.nn.Module):
         sbat:   batch size
 
     Args:
-        diag (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
-            storing the nblk diagonal blocks
+        A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
+            storing the nblk main diagonal blocks
+        B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk)
+            storing the nblk-1 off diagonal blocks
     """
-    def __init__(self, diag, *args, **kwargs):
+    def __init__(self, A, B, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.diag = diag
-        self.nblk = diag.shape[0]
-        self.sbat = diag.shape[1]
-        self.sblk = diag.shape[2]
+        self.A = A
+        self.B = B
+        self.nblk = A.shape[0]
+        self.sbat = A.shape[1]
+        self.sblk = A.shape[2]
 
     @property
     def dtype(self):
         """
         dtype, which is just the dtype of self.diag
         """
-        return self.diag.dtype
+        return self.A.dtype
 
     @property
     def device(self):
         """
         device, which is just the device of self.diag
         """
-        return self.diag.device
+        return self.A.device
 
     @property
     def n(self):
@@ -103,12 +105,14 @@ class BackwardEulerOperator(torch.nn.Module):
         """
         return (self.sbat, self.n, self.n)
 
-class BackwardEulerThomasFactorization(BackwardEulerOperator):
+class BidiagonalThomasFactorization(BidiagonalOperator):
     """
-    Manages the data needed to solve our special system via Thomas factorization
+    Manages the data needed to solve our bidiagonal system via Thomas 
+    factorization
 
     Args:
-        diag (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
+        A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
+        B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -127,7 +131,7 @@ class BackwardEulerThomasFactorization(BackwardEulerOperator):
         s = self.sblk
         y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
         for i in range(1, self.nblk):
-            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], (v[:,i*s:(i+1)*s] + y[:,(i-1)*s:i*s]).unsqueeze(-1)).squeeze(-1)
+            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1) - torch.bmm(self.B[i-1], y[:,(i-1)*s:i*s].unsqueeze(-1))).squeeze(-1)
 
         return y
 
@@ -138,22 +142,21 @@ class BackwardEulerThomasFactorization(BackwardEulerOperator):
         Args:
             diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
         """
-        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.diag)
+        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.A)
 
 
-class BackwardEulerForwardOperator(BackwardEulerOperator):
+class BidiagonalForwardOperator(BidiagonalOperator):
     """
     A batched block banded matrix of the form:
     A1   0   0   0   ...   0
-    -I   A2  0   0   ...   0
-    0    -I  A3  0   ...   0
+    B1   A2  0   0   ...   0
+    0    B1  A3  0   ...   0
     .    .   .   .   ...   0
     .    .   .   .   ...   0
-    0    0   0   0    -I   An
+    0    0   0   0    Bn   An
     
     that is, a blocked banded system with the main
-    diagonal some arbitrary list of tensor blocks and the
-    1st block lower diagonal minus the identity.
+    diagonal and first lower block diagonal filled 
 
     We use the following sizes:
         nblk:   number of blocks in the square matrix
@@ -161,8 +164,10 @@ class BackwardEulerForwardOperator(BackwardEulerOperator):
         sbat:   batch size
 
     Args:
-        data (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
+        A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
             storing the nblk diagonal blocks
+        B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk)
+            storing the nblk-1 off diagonal blocks
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -174,8 +179,8 @@ class BackwardEulerForwardOperator(BackwardEulerOperator):
         """
         return SquareBatchedBlockDiagonalMatrix(
                 [
-                    self.diag,
-                    -torch.eye(self.sblk, device = self.device).expand(self.nblk-1,self.sbat,-1,-1)
+                    self.A,
+                    self.B
                 ], 
                 [0, -1])
 
@@ -187,23 +192,23 @@ class BackwardEulerForwardOperator(BackwardEulerOperator):
             v (torch.tensor):   batch of vectors
         """
         # Reshaped v 
-        vp = v.view(self.sbat, self.nblk, self.sblk).transpose(0,1)
+        vp = v.view(self.sbat, self.nblk, self.sblk).transpose(0,1).reshape(self.sbat*self.nblk,self.sblk).unsqueeze(-1)
         
-        b = torch.bmm(self.diag.view(-1,self.sblk,self.sblk),
-                vp.reshape(self.sbat*self.nblk,self.sblk).unsqueeze(-1)).squeeze(-1).view(self.nblk,self.sbat,self.sblk)
-        b[1:] -= vp[:-1]
+        # Actual calculation
+        b = torch.bmm(self.A.view(-1,self.sblk,self.sblk),vp)
+        b[self.sbat:] += torch.bmm(self.B.view(-1,self.sblk,self.sblk), vp[:-self.sbat])
 
-        return b.transpose(1,0).flatten(start_dim=1)
+        return b.squeeze(-1).view(self.nblk,self.sbat,self.sblk).transpose(1,0).flatten(start_dim=1)
 
     def inverse(self):
         """
         Return an inverse operator
         """
-        return BackwardEulerThomasFactorization(self.diag)
+        return BidiagonalThomasFactorization(self.A, self.B)
 
 class ChunkTimeOperatorSolverContext:
     """
-    Context manager for solving our special BackwardEulerChunkTimeOperator system
+    Context manager for solving sparse chunked time systems  
 
     Args:
         solve_method:   one of "dense" or "direct"
@@ -219,7 +224,7 @@ class ChunkTimeOperatorSolverContext:
         Actually solve Jx = R
 
         Args:
-            J (BackwardEulerChunkTimeOperator):  matrix operator
+            J (BidiagonalForwardOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
         if self.solve_method == "dense":
@@ -234,7 +239,7 @@ class ChunkTimeOperatorSolverContext:
         Highly inefficient solve where we first convert to a dense tensor
 
         Args:
-            J (BackwardEulerChunkTimeOperator):  matrix operator
+            J (BidiagonalForwardOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
         return torch.linalg.solve_ex(J.to_diag().to_dense(), R)[0]
@@ -244,7 +249,7 @@ class ChunkTimeOperatorSolverContext:
         Solve with a direct factorization
 
         Args:
-            J (BackwardEulerChunkTimeOperator):  matrix operator
+            J (BidiagonalForwardOperator):  matrix operator
             R (torch.tensor):       right hand side
         """
         M = J.inverse()
