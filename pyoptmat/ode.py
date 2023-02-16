@@ -75,7 +75,43 @@ class BackwardEulerScheme(TimeIntegrationScheme):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.requires_jacobian = True
+    def form_operators(self, dy, yd, yJ, dt):
+        """
+        Form the residual and sparse Jacobian of the batched system
+
+        Args:
+            dy (torch.tensor): (ntime+1, nbatch, nsize) tensor with the increments in y
+            yd (torch.tensor): (ntime, nbatch, nsize) tensor giving the ODE rate
+            yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
+                of the ODE
+            dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+
+        Returns:
+            R (torch.tensor): residual tensor of shape (nbatch, ntime * nsize)
+            J (tensor.tensor): sparse Jacobian tensor of logical size (nbatch, ntime*nsize, ntime*nsize)
+        """
+        # Basic shape info
+        ntime = dy.shape[0] - 1
+        prob_size = dy.shape[-1]
+        batch_size = dy.shape[-2]
+
+        # Form the overall residual
+        # R = dy_k - dy_{k-1} - ydot(y) * dt
+        # However, to unsqueeze it we need to combine the 0th and the 2nd dimension
+        R = (dy[1:] - dy[:-1] - yd[1:]*dt.unsqueeze(-1)).transpose(0,1).flatten(start_dim=1)
+
+        # Form the overall jacobian
+        # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
+        I = torch.eye(prob_size, device = dt.device).expand(ntime,batch_size,-1,-1)
+
+        return R, chunktime.BidiagonalForwardOperator(I - yJ[1:]*dt.unsqueeze(-1).unsqueeze(-1), -I[1:])
+
+class ForwardEulerScheme(TimeIntegrationScheme):
+    """
+    Integration with the forward Euler method
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def form_operators(self, dy, yd, yJ, dt):
         """
@@ -97,20 +133,16 @@ class BackwardEulerScheme(TimeIntegrationScheme):
         prob_size = dy.shape[-1]
         batch_size = dy.shape[-2]
 
-        # Multiply by the time step
-        yd *= dt.unsqueeze(-1)
-        yJ *= dt.unsqueeze(-1).unsqueeze(-1)
-        
         # Form the overall residual
         # R = dy_k - dy_{k-1} - ydot(y) * dt
         # However, to unsqueeze it we need to combine the 0th and the 2nd dimension
-        R = (dy[1:] - dy[:-1] - yd).transpose(0,1).flatten(start_dim=1)
+        R = (dy[1:] - dy[:-1] - yd[:-1]*dt.unsqueeze(-1)).transpose(0,1).flatten(start_dim=1)
 
         # Form the overall jacobian
         # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
         I = torch.eye(prob_size, device = dt.device).expand(ntime,batch_size,-1,-1)
-
-        return R, chunktime.BackwardEulerForwardOperator(I - yJ)
+       
+        return R, chunktime.BidiagonalForwardOperator(I, -I[1:] - yJ[1:-1]*dt[1:].unsqueeze(-1).unsqueeze(-1))
 
 class FixedGridBlockSolver:
     """
@@ -196,13 +228,14 @@ class FixedGridBlockSolver:
             # Add a zero to the first dimension of dy
             dy = torch.vstack((torch.zeros_like(y_start).unsqueeze(0), dy))
             # Get actual values of state
-            y = dy[1:] + y_start.unsqueeze(0).expand(n,-1,-1)
+            y = dy + y_start.unsqueeze(0).expand(n+1,-1,-1)
 
             # Calculate the time steps
-            dt = torch.vstack((t_start.unsqueeze(0), t)).diff(dim = 0)
+            times = torch.vstack((t_start.unsqueeze(0), t))
+            dt = times.diff(dim = 0)
 
             # Batch update the rate and jacobian
-            yd, yJ = self.func(t, y)
+            yd, yJ = self.func(times, y)
 
             return self.scheme.form_operators(dy, yd, yJ, dt)
 
@@ -775,7 +808,7 @@ class BackwardEuler(ImplicitSolver):
 
 # Available solver methods mapped to the objects
 methods = {"forward-euler": ForwardEuler, "backward-euler": BackwardEuler}
-int_methods = {"block-backward-euler": BackwardEulerScheme()}
+int_methods = {"block-backward-euler": BackwardEulerScheme(), "block-forward-euler": ForwardEulerScheme()}
 
 
 def odeint(func, y0, times, method="backward-euler", extra_params=None, **kwargs):
