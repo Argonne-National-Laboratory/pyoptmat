@@ -32,6 +32,7 @@
 """
 
 import torch
+import functorch
 
 from pyoptmat import solvers, utility, chunktime
 
@@ -106,6 +107,22 @@ class BackwardEulerScheme(TimeIntegrationScheme):
 
         return R, chunktime.BidiagonalForwardOperator(I - yJ[1:]*dt.unsqueeze(-1).unsqueeze(-1), -I[1:])
 
+    def accumulate(self, prev, time, y, a, grad_fn):
+        """
+            Calculate the accumulated value given the results at each time step
+
+            Args:
+                prev (tuple of tensors): previous results
+                times (tensor): (ntime+1, nbatch) tensor of times
+                y (tensor): (ntime+1, nbatch, nsize) tensor of state
+                a (tensor): (ntime+1, nbatch, nsize) tensor of adjoints
+                grad_fn (function): function that takes t,y,a and returns the dot product with 
+                    the model parameters
+        """
+        dt = time.diff(dim = 0)
+        g = grad_fn(time[1:], y[1:], a[1:] * dt.unsqueeze(-1))
+        return tuple(pi + torch.sum(gi, dim = 0) for pi, gi in zip(prev, g))
+
 class ForwardEulerScheme(TimeIntegrationScheme):
     """
     Integration with the forward Euler method
@@ -139,10 +156,54 @@ class ForwardEulerScheme(TimeIntegrationScheme):
         R = (dy[1:] - dy[:-1] - yd[:-1]*dt.unsqueeze(-1)).transpose(0,1).flatten(start_dim=1)
 
         # Form the overall jacobian
-        # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
+        # This has I on the diagonal and -I - J*dt on the off diagonal 
         I = torch.eye(prob_size, device = dt.device).expand(ntime,batch_size,-1,-1)
        
         return R, chunktime.BidiagonalForwardOperator(I, -I[1:] - yJ[1:-1]*dt[1:].unsqueeze(-1).unsqueeze(-1))
+
+    def accumulate(self, prev, time, y, a, grad_fn):
+        """
+            Calculate the accumulated value given the results at each time step
+
+            Args:
+                prev (tuple of tensors): previous results
+                times (tensor): (ntime+1, nbatch) tensor of times
+                y (tensor): (ntime+1, nbatch, nsize) tensor of state
+                a (tensor): (ntime+1, nbatch, nsize) tensor of adjoints
+                grad_fn (function): function that takes t,y,a and returns the dot product with 
+                    the model parameters
+        """
+        dt = time.diff(dim = 0)
+        g = grad_fn(time[:-1], y[:-1], a[:-1] * dt.unsqueeze(-1))
+        return tuple(pi + torch.sum(gi, dim = 0) for pi, gi in zip(prev, g))
+
+class AdjointProblem(torch.nn.Module):
+    """
+    Transform an ODE to the adjoint problem
+
+    This assumes our standard convention where the forward problem
+    returns both the rate of change and the jacobian
+
+    Args:
+        ode (torch.nn.Module): forward problem
+    """
+    def __init__(self, ode):
+        super().__init__()
+        self.ode = ode
+
+    def forward(self, t, a, l, y):
+        """
+        Adjoint problem
+
+        Args:
+            t (torch.tensor): times
+            a (torch.tensor): adjoint
+            y (torch.tensor): actual state
+            l (torch.tensor): derivative to propagate
+        """
+        _, J = self.ode(t, y)
+        
+        return l - torch.einsum('abi,abij->abj', a, J), -J.transpose(-1,-2)
 
 class FixedGridBlockSolver:
     """
@@ -200,11 +261,70 @@ class FixedGridBlockSolver:
         result[0] = self.y0
 
         for k in range(1, t.shape[0], self.n):
-            result[k:k+self.n], Jlast = self.block_update(t[k:k+self.n], t[k-1], result[k-1])
+            result[k:k+self.n] = self.block_update(t[k:k+self.n], t[k-1], result[k-1], self.func)
+        
+        # Store for the backward pass, if we're going to do that
+        # Reverse time because we're going to do that anyway...
+        if cache_adjoint:
+            self.t = t.flip(0)
+            self.result = result.flip(0)
 
         return result
 
-    def block_update(self, t, t_start, y_start):
+    def _get_param_partial(self, t, y, a):
+        """
+        Get the parameter partial at each time in the block
+
+        Args:
+            t (torch.tensor): (nstep+1,nbatch) tensor of times
+            y (torch.tensor): (nstep+1,nbatch,nsize) tensor of state
+            a (torch.tensor): (nstep+1,nbatch,nsize) adjoint tensor
+        """
+        with torch.enable_grad():
+            ydot = self.func(t, y)[0]
+            fn = lambda v: torch.autograd.grad(ydot, self.adjoint_params, a)
+            return functorch.vmap(fn)(a)
+
+    def rewind(self, output_grad):
+        """
+        Rewind the adjoint to provide the dot product with each output_grad
+
+        Args:
+            output_grad (torch.tensor): dot product tensor
+        """
+        # Setup results gradients
+        grad_result = tuple(torch.zeros(p.shape, device = output_grad.device) for p in self.adjoint_params)
+
+        # Setup adjoint problem and last adjoint
+        adjoint = AdjointProblem(self.func)
+
+        # Reverse output_grad to make marching easier
+        output_grad = output_grad.flip(0)
+
+        # Calculate starts at last gradient
+        prev_adjoint = output_grad[0]
+
+        for k in range(1, self.t.shape[0], self.n):
+            # Setup problem input
+            l = output_grad[k-1:k+self.n]
+            y = self.result[k-1:k+self.n]
+            t = self.t[k:k+self.n]
+            fn = lambda t, a, l = l, y = y: adjoint(t, a, l, y)
+            # Store the adjoint for the expanded step
+            full_adjoint = torch.empty_like(y)
+            full_adjoint[0] = prev_adjoint
+            full_adjoint[1:] = self.block_update(t, self.t[k-1], full_adjoint[0], fn)
+
+            # Ugh, best way I can think to do this is to combine everything...
+            grad_result = self.scheme.accumulate(grad_result, 
+                    self.t[k-1:k+self.n], y, full_adjoint, self._get_param_partial)
+
+            # Update previous adjoint
+            prev_adjoint = full_adjoint[-1]
+
+        return grad_result
+
+    def block_update(self, t, t_start, y_start, func):
         """
         Solve a block of times all at once with backward Euler
 
@@ -212,6 +332,7 @@ class FixedGridBlockSolver:
             t (torch.tensor):       block of times
             t_start (torch.tensor): time at start of block
             y_start (torch.tensor): start of block
+            func (torch.nn.Module): function to use
         """
         # Various useful sizes
         n = t.shape[0] # Number of time steps to do at once
@@ -235,13 +356,13 @@ class FixedGridBlockSolver:
             dt = times.diff(dim = 0)
 
             # Batch update the rate and jacobian
-            yd, yJ = self.func(times, y)
+            yd, yJ = func(times, y)
 
             return self.scheme.form_operators(dy, yd, yJ, dt)
 
-        dy, Jlast = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context)
+        dy = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context)
 
-        return dy.reshape(self.batch_size, n, self.prob_size).transpose(0,1) + y_start.unsqueeze(0).expand(n,-1,-1), Jlast
+        return dy.reshape(self.batch_size, n, self.prob_size).transpose(0,1) + y_start.unsqueeze(0).expand(n,-1,-1)
 
 class FixedGridSolver:
     """
@@ -927,3 +1048,86 @@ def odeint_adjoint(
     wrapper = IntegrateWithAdjoint()
 
     return wrapper.apply(solver, times, *adjoint_params)
+
+class IntegrateWithAdjointNew(torch.autograd.Function):
+    # pylint: disable=abstract-method,arguments-differ
+    """
+    Wrapper to convince the thing that it needs to use the adjoint sensitivity
+    instead of AD
+    """
+
+    @staticmethod
+    def forward(ctx, solver, times, *params):
+        """
+        Args:
+          ctx:        context object we can use to stash state
+          solver:     ODE Solver object to use
+          times:      times to provide output for
+        """
+        with torch.no_grad():
+            # Do our first pass and get full results
+            y = solver.integrate(times, cache_adjoint=True)
+            # Save the info we will need for the backward pass
+            ctx.solver = solver
+            return y
+
+    @staticmethod
+    def backward(ctx, output_grad):
+        """
+        Args:
+          ctx:            context object with state
+          output_grad:    grads with which to dot product
+        """
+        with torch.no_grad():
+            grad_tuple = ctx.solver.rewind(output_grad)
+            return (None, None, *grad_tuple)
+
+
+def odeint_adjoint_new(
+    func, y0, times, method="backward-euler", extra_params=None, **kwargs
+):
+    """
+    Solve the ordinary differential equation defined by the function :code:`func` in a way
+    that will provide gradients using the adjoint trick
+
+    The function :code:`func` is typically a PyTorch module.  It takes the time and
+    state and returns the time rate of change and (optionally) the Jacobian at that
+    time and state.  Not all integration methods require the Jacobian, but it's generally
+    a good idea to provide it make use of the implicit integration methods.
+
+    Input variables and initial condition have shape :code:`(nbatch, nvar)`
+
+    Input times have shape :code:`(ntime, nbatch)`
+
+    Output history has shape :code:`(ntime, nbatch, nvar)`
+
+    Args:
+      func (function):      returns tensor defining the derivative y_dot and,
+                            optionally, the jacobian as a second return value
+      y0 (torch.tensor):    initial conditions
+      times (torch.tensor): time locations to provide solutions at
+
+    Keyword Args:
+      method (string):                      integration method, currently `"backward-euler"` or
+                                            `"forward-euler"`
+      extra-params (list of parameters):    additional parameters that need to be included
+                                            in the backward pass that are not determinable
+                                            via introsection of :code:`func`
+      kwargs:                               keyword arguments passed on to specific
+                                            solver methods
+    """
+    if extra_params is None:
+        extra_params = []
+    adjoint_params = tuple(p for p in func.parameters()) + tuple(extra_params)
+
+    if method.split("-")[0] == "block":
+        solver = FixedGridBlockSolver(func, y0, scheme = int_methods[method], 
+                adjoint_params = adjoint_params,**kwargs)
+    else:
+        raise ValueError("Blargh") 
+
+    wrapper = IntegrateWithAdjointNew()
+
+    return wrapper.apply(solver, times, *adjoint_params)
+
+
