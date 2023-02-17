@@ -7,8 +7,7 @@ import numpy as np
 def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
     """
     Solve a nonlinear system with Newton's method with a tensor for a BackwardEuler type chunking operator
-    context manager.  Return the
-    solution and the last Jacobian
+    context manager. 
 
     Args:
       fn (function):        function that returns R, J, and the solver context
@@ -24,8 +23,7 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
       miter (int):          maximum number of nonlinear iterations
 
     Returns:
-      torch.tensor, torch.tensor:   solution to system of equations and
-                                    Jacobian evaluated at that point
+      torch.tensor:         solution to system of equations
     """
     x = x0
     R, J = fn(x)
@@ -39,11 +37,11 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
         R, J = fn(x)
         nR = torch.norm(R, dim=-1)
         i += 1
-    
+   
     if i == miter:
         warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
 
-    return x, J
+    return x
 
 class BidiagonalOperator(torch.nn.Module):
     """
