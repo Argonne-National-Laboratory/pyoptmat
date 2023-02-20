@@ -121,7 +121,7 @@ class BackwardEulerScheme(TimeIntegrationScheme):
         """
         dt = time.diff(dim = 0)
         g = grad_fn(time[:-1], y[1:], a[1:] * -dt.unsqueeze(-1))
-        return tuple(pi + torch.sum(gi, dim = 0) for pi, gi in zip(prev, g))
+        return tuple(pi + torch.sum(gi, dim = 0)/dt.shape[0] for pi, gi in zip(prev, g))
 
 class ForwardEulerScheme(TimeIntegrationScheme):
     """
@@ -303,7 +303,7 @@ class FixedGridBlockSolver:
         # Pad results
         results = torch.cat((torch.zeros_like(self.result[0]).unsqueeze(0), self.result), dim = 0)[:-1]
         # Pad time
-        tp = torch.cat((torch.zeros_like(self.t[0]).unsqueeze(0), self.t), dim = 0)[:-1]
+        tp = torch.cat((torch.zeros_like(self.t[0]).unsqueeze(0), self.t), dim = 0)
 
         # Calculate starts at least gradient
         prev_adjoint = torch.zeros_like(output_grad[0])
@@ -320,7 +320,7 @@ class FixedGridBlockSolver:
             full_adjoint = torch.empty_like(y)
             full_adjoint[0] = prev_adjoint
             full_adjoint[1:] = self.block_update(t[1:], self.t[k-1], full_adjoint[0], fn)
-
+            
             # Ugh, best way I can think to do this is to combine everything...
             grad_result = self.scheme.accumulate(grad_result, 
                     self.t[k-1:k+self.n], y, full_adjoint, self._get_param_partial)
