@@ -18,6 +18,8 @@ import time
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 
+torch.set_printoptions(precision=10)
+
 # Select device to run on
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -73,10 +75,10 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
     def forward(self, t, y):
         Ic = self.I(t)
 
-        V = y[...,0::4]
-        m = y[...,1::4]
-        h = y[...,2::4]
-        n = y[...,3::4]
+        V = y[...,0::4].clone()
+        m = y[...,1::4].clone()
+        h = y[...,2::4].clone()
+        n = y[...,3::4].clone()
 
         ydot = torch.zeros_like(y)
         
@@ -171,14 +173,60 @@ if __name__ == "__main__":
             torch.rand((neq,), device = device) * 0.01,
             current)
 
-
+    
+    """
     y0 = torch.rand((nbatch,model.n_equations), device = device)
-    ni = 5 
+    
+    torch.save(current, "current.torch")
+    torch.save(times, "times.torch")
+    torch.save(model.state_dict(), "model.torch")
+    torch.save(y0, "y0.torch")
+    """
+    
+    current = torch.load("current.torch")
+    times = torch.load("times.torch")
+    
+    #times = times[:100]
+
+    model.load_state_dict(torch.load("model.torch"))
+    y0 = torch.load("y0.torch")
+    model.I = current
+    
+    
+    res_block_0 = ode.odeint_adjoint(model, y0, times, 
+            method = "backward-euler")
+    yyn = torch.norm(res_block_0)
+    yyn.backward()
+
+    g0 = model.C.grad.clone().detach()
+    model.C.grad = None
+
+    ni = 1 
     res_block = ode.odeint_adjoint_new(model, y0, times, 
             method = "block-backward-euler", block_size = ni,
             linear_solve_method = "direct")
     yy = torch.norm(res_block)
     yy.backward()
 
-    print(model.C.grad)
+    g1 = model.C.grad.clone().detach()
+    model.C.grad = None
+    
+    res_block11 = ode.odeint(model, y0, times, 
+            method = "backward-euler")
+    yywtf1 = torch.norm(res_block11)
+    yywtf1.backward()
+    g3 = model.C.grad.clone().detach()
+    model.C.grad = None
 
+    res_block1 = ode.odeint(model, y0, times, 
+            method = "block-backward-euler", block_size = ni,
+            linear_solve_method = "direct")
+    yywtf = torch.norm(res_block1)
+    yywtf.backward()
+    g2 = model.C.grad.clone().detach()
+    model.C.grad = None
+    
+    print(g0)
+    print(g3)
+    print(g1)
+    print(g2)
