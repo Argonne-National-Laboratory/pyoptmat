@@ -174,7 +174,7 @@ class ForwardEulerScheme(TimeIntegrationScheme):
                     the model parameters
         """
         dt = time.diff(dim = 0)
-        g = grad_fn(time[:-1], y[:-1], a[:-1] * dt.unsqueeze(-1))
+        g = grad_fn(time[:-1], y[:-1], a[:-1] * -dt.unsqueeze(-1))
         return tuple(pi + torch.sum(gi, dim = 0) for pi, gi in zip(prev, g))
 
 class AdjointProblem(torch.nn.Module):

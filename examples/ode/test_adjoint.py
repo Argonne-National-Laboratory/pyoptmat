@@ -194,16 +194,16 @@ if __name__ == "__main__":
     
     
     res_block_0 = ode.odeint_adjoint(model, y0, times, 
-            method = "backward-euler")
+            method = "forward-euler")
     yyn = torch.norm(res_block_0)
     yyn.backward()
 
     g0 = model.C.grad.clone().detach()
     model.C.grad = None
 
-    ni = 15 
+    ni = 1
     res_block = ode.odeint_adjoint_new(model, y0, times, 
-            method = "block-backward-euler", block_size = ni,
+            method = "block-forward-euler", block_size = ni,
             linear_solve_method = "direct")
     yy = torch.norm(res_block)
     yy.backward()
@@ -212,14 +212,14 @@ if __name__ == "__main__":
     model.C.grad = None
     
     res_block11 = ode.odeint(model, y0, times, 
-            method = "backward-euler")
+            method = "forward-euler")
     yywtf1 = torch.norm(res_block11)
     yywtf1.backward()
     g3 = model.C.grad.clone().detach()
     model.C.grad = None
 
     res_block1 = ode.odeint(model, y0, times, 
-            method = "block-backward-euler", block_size = ni,
+            method = "block-forward-euler", block_size = ni,
             linear_solve_method = "direct")
     yywtf = torch.norm(res_block1)
     yywtf.backward()
