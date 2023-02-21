@@ -121,7 +121,7 @@ class BackwardEulerScheme(TimeIntegrationScheme):
         """
         dt = time.diff(dim = 0)
         g = grad_fn(time[:-1], y[1:], a[1:] * -dt.unsqueeze(-1))
-        return tuple(pi + torch.sum(gi, dim = 0)/dt.shape[0] for pi, gi in zip(prev, g))
+        return tuple(pi + gi for pi, gi in zip(prev, g))
 
 class ForwardEulerScheme(TimeIntegrationScheme):
     """
@@ -282,8 +282,7 @@ class FixedGridBlockSolver:
         """
         with torch.enable_grad():
             ydot = self.func(t, y)[0]
-            fn = lambda v: torch.autograd.grad(ydot, self.adjoint_params, a)
-            return functorch.vmap(fn)(a)
+            return torch.autograd.grad(ydot, self.adjoint_params, a)
 
     def rewind(self, output_grad):
         """
