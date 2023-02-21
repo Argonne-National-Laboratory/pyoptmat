@@ -201,7 +201,7 @@ if __name__ == "__main__":
     g0 = model.C.grad.clone().detach()
     model.C.grad = None
 
-    ni = 1
+    ni = 9
     res_block = ode.odeint_adjoint_new(model, y0, times, 
             method = "block-backward-euler", block_size = ni,
             linear_solve_method = "direct")
