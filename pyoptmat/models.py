@@ -159,13 +159,10 @@ class ModelIntegrator(nn.Module):
 
     Args:
       model:                        base strain-controlled model
-      substeps (optional):          subdivide each provided timestep into multiple steps to
-                                    reduce integration error, defaults to 1
       method (optional):            integrate method used to solve the equations, defaults
                                     to `"backward-euler"`
       rtol (optional):              relative tolerance for implicit integration
       atol (optional):              absolute tolerance for implicit integration
-      progress (optional):          print a progress bar for forward time integration
       miter (optional):             maximum nonlinear iterations for implicit time integration
       d0 (optional):                intitial value of damage
       use_adjoint (optional):       if `True` use the adjoint approach to
@@ -175,38 +172,30 @@ class ModelIntegrator(nn.Module):
                                     in the adjoint calculation.  Used if not
                                     all the parameters can be determined by
                                     introspection
-      jit_mode (optional):          if true use the JIT mode which cuts out
-                                    error checking and fixes sizes
     """
 
     def __init__(
         self,
         model,
         *args,
-        substeps=1,
         method="backward-euler",
         rtol=1.0e-6,
         atol=1.0e-4,
-        progress=False,
         miter=100,
         d0=0,
         use_adjoint=True,
         extra_params=None,
-        jit_mode=False,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.model = model
-        self.substeps = substeps
         self.method = method
         self.rtol = rtol
         self.atol = atol
-        self.progress = progress
         self.miter = miter
         self.d0 = d0
         self.use_adjoint = use_adjoint
         self.extra_params = extra_params
-        self.jit_mode = jit_mode
 
         if self.use_adjoint:
             self.imethod = ode.odeint_adjoint
@@ -232,9 +221,9 @@ class ModelIntegrator(nn.Module):
         # Likely if this happens dt = 0
         rates[torch.isnan(rates)] = 0
 
-        rate_interpolator = utility.CheaterBatchTimeSeriesInterpolator(times, rates)
-        base_interpolator = utility.CheaterBatchTimeSeriesInterpolator(times, idata)
-        temperature_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        rate_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(times, rates)
+        base_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(times, idata)
+        temperature_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             times, temperatures
         )
 
@@ -256,13 +245,10 @@ class ModelIntegrator(nn.Module):
             init,
             times,
             method=self.method,
-            substep=self.substeps,
             rtol=self.rtol,
             atol=self.atol,
-            progress=self.progress,
             miter=self.miter,
             extra_params=self.extra_params,
-            jit_mode=self.jit_mode,
         )
 
     def solve_strain(self, times, strains, temperatures):
@@ -287,10 +273,10 @@ class ModelIntegrator(nn.Module):
         # Likely if this happens dt = 0
         strain_rates[torch.isnan(strain_rates)] = 0
 
-        erate_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        erate_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             times, strain_rates
         )
-        temperature_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        temperature_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             times, temperatures
         )
 
@@ -311,7 +297,6 @@ class ModelIntegrator(nn.Module):
             substep=self.substeps,
             rtol=self.rtol,
             atol=self.atol,
-            progress=self.progress,
             miter=self.miter,
             extra_params=self.extra_params,
             jit_mode=self.jit_mode,
@@ -339,13 +324,13 @@ class ModelIntegrator(nn.Module):
         # Likely if this happens dt = 0
         stress_rates[torch.isnan(stress_rates)] = 0
 
-        stress_rate_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        stress_rate_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             times, stress_rates
         )
-        stress_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        stress_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             times, stresses
         )
-        temperature_interpolator = utility.CheaterBatchTimeSeriesInterpolator(
+        temperature_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             times, temperatures
         )
 
@@ -366,13 +351,10 @@ class ModelIntegrator(nn.Module):
             init,
             times,
             method=self.method,
-            substep=self.substeps,
             rtol=self.rtol,
             atol=self.atol,
-            progress=self.progress,
             miter=self.miter,
             extra_params=self.extra_params,
-            jit_mode=self.jit_mode,
         )
 
     def forward(self, t, y):
