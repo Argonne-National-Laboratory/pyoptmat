@@ -186,12 +186,11 @@ if __name__ == "__main__":
     current = torch.load("current.torch")
     times = torch.load("times.torch")
     
-    times = times[:100]
+    #times = times[:101]
 
     model.load_state_dict(torch.load("model.torch"))
     y0 = torch.load("y0.torch")
     model.I = current
-    
     
     res_block_0 = ode.odeint_adjoint(model, y0, times, 
             method = "backward-euler")
@@ -201,7 +200,7 @@ if __name__ == "__main__":
     g0 = model.C.grad.clone().detach()
     model.C.grad = None
 
-    ni = 9
+    ni = 7
     res_block = ode.odeint_adjoint_new(model, y0, times, 
             method = "block-backward-euler", block_size = ni,
             linear_solve_method = "direct")
@@ -210,7 +209,7 @@ if __name__ == "__main__":
 
     g1 = model.C.grad.clone().detach()
     model.C.grad = None
-    
+
     res_block11 = ode.odeint(model, y0, times, 
             method = "backward-euler")
     yywtf1 = torch.norm(res_block11)
@@ -225,7 +224,7 @@ if __name__ == "__main__":
     yywtf.backward()
     g2 = model.C.grad.clone().detach()
     model.C.grad = None
-    
+
     print(g0)
     print(g3)
     print(g1)
