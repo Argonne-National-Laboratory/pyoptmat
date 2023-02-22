@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import sys
+sys.path.append('../..')
+
 import torch
 import torch.nn as nn
 
@@ -33,7 +36,7 @@ def driving_current(I_max, R, rate, thold, chold, Ncycles, nload,
         times[:,i] = torch.tensor(ti)
         I[:,i] = torch.tensor(Ii)
     
-    return utility.BatchTimeSeriesInterpolator(
+    return utility.ArbitraryBatchTimeSeriesInterpolator(
             times.to(device), I.to(device)), times.to(device)
 
 class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
@@ -68,10 +71,10 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
     def forward(self, t, y):
         Ic = self.I(t)
 
-        V = y[...,0::4]
-        m = y[...,1::4]
-        h = y[...,2::4]
-        n = y[...,3::4]
+        V = y[...,0::4].clone()
+        m = y[...,1::4].clone()
+        h = y[...,2::4].clone()
+        n = y[...,3::4].clone()
 
         ydot = torch.zeros_like(y)
         
@@ -102,9 +105,9 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
                 -self.g_K[None,...]*n**4.0))
         # Coupling term
         J[...,0::4,0::4] -= self.g_C[None,...] / self.C[None,...] 
-        J[...,0::4,0::4] += torch.repeat_interleave(torch.eye(self.n_neurons, 
-            device = ydot.device).unsqueeze(0), ydot.shape[0], 0
-                ) * torch.sum(self.g_C / self.C)
+        
+        J[...,0::4,0::4] += torch.eye(self.n_neurons, device = ydot.device).expand(
+                *ydot.shape[:-1], -1, -1) * torch.sum(self.g_C / self.C)
         
         # V, m
         J[...,0::4,1::4] = torch.diag_embed(-1.0 / self.C[None,...] * (
@@ -128,8 +131,6 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
         J[...,3::4,3::4] = torch.diag(-1.0 / self.tau_n)
     
         return ydot, J
-
-
 
 if __name__ == "__main__":
     nbatch = 1000
@@ -171,7 +172,7 @@ if __name__ == "__main__":
 
     # Include a backward pass to give a better example of timing
     t1 = time.time()
-    res_imp = ode.odeint_adjoint(model, y0, times, iterative_linear_solver = True)
+    res_imp = ode.odeint_adjoint(model, y0, times)
     loss = torch.norm(res_imp)
     loss.backward()
     etime = time.time() - t1

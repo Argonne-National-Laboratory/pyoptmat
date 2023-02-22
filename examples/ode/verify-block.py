@@ -73,10 +73,10 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
     def forward(self, t, y):
         Ic = self.I(t)
 
-        V = y[...,0::4]
-        m = y[...,1::4]
-        h = y[...,2::4]
-        n = y[...,3::4]
+        V = y[...,0::4].clone()
+        m = y[...,1::4].clone()
+        h = y[...,2::4].clone()
+        n = y[...,3::4].clone()
 
         ydot = torch.zeros_like(y)
         
@@ -135,7 +135,6 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
         return ydot, J
 
 
-
 if __name__ == "__main__":
     nbatch = 10
     neq = 5
@@ -178,7 +177,7 @@ if __name__ == "__main__":
         res_no_block = ode.odeint(model, y0, times, 
                 method = "backward-euler")
         res_block = ode.odeint(model, y0, times, 
-                method = "block-backward-euler", block_size = ni,
+                method = "backward-euler", block_size = ni,
                 linear_solve_method = "direct")
 
     plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())
@@ -191,7 +190,7 @@ if __name__ == "__main__":
         res_no_block = ode.odeint(model, y0, times, 
                 method = "forward-euler")
         res_block = ode.odeint(model, y0, times, 
-                method = "block-forward-euler", block_size = ni,
+                method = "forward-euler", block_size = ni,
                 linear_solve_method = "direct")
 
     plt.plot(times[:,0].cpu().numpy(), res_no_block[:,0,0].cpu().numpy())

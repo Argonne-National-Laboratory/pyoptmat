@@ -63,10 +63,6 @@ eps_act = 0.05
 # Prior for the noise
 eps_prior = 0.1  # Just measure variance in data...
 
-# If true use torch JIT mode
-jit_mode = False
-
-
 def model_act(times):
     """
     times: ntime x nbatch
@@ -103,9 +99,7 @@ class Integrator(pyro.nn.PyroModule):
             self.eqn,
             self.y0,
             times,
-            jit_mode=jit_mode,
             extra_params=self.extra_params,
-            atol=1e-4,
         )
 
 
@@ -123,7 +117,7 @@ class ODE(pyro.nn.PyroModule):
         f[..., 1] = self.v * torch.sin(self.a) - g * t
 
         # Nice ODE lol
-        df = torch.zeros(y.shape + y.shape[1:])
+        df = torch.zeros(y.shape + y.shape[-1:])
 
         return f, df
 
@@ -294,10 +288,7 @@ if __name__ == "__main__":
     guide(times)
 
     optimizer = optim.ClippedAdam({"lr": lr})
-    if jit_mode:
-        l = JitTrace_ELBO(num_particles=num_samples)
-    else:
-        l = Trace_ELBO(num_particles=num_samples)
+    l = Trace_ELBO(num_particles=num_samples)
 
     svi = SVI(model, guide, optimizer, loss=l)
 

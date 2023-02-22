@@ -186,8 +186,6 @@ if __name__ == "__main__":
     current = torch.load("current.torch")
     times = torch.load("times.torch")
     
-    #times = times[:101]
-
     model.load_state_dict(torch.load("model.torch"))
     y0 = torch.load("y0.torch")
     model.I = current
@@ -201,8 +199,8 @@ if __name__ == "__main__":
     model.C.grad = None
 
     ni = 7
-    res_block = ode.odeint_adjoint_new(model, y0, times, 
-            method = "block-forward-euler", block_size = ni,
+    res_block = ode.odeint_adjoint(model, y0, times, 
+            method = "forward-euler", block_size = ni,
             linear_solve_method = "direct")
     yy = torch.norm(res_block)
     yy.backward()
@@ -217,14 +215,13 @@ if __name__ == "__main__":
     g3 = model.C.grad.clone().detach()
     model.C.grad = None
 
-    with torch.autograd.set_detect_anomaly(True):
-        res_block1 = ode.odeint(model, y0, times, 
-                method = "block-forward-euler", block_size = ni,
-                linear_solve_method = "direct")
-        yywtf = torch.norm(res_block1)
-        yywtf.backward()
-        g2 = model.C.grad.clone().detach()
-        model.C.grad = None
+    res_block1 = ode.odeint(model, y0, times, 
+            method = "forward-euler", block_size = ni,
+            linear_solve_method = "direct")
+    yywtf = torch.norm(res_block1)
+    yywtf.backward()
+    g2 = model.C.grad.clone().detach()
+    model.C.grad = None
 
     print(g0)
     print(g3)
