@@ -188,7 +188,7 @@ class ForwardEulerScheme(TimeIntegrationScheme):
         # Form the overall jacobian
         # This has I on the diagonal and -I - J*dt on the off diagonal 
         I = torch.eye(prob_size, device = dt.device).expand(ntime,batch_size,-1,-1)
-
+        
         return R, chunktime.BidiagonalForwardOperator(I, -I[1:] - yJ[1:-1]*dt[1:].unsqueeze(-1).unsqueeze(-1))
 
     def update_adjoint(self, dt, J, a_prev, grads):
