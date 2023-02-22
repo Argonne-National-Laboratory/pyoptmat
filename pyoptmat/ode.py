@@ -30,9 +30,9 @@
   subdivide the provided time intervals into some number of subdivisions
   to decrease integration error.
 """
+import numpy as np
 
 import torch
-import functorch
 
 from pyoptmat import solvers, utility, chunktime
 
@@ -107,20 +107,50 @@ class BackwardEulerScheme(TimeIntegrationScheme):
 
         return R, chunktime.BidiagonalForwardOperator(I - yJ[1:]*dt.unsqueeze(-1).unsqueeze(-1), -I[1:])
 
-    def accumulate(self, prev, time, y, a, grad_fn):
+    def update_adjoint(self, dt, J, a_prev, grads):
         """
-            Calculate the accumulated value given the results at each time step
+        Update the adjoint for a block of time
 
-            Args:
-                prev (tuple of tensors): previous results
-                times (tensor): (ntime+1, nbatch) tensor of times
-                y (tensor): (ntime+1, nbatch, nsize) tensor of state
-                a (tensor): (ntime+1, nbatch, nsize) tensor of adjoints
-                grad_fn (function): function that takes t,y,a and returns the dot product with 
-                    the model parameters
+        Args:
+            dt (torch.tensor):      block of time steps
+            J (torch.tensor):       block of Jacobians
+            a_prev (torch.tensor):  previous adjoint
+            grads (torch.tensor):   block of gradient values
+        """
+        ntime = J.shape[0] - 1
+        prob_size = J.shape[2]
+        batch_size = J.shape[1]
+
+        adjoint_block = torch.zeros(J.shape[:-1], dtype = J.dtype,
+                device = J.device)
+        adjoint_block[0] = a_prev
+
+        # Invert J all at once
+        I = torch.eye(prob_size, device = dt.device).expand(ntime,batch_size,-1,-1)
+        lu, pivot, _ = torch.linalg.lu_factor_ex(I + J[:-1].transpose(-1,-2) * dt.unsqueeze(-1).unsqueeze(-1))
+
+        # This has to be done sequentially...
+        for i in range(ntime):
+            adjoint_block[i+1] = torch.linalg.lu_solve(lu[i], pivot[i], adjoint_block[i].unsqueeze(-1)).squeeze(-1)
+            adjoint_block[i+1] += grads[i+1]
+
+        return adjoint_block
+
+    def accumulate(self, prev, time, y, a, grad, grad_fn):
+        """
+        Calculate the accumulated value given the results at each time step
+
+        Args:
+            prev (tuple of tensors): previous results
+            times (tensor): (ntime+1, nbatch) tensor of times
+            y (tensor): (ntime+1, nbatch, nsize) tensor of state
+            a (tensor): (ntime+1, nbatch, nsize) tensor of adjoints
+            grad (tensor): (ntime+1, nbatch, nsize) tensor of gradient values
+            grad_fn (function): function that takes t,y,a and returns the dot product with 
+                the model parameters
         """
         dt = time.diff(dim = 0)
-        g = grad_fn(time[:-1], y[1:], a[1:] * -dt.unsqueeze(-1))
+        g = grad_fn(time[:-1], y[:-1], (a[1:] - grad[1:]) * -dt.unsqueeze(-1))
         return tuple(pi + gi for pi, gi in zip(prev, g))
 
 class ForwardEulerScheme(TimeIntegrationScheme):
@@ -161,7 +191,32 @@ class ForwardEulerScheme(TimeIntegrationScheme):
 
         return R, chunktime.BidiagonalForwardOperator(I, -I[1:] - yJ[1:-1]*dt[1:].unsqueeze(-1).unsqueeze(-1))
 
-    def accumulate(self, prev, time, y, a, grad_fn):
+    def update_adjoint(self, dt, J, a_prev, grads):
+        """
+        Update the adjoint for a block of time
+
+        Args:
+            dt (torch.tensor):      block of time steps
+            J (torch.tensor):       block of Jacobians
+            a_prev (torch.tensor):  previous adjoint
+            grads (torch.tensor):   block of gradient values
+        """
+        ntime = J.shape[0] - 1
+        prob_size = J.shape[2]
+        batch_size = J.shape[1]
+
+        adjoint_block = torch.zeros(J.shape[:-1], dtype = J.dtype,
+                device = J.device)
+        adjoint_block[0] = a_prev
+
+        # This has to be done sequentially...
+        for i in range(ntime):
+            adjoint_block[i+1] = adjoint_block[i] - torch.bmm(J[i+1].transpose(-1,-2), adjoint_block[i].unsqueeze(-1)).squeeze(-1) * dt[i].unsqueeze(-1)
+            adjoint_block[i+1] += grads[i+1]
+
+        return adjoint_block
+
+    def accumulate(self, prev, time, y, a, grad, grad_fn):
         """
             Calculate the accumulated value given the results at each time step
 
@@ -170,40 +225,13 @@ class ForwardEulerScheme(TimeIntegrationScheme):
                 times (tensor): (ntime+1, nbatch) tensor of times
                 y (tensor): (ntime+1, nbatch, nsize) tensor of state
                 a (tensor): (ntime+1, nbatch, nsize) tensor of adjoints
+                grad (tensor): (ntime+1, nbatch, nsize) tensor of gradient values
                 grad_fn (function): function that takes t,y,a and returns the dot product with 
                     the model parameters
         """
         dt = time.diff(dim = 0)
-        g = grad_fn(time[:-1], y[:-1], a[:-1] * -dt.unsqueeze(-1))
-        return tuple(pi + torch.sum(gi, dim = 0) for pi, gi in zip(prev, g))
-
-class AdjointProblem(torch.nn.Module):
-    """
-    Transform an ODE to the adjoint problem
-
-    This assumes our standard convention where the forward problem
-    returns both the rate of change and the jacobian
-
-    Args:
-        ode (torch.nn.Module): forward problem
-    """
-    def __init__(self, ode):
-        super().__init__()
-        self.ode = ode
-
-    def forward(self, t, a, g, y):
-        """
-        Adjoint problem
-
-        Args:
-            t (torch.tensor): times
-            a (torch.tensor): adjoint
-            g (torch.tensor): propogating gradient values
-            y (torch.tensor): actual state
-        """
-        _, J = self.ode(t, y)
-        
-        return g - torch.einsum('abi,abij->abj', a, J), -J.transpose(-1,-2) 
+        g = grad_fn(time[1:], y[1:], a[:-1] * -dt.unsqueeze(-1))
+        return tuple(pi + gi for pi, gi in zip(prev, g))
 
 class FixedGridBlockSolver:
     """
@@ -264,7 +292,6 @@ class FixedGridBlockSolver:
             result[k:k+self.n] = self.block_update(t[k:k+self.n], t[k-1], result[k-1], self.func)
         
         # Store for the backward pass, if we're going to do that
-        # Reverse time because we're going to do that anyway...
         if cache_adjoint:
             self.t = t.flip(0)
             self.result = result.flip(0)
@@ -293,36 +320,25 @@ class FixedGridBlockSolver:
         """
         # Setup results gradients
         grad_result = tuple(torch.zeros(p.shape, device = output_grad.device) for p in self.adjoint_params)
-
-        # Setup adjoint problem
-        adjoint = AdjointProblem(self.func)
-
-        # Reverse output gradient and pad
-        output_grad = torch.cat((torch.zeros_like(output_grad[0]).unsqueeze(0),output_grad.flip(0)), dim = 0)[:-1]
-        # Pad results
-        results = torch.cat((torch.zeros_like(self.result[0]).unsqueeze(0), self.result), dim = 0)[:-1]
-        # Pad time
-        tp = torch.cat((torch.zeros_like(self.t[0]).unsqueeze(0), self.t), dim = 0)
+        
+        # Flip the output_grad
+        output_grad = output_grad.flip(0)
 
         # Calculate starts at least gradient
-        prev_adjoint = torch.zeros_like(output_grad[0])
+        prev_adjoint = output_grad[0]
 
         for k in range(1, self.t.shape[0], self.n):
-            # Setup problem input
-            y = results[k-1:k+self.n]
-            t = self.t[k-1:k+self.n]
-            # Sigh, all the sources lie, don't they...
-            g = output_grad[k-1:k+self.n] / tp[k-1:k+self.n+1].diff(dim = 0).unsqueeze(-1)
-            # Specialize
-            fn = lambda t, a, g = g, y = y: adjoint(t, a, g, y)
-            # Store the adjoint for the expanded step
-            full_adjoint = torch.empty_like(y)
-            full_adjoint[0] = prev_adjoint
-            full_adjoint[1:] = self.block_update(t[1:], self.t[k-1], full_adjoint[0], fn)
-            
+            # Could also cache these of course
+            _, J = self.func(self.t[k-1:k+self.n], self.result[k-1:k+self.n])
+
+            full_adjoint = self.scheme.update_adjoint(self.t[k-1:k+self.n].diff(dim = 0),
+                    J, prev_adjoint, output_grad[k-1:k+self.n])
+
             # Ugh, best way I can think to do this is to combine everything...
             grad_result = self.scheme.accumulate(grad_result, 
-                    self.t[k-1:k+self.n], y, full_adjoint, self._get_param_partial)
+                    self.t[k-1:k+self.n], self.result[k-1:k+self.n],
+                    full_adjoint, output_grad[k-1:k+self.n],
+                    self._get_param_partial)
 
             # Update previous adjoint
             prev_adjoint = full_adjoint[-1]
