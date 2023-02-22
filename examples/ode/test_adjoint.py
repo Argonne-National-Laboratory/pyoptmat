@@ -200,7 +200,8 @@ if __name__ == "__main__":
 
     g0 = model.C.grad.clone().detach()
     model.C.grad = None
-
+    
+    print("HMM")
     ni = 1
     res_block = ode.odeint_adjoint_new(model, y0, times, 
             method = "block-backward-euler", block_size = ni,
@@ -210,7 +211,9 @@ if __name__ == "__main__":
 
     g1 = model.C.grad.clone().detach()
     model.C.grad = None
-   
+
+    sys.exit()
+
     res_block11 = ode.odeint(model, y0, times, 
             method = "backward-euler")
     yywtf1 = torch.norm(res_block11)

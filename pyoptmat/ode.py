@@ -76,7 +76,7 @@ class BackwardEulerScheme(TimeIntegrationScheme):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def form_operators(self, dy, yd, yJ, dt):
+    def form_operators(self, dy, yd, yJ, dt, dirac):
         """
         Form the residual and sparse Jacobian of the batched system
 
@@ -86,6 +86,7 @@ class BackwardEulerScheme(TimeIntegrationScheme):
             yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
                 of the ODE
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+            dirac (torch.tensor): (ntime+1, nbatch, nsize) tensor of dirac contributions
 
         Returns:
             R (torch.tensor): residual tensor of shape (nbatch, ntime * nsize)
@@ -99,7 +100,7 @@ class BackwardEulerScheme(TimeIntegrationScheme):
         # Form the overall residual
         # R = dy_k - dy_{k-1} - ydot(y) * dt
         # However, to unsqueeze it we need to combine the 0th and the 2nd dimension
-        R = (dy[1:] - dy[:-1] - yd[1:]*dt.unsqueeze(-1)).transpose(0,1).flatten(start_dim=1)
+        R = (dy[1:] - dy[:-1] - yd[1:]*dt.unsqueeze(-1) - dirac[1:]).transpose(0,1).flatten(start_dim=1)
 
         # Form the overall jacobian
         # This has I-J blocks on the main block diagonal and -I on the -1 block diagonal
@@ -130,7 +131,7 @@ class ForwardEulerScheme(TimeIntegrationScheme):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def form_operators(self, dy, yd, yJ, dt):
+    def form_operators(self, dy, yd, yJ, dt, dirac):
         """
         Form the residual and sparse Jacobian of the batched system
 
@@ -140,6 +141,7 @@ class ForwardEulerScheme(TimeIntegrationScheme):
             yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
                 of the ODE
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+            dirac (torch.tensor): (ntime+1, nbatch, nsize) tensor of dirac contributions
 
         Returns:
             R (torch.tensor): residual tensor of shape (nbatch, ntime * nsize)
@@ -153,7 +155,7 @@ class ForwardEulerScheme(TimeIntegrationScheme):
         # Form the overall residual
         # R = dy_k - dy_{k-1} - ydot(y) * dt
         # However, to unsqueeze it we need to combine the 0th and the 2nd dimension
-        R = (dy[1:] - dy[:-1] - yd[:-1]*dt.unsqueeze(-1)).transpose(0,1).flatten(start_dim=1)
+        R = (dy[1:] - dy[:-1] - yd[:-1]*dt.unsqueeze(-1) - dirac[:-1]).transpose(0,1).flatten(start_dim=1)
 
         # Form the overall jacobian
         # This has I on the diagonal and -I - J*dt on the off diagonal 
@@ -187,11 +189,11 @@ class AdjointProblem(torch.nn.Module):
     Args:
         ode (torch.nn.Module): forward problem
     """
-    def __init__(self, ode, soln, force):
+    def __init__(self, ode, times, soln):
         super().__init__()
         self.ode = ode
+        self.times = times
         self.soln = soln
-        self.force = force
 
     def forward(self, t, a, steps):
         """
@@ -200,13 +202,11 @@ class AdjointProblem(torch.nn.Module):
         Args:
             t (torch.tensor): times
             a (torch.tensor): adjoint
-            g (torch.tensor): propogating gradient values
-            y (torch.tensor): actual state
+            steps (array):    time steps for cached solution
         """
-        _, J = self.ode(t, self.soln[steps])
-        f = self.force[steps]
+        _, J = self.ode(t[steps], self.soln[steps])
 
-        return -f - torch.einsum('abi,abij->abj', a, J), -J.transpose(-1,-2) 
+        return -torch.einsum('abi,abij->abj', a, J), -J.transpose(-1,-2) 
 
 class FixedGridBlockSolver:
     """
@@ -300,20 +300,26 @@ class FixedGridBlockSolver:
         output_grad.flip(0)
 
         # Setup adjoint problem
-        adjoint = AdjointProblem(self.func, self.result, output_grad)
+        adjoint = AdjointProblem(self.func, self.t, self.result)
 
         # Calculate starts at least gradient
-        prev_adjoint = output_grad[0]
+        prev_adjoint = torch.zeros_like(output_grad[0])
 
         for k in range(1, self.t.shape[0], self.n):
             # Store the adjoint for the expanded step
             full_adjoint = torch.empty_like(output_grad[k-1:k+self.n])
-            steps = np.r_[k-1:k+self.n]
+
+            # Steps and adjoint function with cached solution
+            steps = np.r_[k-1:k+self.n] - 1 # ARG
             fn = lambda t, a, steps = steps: adjoint(t, a, steps)
+            
+            # Dirac term
+            dirac = output_grad[k-1:k+self.n]
 
             full_adjoint[0] = prev_adjoint
-            full_adjoint[1:] = self.block_update(self.t[k:k+self.n], self.t[k-1], full_adjoint[0], fn)
-
+            full_adjoint[1:] = self.block_update(self.t[k:k+self.n], self.t[k-1], full_adjoint[0], fn,
+                    dirac = dirac)
+            
             print(full_adjoint[1,0,0])
 
             # Ugh, best way I can think to do this is to combine everything...
@@ -327,7 +333,7 @@ class FixedGridBlockSolver:
 
         return grad_result
 
-    def block_update(self, t, t_start, y_start, func):
+    def block_update(self, t, t_start, y_start, func, dirac = None):
         """
         Solve a block of times all at once with backward Euler
 
@@ -336,6 +342,11 @@ class FixedGridBlockSolver:
             t_start (torch.tensor): time at start of block
             y_start (torch.tensor): start of block
             func (torch.nn.Module): function to use
+
+        Keyword args:
+            dirac (tensor-like):    dirac delta contribution to
+                                    time integration.  Default of None 
+                                    leads to no contribution.
         """
         # Various useful sizes
         n = t.shape[0] # Number of time steps to do at once
@@ -345,6 +356,10 @@ class FixedGridBlockSolver:
         # Guess of zeros, why not
         y_guess = torch.zeros(self.batch_size, k, 
                 dtype = t.dtype, device = t.device)
+
+        if dirac is None:
+            dirac = torch.zeros((n+1,) + y_guess.shape, 
+                    dtype = t.dtype, device = t.device)
 
         def RJ(dy):
             # Make things into a more rational shape
@@ -361,7 +376,7 @@ class FixedGridBlockSolver:
             # Batch update the rate and jacobian
             yd, yJ = func(times, y)
 
-            return self.scheme.form_operators(dy, yd, yJ, dt)
+            return self.scheme.form_operators(dy, yd, yJ, dt, dirac)
 
         dy = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context)
 
