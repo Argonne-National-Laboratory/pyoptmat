@@ -221,12 +221,16 @@ class FixedGridBlockSolver:
         scheme (TimeIntegrationScheme):  time integration scheme, default is 
             backward euler
         block_size (int): target block size
+        rtol (float): relative tolerance for Newton's method
+        atol (float): absolute tolerance for Newton's method
+        miter (int): maximum number of Newton iterations
         sparse_linear_solver (str): method to solve batched sparse Ax = b, options
             are currently "direct" or "dense"
         adjoint_params: parameters to track for the adjoint backward pass
         guess_type (string): strategy for initial guess, options are "zero" and "previous"
     """
     def __init__(self, func, y0, scheme = BackwardEulerScheme(), block_size = 1,
+            rtol = 1.0e-6, atol = 1.0e-4, miter = 100,
             linear_solve_method = "direct", adjoint_params=None, 
             guess_type = "zero", **kwargs):
         # Store basic info about the system
@@ -240,6 +244,11 @@ class FixedGridBlockSolver:
         self.batch_size = self.y0.shape[0]
         self.prob_size = self.y0.shape[1]
         self.n = block_size
+
+        # Solver params
+        self.rtol = rtol
+        self.atol = atol
+        self.miter = miter
 
         # Store for later
         self.adjoint_params = adjoint_params
@@ -382,7 +391,8 @@ class FixedGridBlockSolver:
 
             return self.scheme.form_operators(dy, yd, yJ, dt)
 
-        dy = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context)
+        dy = chunktime.newton_raphson_chunk(RJ, y_guess, self.linear_solve_context,
+                rtol = self.rtol, atol = self.atol, miter = self.miter)
 
         return dy.reshape(self.batch_size, n, self.prob_size).transpose(0,1) + y_start.unsqueeze(0).expand(n,-1,-1)
 
