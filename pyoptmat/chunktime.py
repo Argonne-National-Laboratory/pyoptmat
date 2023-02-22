@@ -128,8 +128,9 @@ class BidiagonalThomasFactorization(BidiagonalOperator):
         i = 0
         s = self.sblk
         y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
+        # The .clone() here really makes no sense to me, but torch assures me it is necessary
         for i in range(1, self.nblk):
-            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1) - torch.bmm(self.B[i-1], y[:,(i-1)*s:i*s].unsqueeze(-1))).squeeze(-1)
+            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1) - torch.bmm(self.B[i-1], y[:,(i-1)*s:i*s].clone().unsqueeze(-1))).squeeze(-1)
 
         return y
 
