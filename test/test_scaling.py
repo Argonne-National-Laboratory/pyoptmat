@@ -10,9 +10,6 @@ class ScalingTests:
         actual = self.f.scale(self.x)
         back = self.f.unscale(actual)
 
-        print(self.x)
-        print(back)
-
         self.assertTrue(torch.allclose(self.x, back))
 
 
