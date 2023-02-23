@@ -57,6 +57,65 @@ def visualize_variance(strain, stress_true, stress_calc, alpha=0.05):
 
     plt.show()
 
+def batch_differentiate(fn, x0, eps=1.0e-6, nbatch_dim = 1):
+    """
+    New numerical differentiation function to handle the batched-model cases
+
+    This version handles arbitrary batch sizes
+
+    Args:
+      fn (torch.tensor):    function to differentiate via finite differences
+      x0 (torch.tensor):    point at which to take the numerical derivative
+
+    Keyword Args:
+      eps (float):          perturbation to use
+
+    Returns:
+      torch.tensor:         finite difference approximation to
+                            :math:`\\frac{df}{dx}|_{x_0}`
+    """
+    v0 = fn(x0)
+    bs = v0.shape[:nbatch_dim]
+
+    s1 = v0.shape[nbatch_dim:]
+    s2 = x0.shape[nbatch_dim:]
+    squeeze1 = False
+    squeeze2 = False
+
+    if len(s1) == 0:
+        s1 = (1,)
+        squeeze1 = True
+
+    if len(s2) == 0:
+        s2 = (1,)
+        squeeze2 = True
+    
+    d = torch.empty(bs + s1 + s2, device = x0.device)
+    
+    x0 = x0.reshape(bs + s2)
+    v0 = v0.reshape(bs + s1)
+
+    for i2 in np.ndindex(s2):
+        dx = torch.zeros_like(x0)
+        inc = torch.abs(x0[..., i2]) * eps
+        inc[inc < eps] = eps
+        dx[..., i2] = inc
+
+        x = x0 + dx
+        if squeeze2:
+            x = x.squeeze(-1)
+
+        v1 = fn(x).reshape(bs + s1)
+        d[..., i2] = (v1 - v0).unsqueeze(-1).expand(d[...,i2].shape) / inc.unsqueeze(-2).expand(d[...,i2].shape)
+    
+    if squeeze1 and squeeze2:
+        d = d.squeeze(-1).squeeze(-1)
+    elif squeeze2:
+        d = d.squeeze(-1) 
+    elif squeeze1:
+        d = d.squeeze(-len(s2)-1)
+
+    return d
 
 def new_differentiate(fn, x0, eps=1.0e-6):
     """
