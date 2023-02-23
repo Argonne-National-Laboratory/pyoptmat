@@ -92,7 +92,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       the isotropic hardening value
         """
-        return h[:, 0]
+        return h[..., 0]
 
     def dvalue(self, h):
         """
@@ -105,7 +105,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
           torch.tensor:       the derivative of the isotropic hardening value
                               with respect to the internal variables
         """
-        return torch.ones((h.shape[0], 1), device=h.device)
+        return torch.ones(h.shape[:-1] + (1,), device=h.device)
 
     @property
     def nhist(self):
@@ -129,7 +129,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       internal variable rate
         """
-        return torch.unsqueeze(self.d(T) * (self.R(T) - h[:, 0]) * torch.abs(ep), 1)
+        return torch.unsqueeze(self.d(T) * (self.R(T) - h[..., 0]) * torch.abs(ep), -1)
 
     def dhistory_rate_dstress(self, s, h, t, ep, T, e):
         """
@@ -163,12 +163,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        return torch.unsqueeze(
-            -torch.unsqueeze(self.d(T), -1)
-            * torch.ones_like(h)
-            * torch.abs(ep)[:, None],
-            1,
-        )
+        return (-self.d(T) * torch.ones_like(h[...,0]) * torch.abs(ep))[...,None,None]
 
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
@@ -186,10 +181,7 @@ class VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
         """
-        return torch.unsqueeze(
-            torch.unsqueeze(self.d(T) * (self.R(T) - h[:, 0]) * torch.sign(ep), 1), 1
-        )
-
+        return (self.d(T) * (self.R(T) - h[..., 0]) * torch.sign(ep))[...,None,None]
 
 class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
     """
@@ -225,7 +217,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       the isotropic hardening value
         """
-        return h[:, 0]
+        return h[..., 0]
 
     def dvalue(self, h):
         """
@@ -238,7 +230,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       the isotropic hardening value
         """
-        return torch.ones((h.shape[0], 1), device=h.device)
+        return torch.ones(h.shape[:-1] + (1,), device=h.device)
 
     @property
     def nhist(self):
@@ -263,7 +255,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
           torch.tensor:       internal variable rate
         """
         return torch.unsqueeze(
-            self.theta(T) * (1.0 - h[:, 0] / self.tau(T)) * torch.abs(ep), 1
+            self.theta(T) * (1.0 - h[..., 0] / self.tau(T)) * torch.abs(ep), -1
         )
 
     def dhistory_rate_dstress(self, s, h, t, ep, T, e):
@@ -298,12 +290,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        return torch.unsqueeze(
-            -torch.unsqueeze(self.theta(T) / self.tau(T), -1)
-            * torch.ones_like(h)
-            * torch.abs(ep)[:, None],
-            1,
-        )
+        return (-self.theta(T) / self.tau(T) * torch.ones_like(h[...,0]) * torch.abs(ep))[...,None,None]
 
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
@@ -321,13 +308,7 @@ class Theta0VoceIsotropicHardeningModel(IsotropicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
         """
-        return torch.unsqueeze(
-            torch.unsqueeze(
-                self.theta(T) * (1.0 - h[:, 0] / self.tau(T)) * torch.sign(ep), 1
-            ),
-            1,
-        )
-
+        return (self.theta(T) * (1.0 - h[...,0] / self.tau(T)) * torch.sign(ep))[...,None,None]
 
 class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
     # pylint: disable=line-too-long
@@ -364,7 +345,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
         Args:
           h:      the vector of internal variables for this model
         """
-        return h[:, 0]
+        return h[..., 0]
 
     def dvalue(self, h):
         """
@@ -373,7 +354,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
         Args:
           h:      the vector of internal variables for this model
         """
-        return torch.ones((h.shape[0], 1), device=h.device)
+        return torch.ones(h.shape[:-1] + (1,), device=h.device)
 
     @property
     def nhist(self):
@@ -395,11 +376,11 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
           e (torch.tensor):   total strain rate
         """
         return torch.unsqueeze(
-            self.theta(T) * (1.0 - h[:, 0] / self.tau(T)) * torch.abs(ep)
+            self.theta(T) * (1.0 - h[..., 0] / self.tau(T)) * torch.abs(ep)
             + self.r1(T)
-            * (self.R0(T) - h[:, 0])
-            * torch.abs(self.R0(T) - h[:, 0]) ** (self.r2(T) - 1.0),
-            1,
+            * (self.R0(T) - h[..., 0])
+            * torch.abs(self.R0(T) - h[..., 0]) ** (self.r2(T) - 1.0),
+            -1,
         )
 
     def dhistory_rate_dstress(self, s, h, t, ep, T, e):
@@ -431,15 +412,10 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
         recovery = (
             self.r2(T)
             * self.r1(T)
-            * torch.abs(self.R0(T) - h[:, 0]) ** (self.r2(T) - 1.0)
-        )[:, None, None]
+            * torch.abs(self.R0(T) - h[..., 0]) ** (self.r2(T) - 1.0)
+        )[..., None, None]
         return (
-            torch.unsqueeze(
-                -torch.unsqueeze(self.theta(T) / self.tau(T), -1)
-                * torch.ones_like(h)
-                * torch.abs(ep)[:, None],
-                1,
-            )
+                (-self.theta(T) / self.tau(T) * torch.ones_like(h[...,0]) * torch.abs(ep))[...,None,None]
             - recovery
         )
 
@@ -456,12 +432,7 @@ class Theta0RecoveryVoceIsotropicHardeningModel(IsotropicHardeningModel):
           T:      temperature
           e (torch.tensor):   total strain rate
         """
-        return torch.unsqueeze(
-            torch.unsqueeze(
-                self.theta(T) * (1.0 - h[:, 0] / self.tau(T)) * torch.sign(ep), 1
-            ),
-            1,
-        )
+        return (self.theta(T) * (1.0 - h[...,0] / self.tau(T)) * torch.sign(ep))[...,None,None]
 
 
 class KinematicHardeningModel(HardeningModel):
@@ -498,7 +469,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
         Args:
           h:      vector of internal variables
         """
-        return torch.zeros(h.shape[0], device=h.device)
+        return torch.zeros(h.shape[:-1], device=h.device)
 
     def dvalue(self, h):
         """
@@ -508,7 +479,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
         Args:
           h:      vector of internal variables
         """
-        return torch.zeros(h.shape[0], 0, device=h.device)
+        return torch.zeros(h.shape[:-1] + (0,), device=h.device)
 
     def history_rate(self, s, h, t, ep, T, e):
         """
@@ -554,7 +525,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
           T:      temperature
           e (torch.tensor):   total strain rate
         """
-        return torch.empty(h.shape[0], 0, 0, device=h.device)
+        return torch.empty(h.shape[:-1] + (0, 0), device=h.device)
 
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
@@ -571,7 +542,7 @@ class NoKinematicHardeningModel(KinematicHardeningModel):
           T:      temperature
           e (torch.tensor):   total strain rate
         """
-        return torch.empty(h.shape[0], 0, 1, device=h.device)
+        return torch.empty(h.shape[:-1] + (0, 1), device=h.device)
 
 
 class FAKinematicHardeningModel(KinematicHardeningModel):
@@ -622,7 +593,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         Returns:
           torch.tensor:       the kinematic hardening value
         """
-        return h[:, 0]
+        return h[..., 0]
 
     def dvalue(self, h):
         """
@@ -635,7 +606,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           torch.tensor:       the derivative of the kinematic hardening value
                               with respect to the internal variables
         """
-        return torch.ones((h.shape[0], 1), device=h.device)
+        return torch.ones(h.shape[:-1] + (1,), device=h.device)
 
     @property
     def nhist(self):
@@ -660,10 +631,10 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
           torch.tensor:       internal variable rate
         """
         return torch.unsqueeze(
-            self.C(T) * ep
-            - self.g(T) * h[:, 0] * torch.abs(ep)
-            - self.b(T) * torch.abs(h[:, 0]) ** (self.r(T) - 1.0) * h[:, 0],
-            1,
+            self.C(T) * torch.ones_like(h[...,0]) * ep
+            - self.g(T) * h[..., 0] * torch.abs(ep)
+            - self.b(T) * torch.abs(h[..., 0]) ** (self.r(T) - 1.0) * h[..., 0],
+            -1,
         )
 
     def dhistory_rate_dstress(self, s, h, t, ep, T, e):
@@ -698,12 +669,8 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        return (
-            torch.unsqueeze(-self.g(T)[..., None] * torch.abs(ep)[:, None], 1)
-            - (self.b(T) * self.r(T) * torch.abs(h)[:, 0] ** (self.r(T) - 1.0))[
-                :, None, None
-            ]
-        )
+        return (-self.g(T) * torch.ones_like(h[...,0]) * torch.abs(ep) - (
+                self.b(T) * self.r(T) * torch.abs(h[...,0]) ** (self.r(T) -1.0)))[...,None,None]
 
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
@@ -721,10 +688,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to the inelastic rate
         """
-        return torch.unsqueeze(
-            torch.unsqueeze(self.C(T) - self.g(T) * h[:, 0] * torch.sign(ep), 1),
-            1,
-        )
+        return (self.C(T) - self.g(T) * h[..., 0] * torch.sign(ep))[...,None,None]
 
 
 class ChabocheHardeningModel(KinematicHardeningModel):
@@ -1058,9 +1022,10 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         Returns:
           torch.tensor:       the kinematic hardening value
         """
-        v = torch.zeros(h.shape[0], device=h.device)
+        v = torch.zeros(h.shape[:-1], device=h.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            v += model.value(h[:, o : o + n])
+            v += model.value(h[..., o : o + n])
+
         return v
 
     def dvalue(self, h):
@@ -1074,9 +1039,9 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
           torch.tensor:       the derivative of the kinematic hardening value
                               with respect to the internal variables
         """
-        dv = torch.zeros((h.shape[0], self.nhist), device=h.device)
+        dv = torch.zeros(h.shape[:-1] + (self.nhist,), device=h.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dv[:, o : o + n] = model.dvalue(h[:, o : o + n])
+            dv[..., o : o + n] = model.dvalue(h[..., o : o + n])
 
         return dv
 
@@ -1104,7 +1069,7 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         hr = torch.zeros_like(h)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            hr[:, o : o + n] = model.history_rate(s, h[:, o : o + n], t, ep, T, e)
+            hr[..., o : o + n] = model.history_rate(s, h[..., o : o + n], t, ep, T, e)
 
         return hr
 
@@ -1125,8 +1090,8 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         dhr = torch.zeros_like(h)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dhr[:, o : o + n] = model.dhistory_rate_dstress(
-                s, h[:, o : o + n], t, ep, T, e
+            dhr[..., o : o + n] = model.dhistory_rate_dstress(
+                s, h[..., o : o + n], t, ep, T, e
             )
 
         return dhr
@@ -1146,10 +1111,10 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        dhr = torch.zeros(h.shape[0], self.nhist, self.nhist, device=s.device)
+        dhr = torch.zeros(h.shape[:-1] + (self.nhist, self.nhist), device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dhr[:, o : o + n, o : o + n] = model.dhistory_rate_dhistory(
-                s, h[:, o : o + n], t, ep, T, e
+            dhr[..., o : o + n, o : o + n] = model.dhistory_rate_dhistory(
+                s, h[..., o : o + n], t, ep, T, e
             )
 
         return dhr
@@ -1172,8 +1137,8 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         dhr = torch.zeros(h.shape + (1,), device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dhr[:, o : o + n] = model.dhistory_rate_derate(
-                s, h[:, o : o + n], t, ep, T, e
+            dhr[..., o : o + n, 0:1] = model.dhistory_rate_derate(
+                s, h[..., o : o + n], t, ep, T, e
             )
 
         return dhr
@@ -1196,8 +1161,8 @@ class SuperimposedKinematicHardening(KinematicHardeningModel):
         """
         dhr = torch.zeros(h.shape, device=s.device)
         for o, n, model in zip(self.offsets, self.nhist_per, self.models):
-            dhr[:, o : o + n] = model.dhistory_rate_dtotalrate(
-                s, h[:, o : o + n], t, ep, T, e
+            dhr[..., o : o + n] = model.dhistory_rate_dtotalrate(
+                s, h[..., o : o + n], t, ep, T, e
             )
 
         return dhr
