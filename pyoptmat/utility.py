@@ -253,11 +253,6 @@ class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
         Returns:
           torch.tensor:       batched values at :code:`t`
         """
-        #print("HERE")
-        #print(self.times.shape)
-        #print(t.shape)
-        #print("DONE")
-
         tp = t.t() # Transpose so the common dimension is first
         tgt = self.values.shape + tp.shape[1:]
         nexp = len(tgt) - 2 # Values always has dim 2...
