@@ -402,6 +402,32 @@ class TestChabocheKinematicHardening(unittest.TestCase, HardeningBase):
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
+class TestChabocheKinematicHardeningMultiBatch(unittest.TestCase, HardeningBase):
+    def setUp(self):
+        self.C = torch.tensor([100.0, 1000, 1500])
+        self.g = torch.tensor([1.2, 100, 50])
+        self.model = hardening.ChabocheHardeningModel(CP(self.C), CP(self.g))
+
+        self.nbatch = 10
+        self.bdim = 2
+
+        self.s = torch.linspace(90, 100, self.nbatch)
+        self.h = torch.reshape(
+            torch.linspace(50, 110, self.nbatch * len(self.C)),
+            (self.nbatch, len(self.C)),
+        )
+        self.t = torch.ones(self.nbatch)
+        self.ep = torch.linspace(0.1, 0.2, self.nbatch)
+        self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
+
+        self.mbatch = 3
+        self.s = self.s.expand((self.mbatch,)+self.s.shape)
+        self.h = self.h.expand((self.mbatch,)+self.h.shape)
+        self.t = self.t.expand((self.mbatch,)+self.t.shape)
+        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
+        self.T = self.T.expand((self.mbatch,)+self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
 
 class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -425,3 +451,34 @@ class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
+
+class TestChabocheKinematicHardeningRecoveryMultiBatch(unittest.TestCase, HardeningBase):
+    def setUp(self):
+        self.C = torch.tensor([100.0, 1000, 1500])
+        self.g = torch.tensor([1.2, 100, 50])
+        self.b = torch.tensor([5e-4, 4e-4, 2e-4])
+        self.r = torch.tensor([3.0, 3.2, 3.5])
+        self.model = hardening.ChabocheHardeningModelRecovery(
+            CP(self.C), CP(self.g), CP(self.b), CP(self.r)
+        )
+
+        self.nbatch = 10
+        self.bdim = 2
+
+        self.s = torch.linspace(90, 100, self.nbatch)
+        self.h = torch.reshape(
+            torch.linspace(50, 110, self.nbatch * len(self.C)),
+            (self.nbatch, len(self.C)),
+        )
+        self.t = torch.ones(self.nbatch)
+        self.ep = torch.linspace(0.1, 0.2, self.nbatch)
+        self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(0.01, 0.02, self.nbatch)
+
+        self.mbatch = 3
+        self.s = self.s.expand((self.mbatch,)+self.s.shape)
+        self.h = self.h.expand((self.mbatch,)+self.h.shape)
+        self.t = self.t.expand((self.mbatch,)+self.t.shape)
+        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
+        self.T = self.T.expand((self.mbatch,)+self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
