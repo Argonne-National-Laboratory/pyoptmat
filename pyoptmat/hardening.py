@@ -734,7 +734,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
         Returns:
           torch.tensor:       the kinematic hardening value
         """
-        return torch.sum(h, 1)
+        return torch.sum(h, -1)
 
     def dvalue(self, h):
         """
@@ -747,7 +747,7 @@ class ChabocheHardeningModel(KinematicHardeningModel):
           torch.tensor:       the derivative of the kinematic hardening value
                               with respect to the internal variables
         """
-        return torch.ones((h.shape[0], self.nback), device=h.device)
+        return torch.ones(h.shape[:-1] + (self.nback,), device=h.device)
 
     @property
     def nhist(self):
@@ -772,8 +772,8 @@ class ChabocheHardeningModel(KinematicHardeningModel):
           torch.tensor:       internal variable rate
         """
         return (
-            self.C(T)[None, ...] * ep[:, None]
-            - self.g(T)[None, ...] * h * torch.abs(ep)[:, None]
+            self.C(T)[None, ...] * ep[..., None]
+            - self.g(T)[None, ...] * h * torch.abs(ep)[..., None]
         ).reshape(h.shape)
 
     def dhistory_rate_dstress(self, s, h, t, ep, T, e):
@@ -808,8 +808,8 @@ class ChabocheHardeningModel(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        return torch.diag_embed(-self.g(T)[None, ...] * torch.abs(ep)[:, None]).reshape(
-            h.shape + h.shape[1:]
+        return torch.diag_embed(-self.g(T)[None, ...] * torch.abs(ep)[..., None]).reshape(
+            h.shape + (self.nback,)
         )
 
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
@@ -829,8 +829,8 @@ class ChabocheHardeningModel(KinematicHardeningModel):
           torch.tensor:       derivative with respect to the inelastic rate
         """
         return torch.unsqueeze(
-            self.C(T)[None, ...] * torch.ones_like(ep)[:, None]
-            - self.g(T)[None, :] * h * torch.sign(ep)[:, None],
+            self.C(T)[None, ...] * torch.ones_like(ep)[..., None]
+            - self.g(T)[None, ...] * h * torch.sign(ep)[..., None],
             -1,
         ).reshape(h.shape + (1,))
 
@@ -886,7 +886,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
         Returns:
           torch.tensor:       the kinematic hardening value
         """
-        return torch.sum(h, 1)
+        return torch.sum(h, -1)
 
     def dvalue(self, h):
         """
@@ -899,7 +899,7 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
           torch.tensor:       the derivative of the kinematic hardening value
                               with respect to the internal variables
         """
-        return torch.ones((h.shape[0], self.nback), device=h.device)
+        return torch.ones(h.shape[:-1] + (self.nback,), device=h.device) 
 
     @property
     def nhist(self):
@@ -924,8 +924,8 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
           torch.tensor:       internal variable rate
         """
         return (
-            self.C(T)[None, ...] * ep[:, None]
-            - self.g(T)[None, ...] * h * torch.abs(ep)[:, None]
+            self.C(T)[None, ...] * ep[..., None]
+            - self.g(T)[None, ...] * h * torch.abs(ep)[..., None]
             - self.b(T)[None, ...] * torch.abs(h) ** (self.r(T)[None, ...] - 1.0) * h
         ).reshape(h.shape)
 
@@ -961,14 +961,14 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        return torch.diag_embed(-self.g(T)[None, ...] * torch.abs(ep)[:, None]).reshape(
-            h.shape + h.shape[1:]
+        return torch.diag_embed(-self.g(T)[None, ...] * torch.abs(ep)[..., None]).reshape(
+            h.shape + (self.nback,)
         ) + torch.diag_embed(
             -self.b(T)[None, ...]
             * self.r(T)[None, ...]
             * torch.abs(h) ** (self.r(T)[None, ...] - 1.0)
         ).reshape(
-            h.shape + h.shape[1:]
+            h.shape + (self.nback,)
         )
 
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
@@ -988,8 +988,8 @@ class ChabocheHardeningModelRecovery(KinematicHardeningModel):
           torch.tensor:       derivative with respect to the inelastic rate
         """
         return torch.unsqueeze(
-            self.C(T)[None, ...] * torch.ones_like(ep)[:, None]
-            - self.g(T)[None, :] * h * torch.sign(ep)[:, None],
+            self.C(T)[None, ...] * torch.ones_like(ep)[..., None]
+            - self.g(T)[None, ...] * h * torch.sign(ep)[..., None],
             -1,
         ).reshape(h.shape + (1,))
 
