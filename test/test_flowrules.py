@@ -13,9 +13,9 @@ torch.set_default_dtype(torch.float64)
 class CommonFlowRule:
     def test_flow_rate(self):
         exact = self.model.flow_rate(self.s, self.h, self.t, self.T, self.erate)[1]
-        numer = utility.differentiate(
+        numer = utility.batch_differentiate(
             lambda x: self.model.flow_rate(x, self.h, self.t, self.T, self.erate)[0],
-            self.s,
+            self.s, nbatch_dim = self.bdim
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
@@ -27,9 +27,9 @@ class CommonFlowRule:
         test, exact = self.model.history_rate(
             self.s, self.h, self.t, self.T, self.erate
         )
-        numer = utility.new_differentiate(
+        numer = utility.batch_differentiate(
             lambda x: self.model.history_rate(self.s, x, self.t, self.T, self.erate)[0],
-            self.h,
+            self.h, nbatch_dim = self.bdim
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
@@ -39,10 +39,10 @@ class CommonFlowRule:
             return
 
         exact = self.model.dflow_dhist(self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.new_differentiate(
+        numer = utility.batch_differentiate(
             lambda x: self.model.flow_rate(self.s, x, self.t, self.T, self.erate)[0],
-            self.h,
-        )
+            self.h, nbatch_dim = self.bdim
+        ).unsqueeze(1)
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
 
@@ -51,18 +51,18 @@ class CommonFlowRule:
             return
 
         exact = self.model.dhist_dstress(self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.new_differentiate(
+        numer = utility.batch_differentiate(
             lambda x: self.model.history_rate(x, self.h, self.t, self.T, self.erate)[0],
-            self.s,
-        )[..., 0]
+            self.s, nbatch_dim = self.bdim
+        )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
 
     def test_flow_erate(self):
         exact = self.model.dflow_derate(self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.new_differentiate(
+        numer = utility.batch_differentiate(
             lambda x: self.model.flow_rate(self.s, self.h, self.t, self.T, x)[0],
-            self.erate,
+            self.erate, nbatch_dim = self.bdim
         )
 
         self.assertTrue(np.allclose(exact, torch.flatten(numer), rtol=1.0e-2))
@@ -72,16 +72,18 @@ class CommonFlowRule:
             return
 
         exact = self.model.dhist_derate(self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.new_differentiate(
+        numer = utility.batch_differentiate(
             lambda x: self.model.history_rate(self.s, self.h, self.t, self.T, x)[0],
-            self.erate,
-        )[..., 0]
+            self.erate, nbatch_dim = self.bdim
+        )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-2, atol = 1e-6))
 
 
 class TestPerfectViscoplasticity(unittest.TestCase, CommonFlowRule):
     def setUp(self):
+        self.bdim = 1
+
         self.n = torch.tensor(5.0)
         self.eta = torch.tensor(100.0)
 
@@ -99,6 +101,8 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonFlowRule):
 
 class TestWrappedRIIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
     def setUp(self):
+        self.bdim = 1
+
         self.n = torch.tensor(5.2)
         self.eta = torch.tensor(110.0)
         self.s0 = torch.tensor(11.0)
@@ -155,6 +159,7 @@ class TestWrappedRIIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
 class TestKocksMeckingRegimeFlowRule(unittest.TestCase, CommonFlowRule):
     def setUp(self):
         self.nbatch = 10
+        self.bdim = 1
 
         self.n1 = torch.tensor(5.2)
         self.eta1 = torch.tensor(110.0)
@@ -221,6 +226,7 @@ class TestKocksMeckingRegimeFlowRule(unittest.TestCase, CommonFlowRule):
 class TestSoftKocksMeckingRegimeFlowRule(unittest.TestCase, CommonFlowRule):
     def setUp(self):
         self.nbatch = 10
+        self.bdim = 1
 
         self.n1 = torch.tensor(5.2)
         self.eta1 = torch.tensor(110.0)
@@ -288,6 +294,7 @@ class TestSoftKocksMeckingRegimeFlowRule(unittest.TestCase, CommonFlowRule):
 class TestSoftKocksMeckingRegimeFlowRuleComplex(unittest.TestCase, CommonFlowRule):
     def setUp(self):
         self.nbatch = 10
+        self.bdim = 1
 
         self.n1 = torch.tensor(5.2)
         self.eta1 = torch.tensor(110.0)
@@ -358,6 +365,7 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonFlowRule):
         self.s0 = torch.tensor(11.0)
 
         self.nbatch = 10
+        self.bdim = 1
 
         self.R = torch.tensor(101.0)
         self.d = torch.tensor(1.3)
@@ -419,6 +427,7 @@ class TestSuperimposedFlowRate(unittest.TestCase, CommonFlowRule):
         self.s01 = torch.tensor(11.0)
 
         self.nbatch = 10
+        self.bdim = 1
 
         self.R1 = torch.tensor(101.0)
         self.d1 = torch.tensor(1.3)
@@ -477,6 +486,7 @@ class TestIsoKinChabocheViscoplasticity(unittest.TestCase, CommonFlowRule):
         self.s0 = torch.tensor(11.0)
 
         self.nbatch = 10
+        self.bdim = 1
 
         self.R = torch.tensor(101.0)
         self.d = torch.tensor(1.3)
