@@ -58,7 +58,7 @@ class FlowRule(nn.Module):
           torch.tensor:       derivative of flow rate with respect to the
                               internal variables
         """
-        return torch.zeros(s.shape + (1,) + h.shape[1:], device=h.device)
+        return torch.zeros(s.shape[:-1] + (1,) + h.shape[-1:], device=h.device)
 
     def dflow_derate(self, s, h, t, T, e):
         """
@@ -78,7 +78,7 @@ class FlowRule(nn.Module):
           torch.tensor:       derivative of flow rate with respect to the
                               internal variables
         """
-        return torch.zeros(s.shape + e.shape[1:], device=h.device)
+        return torch.zeros(s.shape + e.shape[-1:], device=h.device)
 
     def dhist_dstress(self, s, h, t, T, e):
         """
@@ -97,7 +97,7 @@ class FlowRule(nn.Module):
         Returns:
           torch.tensor:       derivative of flow rate with respect to the stress
         """
-        return torch.zeros(h.shape + s.shape[1:], device=h.device)
+        return torch.zeros(h.shape + s.shape[-1:], device=h.device)
 
     def dhist_derate(self, s, h, t, T, e):
         """
@@ -116,7 +116,7 @@ class FlowRule(nn.Module):
         Returns:
           torch.tensor:       derivative of flow rate with respect to the strain rate
         """
-        return torch.zeros(h.shape + e.shape[1:], device=h.device)
+        return torch.zeros(h.shape + e.shape[-1:], device=h.device)
 
 
 class KocksMeckingRegimeFlowRule(FlowRule):
