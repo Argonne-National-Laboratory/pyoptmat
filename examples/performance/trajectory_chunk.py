@@ -41,8 +41,17 @@ import sys
 sys.path.append("../..")
 from pyoptmat import ode
 
+import time as ptime
+import statistics
+
+if torch.cuda.is_available():
+    dev = "cuda:0"
+else:
+    dev = "cpu"
+device = torch.device(dev)
+
 # Gravity
-g = torch.tensor(0.1)
+g = torch.tensor(0.1, device = device)
 
 # Actual location and scale of the speed and launch angle
 # True posteriors are normal distributions
@@ -88,18 +97,19 @@ def model_act(times):
 
 
 class Integrator(pyro.nn.PyroModule):
-    def __init__(self, eqn, y0, extra_params=[]):
+    def __init__(self, eqn, y0, extra_params=[], block_size = 1):
         super().__init__()
         self.eqn = eqn
         self.y0 = y0
         self.extra_params = extra_params
+        self.block_size = block_size
 
     def forward(self, times):
         return ode.odeint_adjoint(
             self.eqn,
             self.y0,
             times,
-            block_size = 10,
+            block_size = self.block_size,
             extra_params=self.extra_params,
         )
 
@@ -111,14 +121,14 @@ class ODE(pyro.nn.PyroModule):
         self.a = a
 
     def forward(self, t, y):
-        f = torch.empty(y.shape)
+        f = torch.empty(y.shape, device = device)
 
         # Acceleration
         f[..., 0] = self.v * torch.cos(self.a)
         f[..., 1] = self.v * torch.sin(self.a) - g * t
 
         # Nice ODE lol
-        df = torch.zeros(y.shape + y.shape[-1:])
+        df = torch.zeros(y.shape + y.shape[-1:], device = device)
 
         return f, df
 
@@ -173,7 +183,7 @@ class Model(pyro.nn.PyroModule):
         self.extra_param_names = []
 
     def forward(self, times, actual=None):
-        y0 = torch.zeros((times.shape[1],) + (2,))
+        y0 = torch.zeros((times.shape[1],) + (2,), device = device)
 
         curr = self.sample_top()
         eps = self.eps
@@ -199,11 +209,11 @@ class Model(pyro.nn.PyroModule):
 
             for name, loc, scale in zip(self.names, self.loc_priors, self.scale_priors):
                 loc_param = pyro.param(
-                    name + self.loc_suffix + self.param_suffix, torch.tensor(loc)
+                    name + self.loc_suffix + self.param_suffix, torch.tensor(loc, device = device)
                 )
                 scale_param = pyro.param(
                     name + self.scale_suffix + self.param_suffix,
-                    torch.tensor(scale),
+                    torch.tensor(scale, device = device),
                     constraint=constraints.positive,
                 )
 
@@ -216,7 +226,7 @@ class Model(pyro.nn.PyroModule):
 
             eps_param = pyro.param(
                 "eps" + self.param_suffix,
-                torch.tensor(self.eps_prior),
+                torch.tensor(self.eps_prior, device = device),
                 constraint=constraints.positive,
             )
             eps_sample = pyro.sample("eps", dist.Delta(eps_param))
@@ -231,7 +241,7 @@ class Model(pyro.nn.PyroModule):
                 ):
                     ll_param = pyro.param(
                         name + self.param_suffix,
-                        torch.ones(times.shape[1]) * torch.tensor(loc_prior),
+                        torch.ones(times.shape[1], device = device) * torch.tensor(loc_prior, device = device),
                     )
                     pyro.sample(name, dist.Delta(ll_param))
 
@@ -249,105 +259,67 @@ if __name__ == "__main__":
 
     # Maximum and number of time steps
     tmax = 20.0
-    tnum = 100
+    tnum = 1000
 
-    time = torch.linspace(0, tmax, tnum)
-    times = torch.empty(tnum, nsamples)
-    data = torch.empty(tnum, nsamples, 2)
+    time = torch.linspace(0, tmax, tnum, device = device)
+    times = torch.empty(tnum, nsamples, device = device)
+    data = torch.empty(tnum, nsamples, 2, device = device)
 
     with torch.no_grad():
         for i in range(nsamples):
             times[:, i] = time
             data[:, i] = model_act(time)
+    
+    blocks = [1, 2, 5,10,15,20,25,50,75,100,200,500]
+    ntrials = 5
+    walltimes = []
+    
+    for bs in blocks:
+    
+        wall_i = []
 
-    plt.figure()
-    plt.plot(data[:, :, 0], data[:, :, 1])
-    plt.xlabel("x-coordinate")
-    plt.ylabel("y-coordinate")
-    plt.title("Trajectory data")
-    plt.show()
+        for i in range(ntrials):
+            print("Block size %i, repeat %i" % (bs, i))
+            pyro.clear_param_store()
+            
+            def maker(v, a, **kwargs):
+                return Integrator(ODE(v, a), torch.zeros(nsamples, 2, device = device), block_size = bs, **kwargs)
 
-    pyro.clear_param_store()
+            # Setup the model
+            model = Model(
+                maker, ["v", "a"], [v_loc_prior, a_loc_prior], [v_scale_prior, a_scale_prior]
+            )
 
-    def maker(v, a, **kwargs):
-        return Integrator(ODE(v, a), torch.zeros(nsamples, 2), **kwargs)
+            # Optimization hyperparameters: learning rate, number of iterations, and
+            # number of samples for calculating the ELBO
+            lr = 5.0e-3
+            niter = 250
+            num_samples = 1
 
-    # Setup the model
-    model = Model(
-        maker, ["v", "a"], [v_loc_prior, a_loc_prior], [v_scale_prior, a_scale_prior]
-    )
+            guide = model.make_guide()
 
-    # Optimization hyperparameters: learning rate, number of iterations, and
-    # number of samples for calculating the ELBO
-    lr = 5.0e-3
-    niter = 250
-    num_samples = 1
+            # Init guide
+            guide(times)
 
-    guide = model.make_guide()
+            optimizer = optim.ClippedAdam({"lr": lr})
+            l = Trace_ELBO(num_particles=num_samples)
 
-    # Init guide
-    guide(times)
+            svi = SVI(model, guide, optimizer, loss=l)
+            
+            wt1 = ptime.time()
+            t = tqdm(range(niter))
+            loss_hist = []
+            for i in t:
+                loss = svi.step(times, data)
+                loss_hist.append(loss)
+                t.set_description("Loss: %3.2e" % loss)
+            wt2 = ptime.time()
 
-    optimizer = optim.ClippedAdam({"lr": lr})
-    l = Trace_ELBO(num_particles=num_samples)
+            wall_i.append(wt2 - wt1)
 
-    svi = SVI(model, guide, optimizer, loss=l)
-
-    t = tqdm(range(niter))
-    loss_hist = []
-    for i in t:
-        loss = svi.step(times, data)
-        loss_hist.append(loss)
-        t.set_description("Loss: %3.2e" % loss)
-
-    print("Inferred distributions:")
-    print(
-        "Velocity mean: %4.3f, actual %4.3f"
-        % (pyro.param("v_loc_param").data, v_loc_act)
-    )
-    print(
-        "Velocity scale: %4.3f, actual %4.3f"
-        % (pyro.param("v_scale_param").data, v_scale_act)
-    )
-    print(
-        "Angle mean: %4.3f, actual %4.3f" % (pyro.param("a_loc_param").data, a_loc_act)
-    )
-    print(
-        "Angle scale: %4.3f, actual %4.3f"
-        % (pyro.param("a_scale_param").data, a_scale_act)
-    )
-    print("White noise: %4.3f, actual %4.3f" % (pyro.param("eps_param").data, eps_act))
-
-    plt.figure()
-    plt.plot(loss_hist)
-    plt.xlabel("Iteration")
-    plt.ylabel("Loss")
-    plt.title("Convergence diagram")
-    plt.show()
-
-    print("")
-
-    nsample = 1
-    predict = Predictive(model, guide=guide, num_samples=nsample, return_sites=("obs",))
-    with torch.no_grad():
-        samples = predict(times)["obs"]
-        min_x, _ = torch.min(samples[0, :, :, 0], 1)
-        max_x, _ = torch.max(samples[0, :, :, 0], 1)
-        min_y, _ = torch.min(samples[0, :, :, 1], 1)
-        max_y, _ = torch.max(samples[0, :, :, 1], 1)
-
-    plt.figure()
-    plt.plot(times, data[:, :, 1], "k-", lw=0.5)
-    plt.fill_between(time, min_y, max_y, alpha=0.75)
-    plt.xlabel("Time")
-    plt.ylabel("y coordinate")
-    plt.title("Height versus time")
-    plt.show()
-
-    plt.figure()
-    plt.plot(times, data[:, :, 0], "k-", lw=0.5)
-    plt.fill_between(time, min_x, max_x, alpha=0.75)
-    plt.xlabel("Time")
-    plt.ylabel("x coordinate")
-    plt.title("Distance versus time")
-    plt.show()
+        walltimes.append(statistics.mean(wall_i))
+    
+    
+    import numpy as np 
+    data = np.vstack((blocks, walltimes))
+    np.savetxt("results.txt", data)
