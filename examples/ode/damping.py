@@ -20,7 +20,13 @@ This example
 The integration will use `n_time` points in the integration.
 """
 
+from functools import reduce
+import itertools
+
 import torch
+from torch import nn
+from functorch import jacrev, vmap
+
 import tqdm
 import matplotlib.pyplot as plt
 
@@ -34,8 +40,7 @@ else:
     dev = "cpu"
 device = torch.device(dev)
 
-# I'm assuming single precision will be fine for this, but here is 
-# where you would tell it to use doubles
+# I'm assuming single precision will be fine for this but for now use doubles
 torch.set_default_tensor_type(torch.DoubleTensor)
 
 class MassDamperSpring(torch.nn.Module):
@@ -52,13 +57,16 @@ class MassDamperSpring(torch.nn.Module):
         M (torch.tensor): (n_chain,) vector of masses
         force (function): gives f(t)
     """
-    def __init__(self, K, C, M, force):
+    def __init__(self, K, C, M, force, C_scale = 1.0e-4, M_scale = 1.0e-5):
         super().__init__()
 
         self.K = torch.nn.Parameter(K)
         self.C = torch.nn.Parameter(C)
         self.M = torch.nn.Parameter(M)
         self.force = force
+
+        self.C_scale = C_scale
+        self.M_scale = M_scale
         
         self.half_size = K.shape[0]
         self.size = 2 * self.half_size
@@ -83,27 +91,43 @@ class MassDamperSpring(torch.nn.Module):
         v = y[...,self.half_size:]
         
         # Differences
-        du = torch.zeros_like(u)
-        du[...,:-1] = torch.diff(u, dim = -1)
-        du[...,-1] = -u[...,-1]
-        dv = torch.zeros_like(v)
-        dv[...,:-1] = torch.diff(v, dim = -1)
-        dv[...,-1] = -v[...,-1]
+        du = torch.diff(u, dim = -1)
+        dv = torch.diff(v, dim = -1)
+
+        # Scaled properties
+        M = self.M * self.M_scale
+        C = self.C * self.C_scale
         
         # Rate
+        # Velocity
         ydot[...,:self.half_size] = v
-        ydot[...,self.half_size] = (self.force(t) - self.C[...,0] * dv[...,0] - self.K[...,0] * du[...,0]) / self.M[...,0]
-        ydot[...,self.half_size+1:] = (
-                - self.C[...,1:] * dv[...,1:]
-                - self.K[...,1:] * du[...,1:]
-                + self.C[...,:-1] * dv[...,:-1]
-                + self.K[...,:-1] * du[...,:-1]
-                ) / self.M[...,1:]
+        
+        # Springs
+        ydot[...,self.half_size:-1] += self.K[...,:-1] * du / M[...,:-1]
+        ydot[...,self.half_size+1:] += -self.K[...,:-1] * du / M[...,1:]
+        ydot[...,-1] += -self.K[...,-1] * u[...,-1] / M[...,-1]
+        ydot[...,self.half_size] += self.force(t) / M[...,0]
+
+        # Dampers
+        ydot[...,self.half_size:-1] += C[...,:-1] * dv / M[...,:-1]
+        ydot[...,self.half_size+1:] += -C[...,:-1] * dv / M[...,1:]
+        ydot[...,-1] += -C[...,-1] * v[...,-1] / M[...,-1]
 
         # Derivative
-        J[...,:self.half_size,self.half_size:] = torch.eye(self.half_size, device = t.device)
-        J[...,self.half_size:,:self.half_size] = torch.diag_embed(self.K / self.M) - torch.diag_embed(self.K[:-1] / self.M[:-1], offset = 1)
-        J[...,self.half_size:,self.half_size:] = torch.diag_embed(self.C / self.M) - torch.diag_embed(self.C[:-1] / self.M[:-1], offset = 1)
+        # Velocity 
+        J[...,:self.half_size,self.half_size:] += torch.eye(self.half_size, device = t.device)
+
+        # Springs
+        J[...,self.half_size:,:self.half_size] += torch.diag_embed(-self.K / M)
+        J[...,self.half_size+1:,1:self.half_size] += torch.diag_embed(-self.K[...,:-1] / M[...,1:])
+        J[...,self.half_size:,:self.half_size] += torch.diag_embed(self.K[...,:-1] / M[...,:-1], offset = 1)
+        J[...,self.half_size:,:self.half_size] += torch.diag_embed(self.K[...,:-1] / M[...,1:], offset = -1)
+
+        # Dampers
+        J[...,self.half_size:,self.half_size:] += torch.diag_embed(-C / M)
+        J[...,self.half_size+1:,self.half_size+1:] += torch.diag_embed(-C[...,:-1] / M[...,1:])
+        J[...,self.half_size:,self.half_size:] += torch.diag_embed(C[...,:-1] / M[...,:-1], offset = 1)
+        J[...,self.half_size:,self.half_size:] += torch.diag_embed(C[...,:-1] / M[...,1:], offset = -1)
 
         return ydot, J
 
@@ -117,9 +141,35 @@ class MassDamperSpring(torch.nn.Module):
 class NeuralODE(torch.nn.Module):
     """
     Neural ODE model:
-    - input and output of size 1 + n_hidden
-    - n_layers linear layers of size n_inter
+    - input of size 2 + n_hidden
+        - extra inputs are the current end displacement and the current force
+    - n_layers linear layers of size 2 + n_inter
+    - output of size 1 + n_hidden
+        - extra output is the end displacement rate
     """
+    def __init__(self, force, n_hidden, n_layers, n_inter):
+        super().__init__()
+
+        self.force = force
+        self.n_in = n_hidden + 2 
+        self.n_out = n_hidden + 1
+        self.n_inter = n_inter + 1
+       
+        mods = [nn.Linear(self.n_in, self.n_inter), nn.ReLU()
+                ] + list(itertools.chain(*[[nn.Linear(self.n_inter, self.n_inter), nn.ReLU()] for i in range(n_layers)])
+                        ) + [nn.Linear(self.n_inter, self.n_out)]
+
+        self.model = nn.Sequential(*mods)
+
+    def forward(self, t, y):
+        inp = torch.empty(y.shape[:-1] + (self.n_in,), device = t.device)
+        inp[...,:-1] = y
+        inp[...,-1] = self.force(t)
+
+        return self.model(inp), vmap(vmap(jacrev(self.model)))(inp)[...,:-1]
+
+    def initial_condition(self, nsamples):
+        return torch.zeros(nsamples, self.n_out, device = device)
 
 def random_walk(time, mean, scale, mag):
     """
@@ -135,13 +185,13 @@ def random_walk(time, mean, scale, mag):
 
 if __name__ == "__main__":
     # Basic parameters
-    n_chain = 4     # Number of spring-dashpot-mass elements
-    n_samples = 1   # Number of random force samples
+    n_chain = 5     # Number of spring-dashpot-mass elements
+    n_samples = 5   # Number of random force samples
     n_time = 500    # Number of time steps
     integration_method = 'backward-euler'
 
     # Time chunking -- best value may vary on your system
-    n_chunk = 1
+    n_chunk = 100
 
     # Ending time
     t_end = 1.0
@@ -149,7 +199,7 @@ if __name__ == "__main__":
     # Mean and standard deviation for random force "velocity"
     force_mean = torch.tensor(0.0, device = device)
     force_std = torch.tensor(1.0, device = device)
-    force_mag = torch.tensor(10.0, device = device)
+    force_mag = torch.tensor(1.0, device = device)
 
     # True values of the mass, damping, and stiffness
     K = torch.rand(n_chain, device = device)
@@ -175,19 +225,6 @@ if __name__ == "__main__":
     # Setup the ground truth model
     model = MassDamperSpring(K, C, M, force_continuous)
 
-    # Do a quick finite difference check for the Jacobian
-    test_state = torch.rand(n_chunk, n_samples, model.size, device = device)
-    _, Jtest1 = model(time[0:n_chunk], test_state)
-    Jtest2 = utility.batch_differentiate(lambda x: model(time[0:n_chunk], x)[0], test_state,
-            nbatch_dim = 2)
-
-    print(Jtest1[0,0])
-    print(Jtest2[0,0])
-
-    print(torch.max(Jtest1-Jtest2))
-
-    sys.exit()
-
     # Generate the initial condition
     y0 = model.initial_condition(n_samples)
 
@@ -202,9 +239,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(time.cpu().numpy(), observable.cpu().numpy())
     plt.show()
-
-    sys.exit()
-
+    
     # 2. Infer with the actual model
     ode_model = MassDamperSpring(torch.rand(n_chain, device = device),
             torch.rand(n_chain, device = device),
@@ -251,4 +286,58 @@ if __name__ == "__main__":
     plt.show()
 
     # 2. Infer with a neural ODE
+    # Setup the model
+    n_hidden = n_chain # I don't know, seems reasonable
+    n_layers = 3
+    n_inter = n_chain*4 # Same thing, seems reasonable
 
+    nn_model = NeuralODE(force_continuous, n_hidden, n_layers, n_inter).to(device) 
+    y0 = nn_model.initial_condition(n_samples)
+
+    # Training parameters
+    niter = 1000
+    lr = 1.0e-3
+    loss = torch.nn.MSELoss(reduction = "sum")
+    
+    # Optimization setup
+    optim = torch.optim.Adam(nn_model.parameters(), lr)
+    def closure():
+        optim.zero_grad()
+        pred = ode.odeint_adjoint(nn_model, y0, time, method = integration_method, block_size = n_chunk)
+        obs = pred[...,0]
+        lossv = loss(obs, observable)
+        lossv.backward()
+        return lossv
+
+    # Optimization loop
+    t = tqdm.tqdm(range(niter), total = niter, desc = "Loss:     ")
+    loss_history = []
+    for i in t:
+        closs = optim.step(closure)
+        loss_history.append(closs.detach().cpu().numpy())
+        t.set_description("Loss: %3.2e" % loss_history[-1])
+
+    # Plot the loss history
+    plt.figure()
+    plt.plot(loss_history)
+    plt.show()
+
+    # Make the final predictions
+    with torch.no_grad():
+        nn_preds = ode.odeint(nn_model, y0, time, method = integration_method, block_size = n_chunk)
+        nn_obs = nn_preds[...,0]
+
+    # Make a plot
+    plt.figure()
+    for i in range(n_samples):
+        l, = plt.plot(time.cpu().numpy()[:,i], observable.cpu().numpy()[:,i])
+        plt.plot(time.cpu().numpy()[:,i], nn_obs.cpu().numpy()[:,i], ls = '--', color = l.get_color())
+    plt.show()
+    
+    # Compare all three
+    plt.figure()
+    for i in range(n_samples):
+        l, = plt.plot(time.cpu().numpy()[:,i], observable.cpu().numpy()[:,i])
+        plt.plot(time.cpu().numpy()[:,i], ode_obs.cpu().numpy()[:,i], ls = '--', color = l.get_color())
+        plt.plot(time.cpu().numpy()[:,i], nn_obs.cpu().numpy()[:,i], ls = ':', color = l.get_color())
+    plt.show()
