@@ -15,7 +15,8 @@ class DamageBase:
         exact = self.model.damage_rate(self.s, self.d, self.t, self.T, self.erate)[1]
         numer = utility.batch_differentiate(
             lambda x: self.model.damage_rate(self.s, x, self.t, self.T, self.erate)[0],
-            self.d, nbatch_dim = self.bdim
+            self.d,
+            nbatch_dim=self.bdim,
         )
         self.assertTrue(np.allclose(exact, numer))
 
@@ -23,7 +24,8 @@ class DamageBase:
         exact = self.model.d_damage_rate_d_s(self.s, self.d, self.t, self.T, self.erate)
         numer = utility.batch_differentiate(
             lambda x: self.model.damage_rate(x, self.d, self.t, self.T, self.erate)[0],
-            self.s, nbatch_dim = self.bdim
+            self.s,
+            nbatch_dim=self.bdim,
         )
         self.assertTrue(np.allclose(exact, numer))
 
@@ -31,13 +33,16 @@ class DamageBase:
         exact = self.model.d_damage_rate_d_e(self.s, self.d, self.t, self.T, self.erate)
         numer = utility.batch_differentiate(
             lambda x: self.model.damage_rate(self.s, self.d, self.t, self.T, x)[0],
-            self.erate, nbatch_dim = self.bdim
+            self.erate,
+            nbatch_dim=self.bdim,
         )
         self.assertTrue(np.allclose(exact, numer))
+
 
 def batch_transform(tensor, extra_batch):
     os = tensor.shape
     return tensor.unsqueeze(0).expand((extra_batch,) + os)
+
 
 class TestNoDamage(unittest.TestCase, DamageBase):
     def setUp(self):
@@ -60,6 +65,7 @@ class TestNoDamage(unittest.TestCase, DamageBase):
             )
         )
 
+
 class TestNoDamageArbitraryBatch(unittest.TestCase, DamageBase):
     def setUp(self):
         self.model = damage.NoDamage()
@@ -69,10 +75,14 @@ class TestNoDamageArbitraryBatch(unittest.TestCase, DamageBase):
         self.bdim = 2
 
         self.s = batch_transform(torch.linspace(90, 100, self.nbatch), self.extra_batch)
-        self.d = batch_transform(torch.linspace(0.1, 0.5, self.nbatch), self.extra_batch)
+        self.d = batch_transform(
+            torch.linspace(0.1, 0.5, self.nbatch), self.extra_batch
+        )
         self.t = batch_transform(torch.ones(self.nbatch), self.extra_batch)
         self.T = batch_transform(torch.zeros_like(self.t), self.extra_batch)
-        self.erate = batch_transform(torch.linspace(1e-2, 1e-3, self.nbatch), self.extra_batch)
+        self.erate = batch_transform(
+            torch.linspace(1e-2, 1e-3, self.nbatch), self.extra_batch
+        )
 
     def test_damage_rate(self):
         self.assertTrue(
@@ -81,6 +91,7 @@ class TestNoDamageArbitraryBatch(unittest.TestCase, DamageBase):
                 torch.zeros_like(self.s),
             )
         )
+
 
 class TestHLDamage(unittest.TestCase, DamageBase):
     def setUp(self):
@@ -106,6 +117,7 @@ class TestHLDamage(unittest.TestCase, DamageBase):
             )
         )
 
+
 class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
     def setUp(self):
         self.A = 3000.0
@@ -118,10 +130,14 @@ class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
         self.bdim = 2
 
         self.s = batch_transform(torch.linspace(90, 100, self.nbatch), self.extra_batch)
-        self.d = batch_transform(torch.linspace(0.1, 0.5, self.nbatch), self.extra_batch)
+        self.d = batch_transform(
+            torch.linspace(0.1, 0.5, self.nbatch), self.extra_batch
+        )
         self.t = batch_transform(torch.ones(self.nbatch), self.extra_batch)
         self.T = batch_transform(torch.zeros_like(self.t), self.extra_batch)
-        self.erate = batch_transform(torch.linspace(1e-2, 1e-3, self.nbatch), self.extra_batch)
+        self.erate = batch_transform(
+            torch.linspace(1e-2, 1e-3, self.nbatch), self.extra_batch
+        )
 
     def test_damage_rate(self):
         self.assertTrue(

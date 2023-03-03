@@ -58,6 +58,7 @@ class TestBatchSimple(unittest.TestCase):
 
         self.assertTrue(torch.max(torch.abs((numerical - exact) / exact)) < 1.0e-2)
 
+
 class TestBatchSimpleChunkTime(unittest.TestCase):
     def setUp(self):
         self.r = 1.0
@@ -77,17 +78,28 @@ class TestBatchSimpleChunkTime(unittest.TestCase):
 
     def test_forward_default(self):
         exact = self.model.exact(self.times, self.y0)
-        numerical = ode.odeint(self.model, self.y0, self.times, method="forward-euler",
-                block_size = self.tchunk)
+        numerical = ode.odeint(
+            self.model,
+            self.y0,
+            self.times,
+            method="forward-euler",
+            block_size=self.tchunk,
+        )
 
         self.assertTrue(torch.max(torch.abs((numerical - exact) / exact)) < 1.0e-2)
 
     def test_backward_default(self):
         exact = self.model.exact(self.times, self.y0)
-        numerical = ode.odeint(self.model, self.y0, self.times, method="backward-euler",
-                block_size = self.tchunk)
+        numerical = ode.odeint(
+            self.model,
+            self.y0,
+            self.times,
+            method="backward-euler",
+            block_size=self.tchunk,
+        )
 
         self.assertTrue(torch.max(torch.abs((numerical - exact) / exact)) < 1.0e-2)
+
 
 class FallingODE(torch.nn.Module):
     """
@@ -125,7 +137,7 @@ class FallingODE(torch.nn.Module):
                 4.0 * (1 - torch.exp(-8.0 * t)),
             ),
             dim=1,
-        ).permute(0,2,1)
+        ).permute(0, 2, 1)
 
 
 class TestFallingBatch(unittest.TestCase):
@@ -148,22 +160,26 @@ class TestFallingBatch(unittest.TestCase):
     def test_forward(self):
         exact = self.model.exact(self.times, self.y0)
         numerical = ode.odeint(
-            self.model, self.y0, self.times, method="forward-euler", block_size = self.nchunk
+            self.model,
+            self.y0,
+            self.times,
+            method="forward-euler",
+            block_size=self.nchunk,
         )
 
-        self.assertTrue(
-            torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1
-        )
+        self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
 
     def test_backward(self):
         exact = self.model.exact(self.times, self.y0)
         numerical = ode.odeint(
-            self.model, self.y0, self.times, method="backward-euler", block_size = self.nchunk
+            self.model,
+            self.y0,
+            self.times,
+            method="backward-euler",
+            block_size=self.nchunk,
         )
-       
-        self.assertTrue(
-            torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1
-        )
+
+        self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
 
 
 class FallingParameterizedODE(torch.nn.Module):
@@ -205,18 +221,14 @@ class FallingParameterizedODE(torch.nn.Module):
         )
 
 
-def run_model(
-    model, nbatch=4, method="forward-euler", nsteps=10
-):
+def run_model(model, nbatch=4, method="forward-euler", nsteps=10):
     y0 = torch.zeros(nbatch, 2)
 
     times = torch.tensor(
         np.array([np.linspace(0, 1.0, nsteps) for i in range(nbatch)]).T
     )
 
-    numerical = ode.odeint_adjoint(
-        model, y0, times, method=method
-    )
+    numerical = ode.odeint_adjoint(model, y0, times, method=method)
 
     return torch.norm(numerical)
 
@@ -319,7 +331,7 @@ class TestGradient(unittest.TestCase):
                 )
                 / (eps * self.k)
             ).numpy()
-        
+
         self.assertAlmostEqual(dm, dmp, places=3)
         self.assertAlmostEqual(dw, dwp, places=3)
         self.assertAlmostEqual(dk, dwk, places=3)

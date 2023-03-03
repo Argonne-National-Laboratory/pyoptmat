@@ -106,10 +106,11 @@ class TestFullModelStrain(unittest.TestCase):
         self.compare(method="backward-euler")
 
     def test_explicit_block(self):
-        self.compare(method="forward-euler", block_size = 5)
+        self.compare(method="forward-euler", block_size=5)
 
     def test_implicit_block(self):
-        self.compare(method="backward-euler", block_size = 5)
+        self.compare(method="backward-euler", block_size=5)
+
 
 class TestFullerModelStrain(unittest.TestCase):
     def setUp(self):
@@ -206,10 +207,11 @@ class TestFullerModelStrain(unittest.TestCase):
         self.compare(method="backward-euler")
 
     def test_explicit_block(self):
-        self.compare(method="forward-euler", block_size = 5)
+        self.compare(method="forward-euler", block_size=5)
 
     def test_implicit_block(self):
-        self.compare(method="backward-euler", block_size = 5)
+        self.compare(method="backward-euler", block_size=5)
+
 
 class TestFullModelStress(unittest.TestCase):
     def setUp(self):
@@ -307,10 +309,11 @@ class TestFullModelStress(unittest.TestCase):
         self.compare(method="backward-euler")
 
     def test_explicit_block(self):
-        self.compare(method="forward-euler", block_size = 5)
+        self.compare(method="forward-euler", block_size=5)
 
     def test_implicit_block(self):
-        self.compare(method="backward-euler", block_size = 5)
+        self.compare(method="backward-euler", block_size=5)
+
 
 class TestFullerModelStress(unittest.TestCase):
     def setUp(self):
@@ -407,7 +410,7 @@ class TestFullerModelStress(unittest.TestCase):
         self.compare(method="backward-euler")
 
     def test_explicit_block(self):
-        self.compare(method="forward-euler", block_size = 5)
+        self.compare(method="forward-euler", block_size=5)
 
     def test_implicit_block(self):
-        self.compare(method="backward-euler", block_size = 5)
+        self.compare(method="backward-euler", block_size=5)

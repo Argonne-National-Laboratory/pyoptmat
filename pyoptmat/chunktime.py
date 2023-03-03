@@ -4,10 +4,11 @@ import torch
 import torch.jit
 import numpy as np
 
+
 def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
     """
     Solve a nonlinear system with Newton's method with a tensor for a BackwardEuler type chunking operator
-    context manager. 
+    context manager.
 
     Args:
       fn (function):        function that returns R, J, and the solver context
@@ -37,11 +38,12 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
         R, J = fn(x)
         nR = torch.norm(R, dim=-1)
         i += 1
-   
+
     if i == miter:
         warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
 
     return x
+
 
 class BidiagonalOperator(torch.nn.Module):
     """
@@ -52,9 +54,9 @@ class BidiagonalOperator(torch.nn.Module):
     .    .   .   .   ...   0
     .    .   .   .   ...   0
     0    0   0   0    Bn   An
-    
+
     that is, a blocked banded system with the main
-    diagonal and the first lower diagonal filled 
+    diagonal and the first lower diagonal filled
 
     We use the following sizes:
         nblk:   number of blocks in the square matrix
@@ -67,6 +69,7 @@ class BidiagonalOperator(torch.nn.Module):
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk)
             storing the nblk-1 off diagonal blocks
     """
+
     def __init__(self, A, B, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.A = A
@@ -103,20 +106,22 @@ class BidiagonalOperator(torch.nn.Module):
         """
         return (self.sbat, self.n, self.n)
 
+
 class BidiagonalThomasFactorization(BidiagonalOperator):
     """
-    Manages the data needed to solve our bidiagonal system via Thomas 
+    Manages the data needed to solve our bidiagonal system via Thomas
     factorization
 
     Args:
         A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         self._setup_factorization()
-    
+
     def forward(self, v):
         """
         Complete the backsolve for a given right hand side
@@ -127,10 +132,19 @@ class BidiagonalThomasFactorization(BidiagonalOperator):
         y = torch.empty_like(v)
         i = 0
         s = self.sblk
-        y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1)).squeeze(-1)
+        y[:, i * s : (i + 1) * s] = torch.linalg.lu_solve(
+            self.lu[i], self.pivots[i], v[:, i * s : (i + 1) * s].unsqueeze(-1)
+        ).squeeze(-1)
         # The .clone() here really makes no sense to me, but torch assures me it is necessary
         for i in range(1, self.nblk):
-            y[:,i*s:(i+1)*s] = torch.linalg.lu_solve(self.lu[i], self.pivots[i], v[:,i*s:(i+1)*s].unsqueeze(-1) - torch.bmm(self.B[i-1], y[:,(i-1)*s:i*s].clone().unsqueeze(-1))).squeeze(-1)
+            y[:, i * s : (i + 1) * s] = torch.linalg.lu_solve(
+                self.lu[i],
+                self.pivots[i],
+                v[:, i * s : (i + 1) * s].unsqueeze(-1)
+                - torch.bmm(
+                    self.B[i - 1], y[:, (i - 1) * s : i * s].clone().unsqueeze(-1)
+                ),
+            ).squeeze(-1)
 
         return y
 
@@ -153,9 +167,9 @@ class BidiagonalForwardOperator(BidiagonalOperator):
     .    .   .   .   ...   0
     .    .   .   .   ...   0
     0    0   0   0    Bn   An
-    
+
     that is, a blocked banded system with the main
-    diagonal and first lower block diagonal filled 
+    diagonal and first lower block diagonal filled
 
     We use the following sizes:
         nblk:   number of blocks in the square matrix
@@ -168,6 +182,7 @@ class BidiagonalForwardOperator(BidiagonalOperator):
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk)
             storing the nblk-1 off diagonal blocks
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -176,12 +191,7 @@ class BidiagonalForwardOperator(BidiagonalOperator):
         Convert to a SquareBatchedBlockDiagonalMatrix, for testing
         or legacy purposes
         """
-        return SquareBatchedBlockDiagonalMatrix(
-                [
-                    self.A,
-                    self.B
-                ], 
-                [0, -1])
+        return SquareBatchedBlockDiagonalMatrix([self.A, self.B], [0, -1])
 
     def forward(self, v):
         """
@@ -190,14 +200,26 @@ class BidiagonalForwardOperator(BidiagonalOperator):
         Args:
             v (torch.tensor):   batch of vectors
         """
-        # Reshaped v 
-        vp = v.view(self.sbat, self.nblk, self.sblk).transpose(0,1).reshape(self.sbat*self.nblk,self.sblk).unsqueeze(-1)
-        
-        # Actual calculation
-        b = torch.bmm(self.A.view(-1,self.sblk,self.sblk),vp)
-        b[self.sbat:] += torch.bmm(self.B.view(-1,self.sblk,self.sblk), vp[:-self.sbat])
+        # Reshaped v
+        vp = (
+            v.view(self.sbat, self.nblk, self.sblk)
+            .transpose(0, 1)
+            .reshape(self.sbat * self.nblk, self.sblk)
+            .unsqueeze(-1)
+        )
 
-        return b.squeeze(-1).view(self.nblk,self.sbat,self.sblk).transpose(1,0).flatten(start_dim=1)
+        # Actual calculation
+        b = torch.bmm(self.A.view(-1, self.sblk, self.sblk), vp)
+        b[self.sbat :] += torch.bmm(
+            self.B.view(-1, self.sblk, self.sblk), vp[: -self.sbat]
+        )
+
+        return (
+            b.squeeze(-1)
+            .view(self.nblk, self.sbat, self.sblk)
+            .transpose(1, 0)
+            .flatten(start_dim=1)
+        )
 
     def inverse(self):
         """
@@ -205,13 +227,15 @@ class BidiagonalForwardOperator(BidiagonalOperator):
         """
         return BidiagonalThomasFactorization(self.A, self.B)
 
+
 class ChunkTimeOperatorSolverContext:
     """
-    Context manager for solving sparse chunked time systems  
+    Context manager for solving sparse chunked time systems
 
     Args:
         solve_method:   one of "dense" or "direct"
     """
+
     def __init__(self, solve_method):
 
         if solve_method not in ["dense", "direct"]:
@@ -254,6 +278,7 @@ class ChunkTimeOperatorSolverContext:
         M = J.inverse()
         return M(R)
 
+
 class SquareBatchedBlockDiagonalMatrix:
     """
     A batched block diagonal matrix of the type
@@ -276,14 +301,15 @@ class SquareBatchedBlockDiagonalMatrix:
         data (list of tensors):     list of tensors of length ndiag.
                                     Each tensor
                                     has shape (nblk-|d|,sbat,sblk,sblk)
-                                    where d is the diagonal number 
+                                    where d is the diagonal number
                                     provided in the next input
         diags (list of ints):       list of ints of length ndiag.
-                                    Each entry gives the diagonal 
+                                    Each entry gives the diagonal
                                     for the data in the corresponding
-                                    tensor.  These values d can 
+                                    tensor.  These values d can
                                     range from -(n-1) to (n-1)
     """
+
     def __init__(self, data, diags):
         # We will want this in order later
         iargs = np.argsort(diags)
@@ -291,10 +317,10 @@ class SquareBatchedBlockDiagonalMatrix:
         self.data = [data[i] for i in iargs]
         self.diags = [diags[i] for i in iargs]
 
-        self.nblk = self.data[0].shape[0]+abs(self.diags[0])
+        self.nblk = self.data[0].shape[0] + abs(self.diags[0])
         self.sbat = self.data[0].shape[1]
         self.sblk = self.data[0].shape[-1]
-    
+
     @property
     def dtype(self):
         """
@@ -328,15 +354,17 @@ class SquareBatchedBlockDiagonalMatrix:
         """
         Number of logical non-zeros (not counting the batch dimension)
         """
-        return sum(self.data[i].shape[0] * self.sblk * self.sblk for i in range(len(self.diags)))
+        return sum(
+            self.data[i].shape[0] * self.sblk * self.sblk
+            for i in range(len(self.diags))
+        )
 
     def to_dense(self):
         """
         Convert the representation to a dense tensor
         """
-        A = torch.zeros(*self.shape, dtype = self.dtype, 
-                        device = self.device)
-        
+        A = torch.zeros(*self.shape, dtype=self.dtype, device=self.device)
+
         # There may be a more clever way than for loops, but for now
         for d, data in zip(self.diags, self.data):
             for k in range(self.nblk - abs(d)):
@@ -346,7 +374,11 @@ class SquareBatchedBlockDiagonalMatrix:
                 else:
                     i = k
                     j = k + d
-                A[:,i*self.sblk:(i+1)*self.sblk,j*self.sblk:(j+1)*self.sblk] = data[k]
+                A[
+                    :,
+                    i * self.sblk : (i + 1) * self.sblk,
+                    j * self.sblk : (j + 1) * self.sblk,
+                ] = data[k]
 
         return A
 
@@ -359,22 +391,21 @@ class SquareBatchedBlockDiagonalMatrix:
         dimensions in between).  batch dimensions can/do have difference indices,
         dense dimensions all share the same indices.  We have the latter situation
         so this is setup as a tensor with no "batch" dimensions, 2 "sparse" dimensions,
-        and 1 "dense" dimension.  So it will be the transpose of the shape of the 
+        and 1 "dense" dimension.  So it will be the transpose of the shape of the
         to_dense function.
         """
-        inds = torch.zeros(2,self.nnz)
-        data = torch.zeros(self.nnz, self.sbat, dtype = self.dtype, 
-                           device = self.device)
-        
+        inds = torch.zeros(2, self.nnz)
+        data = torch.zeros(self.nnz, self.sbat, dtype=self.dtype, device=self.device)
+
         # Order doesn't matter, nice!
         c = 0
         chunk = self.sblk * self.sblk
         for d, bdata in zip(self.diags, self.data):
             for i in range(bdata.shape[0]):
-                data[c:c+chunk] = bdata[i].flatten(start_dim=1).t()
-                
+                data[c : c + chunk] = bdata[i].flatten(start_dim=1).t()
+
                 offset = (i + abs(d)) * self.sblk
-                
+
                 if d < 0:
                     roffset = offset
                     coffset = i * self.sblk
@@ -382,19 +413,36 @@ class SquareBatchedBlockDiagonalMatrix:
                     roffset = i * self.sblk
                     coffset = offset
 
-                inds[0,c:c+chunk] = torch.repeat_interleave(
-                        torch.arange(0,self.sblk,dtype=torch.int64,device=self.device
-                                     ).unsqueeze(-1), self.sblk, -1).flatten() + roffset
-                inds[1,c:c+chunk] = torch.repeat_interleave(
-                        torch.arange(0,self.sblk,dtype=torch.int64,device=self.device
-                                     ).unsqueeze(0), self.sblk, 0).flatten() + coffset
+                inds[0, c : c + chunk] = (
+                    torch.repeat_interleave(
+                        torch.arange(
+                            0, self.sblk, dtype=torch.int64, device=self.device
+                        ).unsqueeze(-1),
+                        self.sblk,
+                        -1,
+                    ).flatten()
+                    + roffset
+                )
+                inds[1, c : c + chunk] = (
+                    torch.repeat_interleave(
+                        torch.arange(
+                            0, self.sblk, dtype=torch.int64, device=self.device
+                        ).unsqueeze(0),
+                        self.sblk,
+                        0,
+                    ).flatten()
+                    + coffset
+                )
 
                 c += chunk
 
-        return torch.sparse_coo_tensor(inds, data, 
-                                       dtype = self.dtype, 
-                                       device = self.device,
-                                       size = (self.n, self.n, self.sbat)).coalesce()
+        return torch.sparse_coo_tensor(
+            inds,
+            data,
+            dtype=self.dtype,
+            device=self.device,
+            size=(self.n, self.n, self.sbat),
+        ).coalesce()
 
     def to_unrolled_csr(self):
         """
@@ -402,4 +450,7 @@ class SquareBatchedBlockDiagonalMatrix:
 
         """
         coo = self.to_batched_coo()
-        return [torch.sparse_coo_tensor(coo.indices(), coo.values()[:,i]).to_sparse_csr() for i in range(self.sbat)]
+        return [
+            torch.sparse_coo_tensor(coo.indices(), coo.values()[:, i]).to_sparse_csr()
+            for i in range(self.sbat)
+        ]

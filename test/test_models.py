@@ -90,9 +90,10 @@ class CommonModel:
 
         _, exact, _, _ = self.model.forward(t, self.state_strain, erate, T)
         numer = utility.batch_differentiate(
-                lambda y: self.model.forward(t, y, erate, T)[0], self.state_strain)
-        
-        self.assertTrue(torch.allclose(exact, numer, atol = 1e-4, rtol = 1e-4))
+            lambda y: self.model.forward(t, y, erate, T)[0], self.state_strain
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, atol=1e-4, rtol=1e-4))
 
     def test_partial_erate(self):
         strain_rates = torch.cat(
@@ -110,9 +111,11 @@ class CommonModel:
 
         _, _, exact, _ = self.model.forward(t, self.state_strain, erate, T)
         numer = utility.batch_differentiate(
-                lambda y: self.model.forward(t, self.state_strain, y, T)[0], erate).squeeze(-1)
+            lambda y: self.model.forward(t, self.state_strain, y, T)[0], erate
+        ).squeeze(-1)
 
-        self.assertTrue(torch.allclose(exact, numer, atol = 1e-4, rtol = 1e-4))
+        self.assertTrue(torch.allclose(exact, numer, atol=1e-4, rtol=1e-4))
+
 
 class CommonModelBatchBatch:
     nextra = 6
@@ -142,12 +145,13 @@ class CommonModelBatchBatch:
         )
         v, dv = use.forward(self.expand(self.t), self.expand(self.state_strain))
         ddv = utility.batch_differentiate(
-            lambda x: use.forward(self.expand(self.t), x)[0], self.expand(self.state_strain), 
-            nbatch_dim = 2
+            lambda x: use.forward(self.expand(self.t), x)[0],
+            self.expand(self.state_strain),
+            nbatch_dim=2,
         )
 
         self.assertTrue(np.allclose(dv, ddv, rtol=1e-4, atol=1e-4))
-    
+
     def test_derivs_stress_bb(self):
         stress_rates = torch.cat(
             (
@@ -177,12 +181,13 @@ class CommonModelBatchBatch:
 
         v, dv = use.forward(self.expand(self.t), self.expand(self.state_stress))
         ddv = utility.batch_differentiate(
-            lambda x: use.forward(self.expand(self.t), x)[0], self.expand(self.state_stress),
-            nbatch_dim = 2
+            lambda x: use.forward(self.expand(self.t), x)[0],
+            self.expand(self.state_stress),
+            nbatch_dim=2,
         )
 
         self.assertTrue(np.allclose(dv, ddv, rtol=1e-4, atol=1e-4))
-    
+
     def test_partial_state_bb(self):
         strain_rates = torch.cat(
             (
@@ -198,20 +203,21 @@ class CommonModelBatchBatch:
         erate = strain_rates[self.step]
 
         _, exact, _, _ = self.model.forward(
-                self.expand(t),
-                self.expand(self.state_strain),
-                self.expand(erate),
-                self.expand(T))
+            self.expand(t),
+            self.expand(self.state_strain),
+            self.expand(erate),
+            self.expand(T),
+        )
         numer = utility.batch_differentiate(
-                lambda y: self.model.forward(
-                    self.expand(t), 
-                    y, 
-                    self.expand(erate),
-                    self.expand(T))[0], self.expand(self.state_strain),
-                nbatch_dim = 2)
-        
-        self.assertTrue(torch.allclose(exact, numer, atol = 1e-4, rtol = 1e-4))
-    
+            lambda y: self.model.forward(
+                self.expand(t), y, self.expand(erate), self.expand(T)
+            )[0],
+            self.expand(self.state_strain),
+            nbatch_dim=2,
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, atol=1e-4, rtol=1e-4))
+
     def test_partial_erate_bb(self):
         strain_rates = torch.cat(
             (
@@ -227,19 +233,20 @@ class CommonModelBatchBatch:
         erate = strain_rates[self.step]
 
         _, _, exact, _ = self.model.forward(
-                self.expand(t), 
-                self.expand(self.state_strain),
-                self.expand(erate),
-                self.expand(T))
+            self.expand(t),
+            self.expand(self.state_strain),
+            self.expand(erate),
+            self.expand(T),
+        )
         numer = utility.batch_differentiate(
-                lambda y: self.model.forward(
-                    self.expand(t), 
-                    self.expand(self.state_strain), 
-                    y, 
-                    self.expand(T))[0], self.expand(erate),
-                nbatch_dim = 2)
+            lambda y: self.model.forward(
+                self.expand(t), self.expand(self.state_strain), y, self.expand(T)
+            )[0],
+            self.expand(erate),
+            nbatch_dim=2,
+        )
 
-        self.assertTrue(torch.allclose(exact, numer, atol = 1e-4, rtol = 1e-4))
+        self.assertTrue(torch.allclose(exact, numer, atol=1e-4, rtol=1e-4))
 
 
 class TestPerfectViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatchBatch):
@@ -272,6 +279,7 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatc
         self.flowrule = flowrules.PerfectViscoplasticity(CP(self.n), CP(self.eta))
         self.model = models.InelasticModel(CP(self.E), self.flowrule)
         self.step = 2
+
 
 class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatchBatch):
     def setUp(self):
@@ -324,7 +332,9 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatch
         self.step = 2
 
 
-class TestIsoKinViscoplasticityRecovery(unittest.TestCase, CommonModel, CommonModelBatchBatch):
+class TestIsoKinViscoplasticityRecovery(
+    unittest.TestCase, CommonModel, CommonModelBatchBatch
+):
     def setUp(self):
         self.E = torch.tensor(100000.0)
         self.n = torch.tensor(5.2)

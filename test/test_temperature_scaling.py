@@ -18,18 +18,19 @@ class TestConstantParameter(unittest.TestCase):
     def test_value_batch(self):
         pshould = torch.tensor([1.0, 2.0])
         obj = temperature.ConstantParameter(pshould)
-        pval = obj(torch.linspace(1.0,10.0,10))
-        
-        self.assertTrue(np.allclose(np.tile(pshould[None,:], (10,1)), 
-            pval.numpy()))
+        pval = obj(torch.linspace(1.0, 10.0, 10))
+
+        self.assertTrue(np.allclose(np.tile(pshould[None, :], (10, 1)), pval.numpy()))
 
     def test_value_batch_batch(self):
         pshould = torch.tensor([1.0, 2.0])
         obj = temperature.ConstantParameter(pshould)
-        pval = obj(torch.linspace(1.0,10.0,10).unsqueeze(0).expand(4,10))
-        
-        self.assertTrue(np.allclose(np.tile(pshould[None,None,:], (4,10,1)), 
-            pval.numpy()))
+        pval = obj(torch.linspace(1.0, 10.0, 10).unsqueeze(0).expand(4, 10))
+
+        self.assertTrue(
+            np.allclose(np.tile(pshould[None, None, :], (4, 10, 1)), pval.numpy())
+        )
+
 
 class TestArrheniusScaling(unittest.TestCase):
     def test_value(self):
@@ -48,7 +49,7 @@ class TestArrheniusScaling(unittest.TestCase):
         A = torch.linspace(1.2, 1.3, 50)
         Q = torch.linspace(100.0, 120, 50)
 
-        T = torch.linspace(100.0,200,50)
+        T = torch.linspace(100.0, 200, 50)
 
         obj = temperature.ArrheniusScaling(A, Q)
         y1 = obj.value(T)
@@ -63,14 +64,14 @@ class TestArrheniusScaling(unittest.TestCase):
         A = torch.linspace(1.2, 1.3, 50)
         Q = torch.linspace(100.0, 120, 50)
 
-        T = torch.linspace(100.0,200,50)
+        T = torch.linspace(100.0, 200, 50)
 
         obj = temperature.ArrheniusScaling(A, Q)
-        y1 = obj.value(T.unsqueeze(0).expand(7,50))
-        y2 = np.tile((A.numpy() * np.exp(-Q.numpy() / T.numpy()))[None,...], (7,1))
+        y1 = obj.value(T.unsqueeze(0).expand(7, 50))
+        y2 = np.tile((A.numpy() * np.exp(-Q.numpy() / T.numpy()))[None, ...], (7, 1))
 
-        self.assertEqual(y1.shape, (7,50))
-        self.assertEqual(y2.shape, (7,50))
+        self.assertEqual(y1.shape, (7, 50))
+        self.assertEqual(y2.shape, (7, 50))
 
         self.assertTrue(np.allclose(y1.numpy(), y2))
 
@@ -83,7 +84,7 @@ class TestPolynomialScaling(unittest.TestCase):
         y1 = obj.value(x)
 
         y2 = np.polyval(coefs.numpy(), x)
-        
+
         self.assertEqual(y1.shape, (100,))
         self.assertEqual(y2.shape, (100,))
 
@@ -108,12 +109,12 @@ class TestPolynomialScaling(unittest.TestCase):
 
         x = torch.ones((100,)) * 1.51
         obj = temperature.PolynomialScaling(coefs)
-        y1 = obj.value(x.unsqueeze(0).expand(10,100))
+        y1 = obj.value(x.unsqueeze(0).expand(10, 100))
 
-        y2 = np.tile(np.polyval(coefs.numpy(), x)[None,...], (10,1))
+        y2 = np.tile(np.polyval(coefs.numpy(), x)[None, ...], (10, 1))
 
-        self.assertEqual(y1.shape, (10,100))
-        self.assertEqual(y2.shape, (10,100))
+        self.assertEqual(y1.shape, (10, 100))
+        self.assertEqual(y2.shape, (10, 100))
 
         self.assertTrue(np.allclose(y1.numpy(), y2))
 
@@ -169,7 +170,7 @@ class TestPiecewiseScaling(unittest.TestCase):
         for i in range(nbatch):
             ifn = inter.interp1d(points.numpy(), values[i].numpy())
             y2[i] = ifn(x[i].numpy())
-        
+
         self.assertEqual(y1.shape, (50,))
         self.assertEqual(y2.shape, (50,))
 
@@ -193,7 +194,7 @@ class TestPiecewiseScaling(unittest.TestCase):
         obj = temperature.PiecewiseScaling(points, values)
 
         x = torch.linspace(0.1, 29.9, nbatch)
-        xt = x.unsqueeze(0).expand(7,nbatch)
+        xt = x.unsqueeze(0).expand(7, nbatch)
 
         y1 = obj.value(xt)
 
@@ -201,12 +202,13 @@ class TestPiecewiseScaling(unittest.TestCase):
 
         for i in range(nbatch):
             ifn = inter.interp1d(points.numpy(), values[i].numpy())
-            y2[:,i] = ifn(x[i].numpy())
+            y2[:, i] = ifn(x[i].numpy())
 
-        self.assertEqual(y1.shape, (7,50))
-        self.assertEqual(y2.shape, (7,50))
+        self.assertEqual(y1.shape, (7, 50))
+        self.assertEqual(y2.shape, (7, 50))
 
         self.assertTrue(np.allclose(y1, y2))
+
 
 class TestShearModulusScaling(unittest.TestCase):
     def setUp(self):
@@ -252,14 +254,15 @@ class TestShearModulusScaling(unittest.TestCase):
 
         obj = temperature.ShearModulusScaling(self.A, self.mu)
 
-        v1 = obj.value(Ts.unsqueeze(0).expand((4,50)))
+        v1 = obj.value(Ts.unsqueeze(0).expand((4, 50)))
 
-        v2 = np.tile((self.A * self.mu(Ts))[None,...], (4,1))
+        v2 = np.tile((self.A * self.mu(Ts))[None, ...], (4, 1))
 
-        self.assertEqual(v1.shape, (4,50))
-        self.assertEqual(v2.shape, (4,50))
+        self.assertEqual(v1.shape, (4, 50))
+        self.assertEqual(v2.shape, (4, 50))
 
         self.assertTrue(np.allclose(v1.numpy(), v2))
+
 
 class TestShearModulusScalingExp(unittest.TestCase):
     def setUp(self):
@@ -305,14 +308,15 @@ class TestShearModulusScalingExp(unittest.TestCase):
 
         obj = temperature.ShearModulusScalingExp(self.A, self.mu)
 
-        v1 = obj.value(Ts.unsqueeze(0).expand((4,50)))
+        v1 = obj.value(Ts.unsqueeze(0).expand((4, 50)))
 
-        v2 = np.tile((np.exp(self.A) * self.mu(Ts))[None,...], (4,1))
+        v2 = np.tile((np.exp(self.A) * self.mu(Ts))[None, ...], (4, 1))
 
-        self.assertEqual(v1.shape, (4,50))
-        self.assertEqual(v2.shape, (4,50))
+        self.assertEqual(v1.shape, (4, 50))
+        self.assertEqual(v2.shape, (4, 50))
 
         self.assertTrue(np.allclose(v1.numpy(), v2))
+
 
 class TestMTSScaling(unittest.TestCase):
     def setUp(self):
@@ -357,7 +361,7 @@ class TestMTSScaling(unittest.TestCase):
         v2 = tau0 * (
             1.0 - (self.k * Ts / (self.mu(Ts) * self.b**3.0 * g0)) ** (1 / q)
         ) ** (1 / p)
-        
+
         self.assertEqual(v1.shape, (50,))
         self.assertEqual(v2.shape, (50,))
 
@@ -375,15 +379,15 @@ class TestMTSScaling(unittest.TestCase):
 
         obj = temperature.MTSScaling(tau0, g0, q, p, self.k, self.b, self.mu)
 
-        v1 = obj.value(Ts.unsqueeze(0).expand((6,50)))
+        v1 = obj.value(Ts.unsqueeze(0).expand((6, 50)))
 
         v2 = tau0 * (
             1.0 - (self.k * Ts / (self.mu(Ts) * self.b**3.0 * g0)) ** (1 / q)
         ) ** (1 / p)
-        v2 = np.tile(v2[None,...],(6,1))
-        
-        self.assertEqual(v1.shape, (6,50))
-        self.assertEqual(v2.shape, (6,50))
+        v2 = np.tile(v2[None, ...], (6, 1))
+
+        self.assertEqual(v1.shape, (6, 50))
+        self.assertEqual(v2.shape, (6, 50))
 
         self.assertTrue(np.allclose(v1, v2))
 
@@ -444,16 +448,16 @@ class TestKMRateSensitivityScaling(unittest.TestCase):
         Ts = torch.linspace(25, 950.0, 50) + 273.15
 
         obj = temperature.KMRateSensitivityScaling(A, mu, b, k)
-        v1 = obj.value(Ts.unsqueeze(0).expand(6,50))
+        v1 = obj.value(Ts.unsqueeze(0).expand(6, 50))
 
         mu_values = np.array([mu.value(T).numpy() for T in Ts])
 
         v2 = -mu_values * b**3.0 / (k * Ts * A.numpy())
         v2 = np.minimum(v2, 20.0)
-        v2 = np.tile(v2[None,...], (6,1))
+        v2 = np.tile(v2[None, ...], (6, 1))
 
-        self.assertEqual(v1.shape, (6,50))
-        self.assertEqual(v2.shape, (6,50))
+        self.assertEqual(v1.shape, (6, 50))
+        self.assertEqual(v2.shape, (6, 50))
 
         self.assertTrue(np.allclose(v1.numpy(), v2))
 
@@ -525,16 +529,16 @@ class TestKMViscosityScaling(unittest.TestCase):
 
         obj = temperature.KMViscosityScaling(A, B, mu, eps0, b, k)
 
-        v1 = obj.value(Ts.unsqueeze(0).expand(8,50))
+        v1 = obj.value(Ts.unsqueeze(0).expand(8, 50))
         v2 = (
             np.exp(B.numpy())
             * mu_values
             * eps0 ** (k * Ts.numpy() * A.numpy() / (mu_values * b**3.0))
         )
 
-        v2 = np.tile(v2[None,...], (8,1))
+        v2 = np.tile(v2[None, ...], (8, 1))
 
-        self.assertTrue(v1.shape, (8,50))
-        self.assertTrue(v2.shape, (8,50))
+        self.assertTrue(v1.shape, (8, 50))
+        self.assertTrue(v2.shape, (8, 50))
 
         self.assertTrue(np.allclose(v1, v2))

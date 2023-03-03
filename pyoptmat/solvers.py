@@ -118,7 +118,7 @@ def newton_raphson(fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100):
         R, J = fn(x)
         nR = torch.norm(R, dim=-1)
         i += 1
-    
+
     if i == miter:
         warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
 

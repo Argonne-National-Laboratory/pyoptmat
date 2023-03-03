@@ -13,8 +13,9 @@ torch.set_default_dtype(torch.float64)
 class HardeningBase:
     def test_dvalue(self):
         exact = self.model.dvalue(self.h)
-        numer = utility.batch_differentiate(lambda x: self.model.value(x), self.h,
-                nbatch_dim = self.bdim)
+        numer = utility.batch_differentiate(
+            lambda x: self.model.value(x), self.h, nbatch_dim=self.bdim
+        )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
 
@@ -26,7 +27,8 @@ class HardeningBase:
             lambda x: self.model.history_rate(
                 x, self.h, self.t, self.ep, self.T, self.erate
             ),
-            self.s, nbatch_dim = self.bdim
+            self.s,
+            nbatch_dim=self.bdim,
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
@@ -39,7 +41,8 @@ class HardeningBase:
             lambda x: self.model.history_rate(
                 self.s, x, self.t, self.ep, self.T, self.erate
             ),
-            self.h, nbatch_dim = self.bdim
+            self.h,
+            nbatch_dim=self.bdim,
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-3))
@@ -52,10 +55,11 @@ class HardeningBase:
             lambda x: self.model.history_rate(
                 self.s, self.h, self.t, x, self.T, self.erate
             ),
-            self.ep, nbatch_dim = self.bdim
+            self.ep,
+            nbatch_dim=self.bdim,
         )
 
-        self.assertTrue(np.allclose(exact, numer.unsqueeze(-1), rtol=1.0e-4, atol = 1e-7))
+        self.assertTrue(np.allclose(exact, numer.unsqueeze(-1), rtol=1.0e-4, atol=1e-7))
 
     def test_dtotalrate(self):
         exact = self.model.dhistory_rate_dtotalrate(
@@ -65,7 +69,8 @@ class HardeningBase:
             lambda x: self.model.history_rate(
                 self.s, self.h, self.t, self.ep, self.T, x
             ),
-            self.erate, nbatch_dim = self.bdim
+            self.erate,
+            nbatch_dim=self.bdim,
         )
 
         self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
@@ -87,6 +92,7 @@ class TestVoceIsotropicHardening(unittest.TestCase, HardeningBase):
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
+
 class TestVoceIsotropicHardeningMultiBatch(unittest.TestCase, HardeningBase):
     def setUp(self):
         self.R = torch.tensor(100.0)
@@ -104,12 +110,13 @@ class TestVoceIsotropicHardeningMultiBatch(unittest.TestCase, HardeningBase):
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)
+
 
 class TestVoceIsotropicThetaHardening(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -128,6 +135,7 @@ class TestVoceIsotropicThetaHardening(unittest.TestCase, HardeningBase):
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
+
 
 class TestVoceIsotropicThetaHardeningMultiBatch(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -148,12 +156,13 @@ class TestVoceIsotropicThetaHardeningMultiBatch(unittest.TestCase, HardeningBase
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)
+
 
 class TestVoceIsotropicThetaRecoveryHardening(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -176,7 +185,10 @@ class TestVoceIsotropicThetaRecoveryHardening(unittest.TestCase, HardeningBase):
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
-class TestVoceIsotropicThetaRecoveryHardeningMultiBatch(unittest.TestCase, HardeningBase):
+
+class TestVoceIsotropicThetaRecoveryHardeningMultiBatch(
+    unittest.TestCase, HardeningBase
+):
     def setUp(self):
         self.tau = torch.tensor(100.0)
         self.theta = torch.tensor(12.0)
@@ -198,12 +210,12 @@ class TestVoceIsotropicThetaRecoveryHardeningMultiBatch(unittest.TestCase, Harde
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)
 
 
 class TestFAKinematicHardening(unittest.TestCase, HardeningBase):
@@ -222,6 +234,7 @@ class TestFAKinematicHardening(unittest.TestCase, HardeningBase):
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
+
 class TestFAKinematicHardeningMultiBatch(unittest.TestCase, HardeningBase):
     def setUp(self):
         self.C = torch.tensor(100.0)
@@ -239,12 +252,12 @@ class TestFAKinematicHardeningMultiBatch(unittest.TestCase, HardeningBase):
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)
 
 
 class TestFAKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
@@ -267,6 +280,7 @@ class TestFAKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
+
 class TestFAKinematicHardeningRecoveryMultiBatch(unittest.TestCase, HardeningBase):
     def setUp(self):
         self.C = torch.tensor(100.0)
@@ -288,12 +302,13 @@ class TestFAKinematicHardeningRecoveryMultiBatch(unittest.TestCase, HardeningBas
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)
+
 
 class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -349,6 +364,7 @@ class TestSuperimposedKinematicHardening(unittest.TestCase, HardeningBase):
             )
         )
 
+
 class TestSuperimposedKinematicHardeningMultiBatch(unittest.TestCase, HardeningBase):
     def setUp(self):
         self.C1 = torch.tensor(100.0)
@@ -376,12 +392,13 @@ class TestSuperimposedKinematicHardeningMultiBatch(unittest.TestCase, HardeningB
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)
+
 
 class TestChabocheKinematicHardening(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -401,6 +418,7 @@ class TestChabocheKinematicHardening(unittest.TestCase, HardeningBase):
         self.ep = torch.linspace(0.1, 0.2, self.nbatch)
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
+
 
 class TestChabocheKinematicHardeningMultiBatch(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -422,12 +440,13 @@ class TestChabocheKinematicHardeningMultiBatch(unittest.TestCase, HardeningBase)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)
+
 
 class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
     def setUp(self):
@@ -452,7 +471,10 @@ class TestChabocheKinematicHardeningRecovery(unittest.TestCase, HardeningBase):
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
-class TestChabocheKinematicHardeningRecoveryMultiBatch(unittest.TestCase, HardeningBase):
+
+class TestChabocheKinematicHardeningRecoveryMultiBatch(
+    unittest.TestCase, HardeningBase
+):
     def setUp(self):
         self.C = torch.tensor([100.0, 1000, 1500])
         self.g = torch.tensor([1.2, 100, 50])
@@ -476,9 +498,9 @@ class TestChabocheKinematicHardeningRecoveryMultiBatch(unittest.TestCase, Harden
         self.erate = torch.linspace(0.01, 0.02, self.nbatch)
 
         self.mbatch = 3
-        self.s = self.s.expand((self.mbatch,)+self.s.shape)
-        self.h = self.h.expand((self.mbatch,)+self.h.shape)
-        self.t = self.t.expand((self.mbatch,)+self.t.shape)
-        self.ep = self.s.expand((self.mbatch,)+self.ep.shape)
-        self.T = self.T.expand((self.mbatch,)+self.T.shape)
-        self.erate = self.erate.expand((self.mbatch,)+self.erate.shape)
+        self.s = self.s.expand((self.mbatch,) + self.s.shape)
+        self.h = self.h.expand((self.mbatch,) + self.h.shape)
+        self.t = self.t.expand((self.mbatch,) + self.t.shape)
+        self.ep = self.s.expand((self.mbatch,) + self.ep.shape)
+        self.T = self.T.expand((self.mbatch,) + self.T.shape)
+        self.erate = self.erate.expand((self.mbatch,) + self.erate.shape)

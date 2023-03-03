@@ -1295,32 +1295,32 @@ class IsoKinViscoplasticity(FlowRule):
         hdiv[
             ..., self.isotropic.nhist :, self.isotropic.nhist :
         ] = self.kinematic.dhistory_rate_dhistory(s, hkin, t, erate, T, e)
-        
+
         # Strain rate components
         hdiv[..., : self.isotropic.nhist, : self.isotropic.nhist] += utility.mbmm(
             self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
             utility.mbmm(
-                self.dflow_diso(s, h, t, T, e)[...,None,None],
-                self.isotropic.dvalue(hiso)[...,None,:],
+                self.dflow_diso(s, h, t, T, e)[..., None, None],
+                self.isotropic.dvalue(hiso)[..., None, :],
             ),
         )
         hdiv[..., : self.isotropic.nhist, self.isotropic.nhist :] += (
             self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e)
-                * self.dflow_dkin(s, h, t, T, e)[...,None,None]
-                * self.kinematic.dvalue(hkin)[...,None,:]
+            * self.dflow_dkin(s, h, t, T, e)[..., None, None]
+            * self.kinematic.dvalue(hkin)[..., None, :]
         )
         hdiv[..., self.isotropic.nhist :, : self.isotropic.nhist] += utility.mbmm(
             self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
             utility.mbmm(
-                self.dflow_diso(s, h, t, T, e)[...,None,None],
-                self.isotropic.dvalue(hiso)[...,None,:],
+                self.dflow_diso(s, h, t, T, e)[..., None, None],
+                self.isotropic.dvalue(hiso)[..., None, :],
             ),
         )
         hdiv[..., self.isotropic.nhist :, self.isotropic.nhist :] += utility.mbmm(
             self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
             utility.mbmm(
-                self.dflow_dkin(s, h, t, T, e)[...,None,None],
-                self.kinematic.dvalue(hkin)[...,None,:],
+                self.dflow_dkin(s, h, t, T, e)[..., None, None],
+                self.kinematic.dvalue(hkin)[..., None, :],
             ),
         )
 
@@ -1377,15 +1377,17 @@ class IsoKinViscoplasticity(FlowRule):
 
         res[..., : self.isotropic.nhist] = (
             self.isotropic.dhistory_rate_dstress(s, hiso, t, erate, T, e)
-            + utility.mbmm(self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e), 
-                derate[..., None, None])
-            [..., 0]
+            + utility.mbmm(
+                self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
+                derate[..., None, None],
+            )[..., 0]
         )
         res[..., self.isotropic.nhist :] = (
             self.kinematic.dhistory_rate_dstress(s, hkin, t, erate, T, e)
-            + utility.mbmm(self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
-                derate[..., None, None])
-            [..., 0]
+            + utility.mbmm(
+                self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
+                derate[..., None, None],
+            )[..., 0]
         )
 
         return res

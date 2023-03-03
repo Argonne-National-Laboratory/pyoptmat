@@ -47,6 +47,7 @@ from pyoptmat import utility
 import torch
 from torch import nn
 
+
 class TemperatureParameter(nn.Module):
     """
     Superclass of all temperature-dependent parameters
@@ -69,6 +70,7 @@ class TemperatureParameter(nn.Module):
           T (torch.tensor):   current temperature
         """
         return self.scaling(self.value(T))
+
 
 class ConstantParameter(TemperatureParameter):
     """
@@ -455,6 +457,7 @@ class KMViscosityScaling(TemperatureParameter):
         """
         return self.B.shape
 
+
 class PolynomialScaling(TemperatureParameter):
     """
     Mimics np.polyval using Horner's method to evaluate a polynomial
@@ -563,7 +566,7 @@ class PiecewiseScaling(TemperatureParameter):
 
         if not self.batch:
             return val.squeeze(-1)
-        
+
         return val
 
     @property

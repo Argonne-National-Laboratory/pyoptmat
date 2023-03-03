@@ -11,11 +11,13 @@ import matplotlib.pyplot as plt
 import torch
 from torch import nn
 
+
 def mbmm(A1, A2):
     """
     Batched matrix-matrix multiplication with several batch dimensions
     """
-    return torch.einsum('...ik,...kj->...ij', A1, A2)
+    return torch.einsum("...ik,...kj->...ij", A1, A2)
+
 
 def visualize_variance(strain, stress_true, stress_calc, alpha=0.05):
     """
@@ -62,7 +64,8 @@ def visualize_variance(strain, stress_true, stress_calc, alpha=0.05):
 
     plt.show()
 
-def batch_differentiate(fn, x0, eps=1.0e-6, nbatch_dim = 1):
+
+def batch_differentiate(fn, x0, eps=1.0e-6, nbatch_dim=1):
     """
     New numerical differentiation function to handle the batched-model cases
 
@@ -94,9 +97,9 @@ def batch_differentiate(fn, x0, eps=1.0e-6, nbatch_dim = 1):
     if len(s2) == 0:
         s2 = (1,)
         squeeze2 = True
-    
-    d = torch.empty(bs + s1 + s2, device = x0.device)
-    
+
+    d = torch.empty(bs + s1 + s2, device=x0.device)
+
     x0 = x0.reshape(bs + s2)
     v0 = v0.reshape(bs + s1)
 
@@ -111,16 +114,19 @@ def batch_differentiate(fn, x0, eps=1.0e-6, nbatch_dim = 1):
             x = x.squeeze(-1)
 
         v1 = fn(x).reshape(bs + s1)
-        d[..., i2] = (v1 - v0).unsqueeze(-1).expand(d[...,i2].shape) / inc.unsqueeze(-2).expand(d[...,i2].shape)
-    
+        d[..., i2] = (v1 - v0).unsqueeze(-1).expand(d[..., i2].shape) / inc.unsqueeze(
+            -2
+        ).expand(d[..., i2].shape)
+
     if squeeze1 and squeeze2:
         d = d.squeeze(-1).squeeze(-1)
     elif squeeze2:
-        d = d.squeeze(-1) 
+        d = d.squeeze(-1)
     elif squeeze1:
-        d = d.squeeze(-len(s2)-1)
+        d = d.squeeze(-len(s2) - 1)
 
     return d
+
 
 def new_differentiate(fn, x0, eps=1.0e-6):
     """
@@ -153,7 +159,7 @@ def new_differentiate(fn, x0, eps=1.0e-6):
         flatten = False
     fs2 = (nbatch,) + s2
 
-    d = torch.empty((nbatch,) + s1 + s2, device = x0.device)
+    d = torch.empty((nbatch,) + s1 + s2, device=x0.device)
 
     v0 = v0.reshape(fs1)
 
@@ -224,13 +230,14 @@ def differentiate(fn, x0, eps=1.0e-6):
 
     return d
 
+
 class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
     """
     Interpolate :code:`data` located at discrete :code:`times`
     linearly to point :code:`t`.
 
-    This version handles batched of arbitrary size -- only the rightmost 
-    batch dimension must agree with the input data.  All other dimensions are 
+    This version handles batched of arbitrary size -- only the rightmost
+    batch dimension must agree with the input data.  All other dimensions are
     broadcast.
 
     Args:
@@ -258,25 +265,32 @@ class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
         Returns:
           torch.tensor:       batched values at :code:`t`
         """
-        tp = t.t() # Transpose so the common dimension is first
+        tp = t.t()  # Transpose so the common dimension is first
         tgt = self.values.shape + tp.shape[1:]
-        nexp = len(tgt) - 2 # Values always has dim 2...
-        
+        nexp = len(tgt) - 2  # Values always has dim 2...
+
         # Expand both the reference times and values
-        t = self.times[(...,)+(None,)*nexp].expand(tgt).flatten(start_dim = 1)
-        v = self.values[(...,)+(None,)*nexp].expand(tgt).flatten(start_dim = 1)
-        
-        # Calculate slopes, offsets, and values as usual but then 
+        t = self.times[(...,) + (None,) * nexp].expand(tgt).flatten(start_dim=1)
+        v = self.values[(...,) + (None,) * nexp].expand(tgt).flatten(start_dim=1)
+
+        # Calculate slopes, offsets, and values as usual but then
         # reshape at the very end...
         slopes = torch.diff(v, dim=0) / torch.diff(t, dim=0)
-       
+
         gi = torch.remainder(
             torch.sum((t - tp.flatten()) <= 0, dim=0), self.times.shape[0]
         )
 
-        return (torch.diagonal(v[gi - 1]) + torch.diagonal(
-            slopes[gi - 1]
-        ) * (tp.flatten() - torch.diagonal(t[gi - 1]))).reshape(tp.shape).t()
+        return (
+            (
+                torch.diagonal(v[gi - 1])
+                + torch.diagonal(slopes[gi - 1])
+                * (tp.flatten() - torch.diagonal(t[gi - 1]))
+            )
+            .reshape(tp.shape)
+            .t()
+        )
+
 
 class BatchTimeSeriesInterpolator(nn.Module):
     """

@@ -108,14 +108,14 @@ class InelasticModel(nn.Module):
         result[..., -1] = drate
 
         dresult[..., 0, 0] = -self.E(T) * dfrate_p
-        
+
         dresult[..., 0:1, 1 : 1 + self.flowrule.nhist] = (
             -self.E(T)[..., None, None]
             * (1 - d)[..., None, None]
             * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate)
         )
         dresult[..., 0, -1] = self.E(T) * (frate - dfrate * stress / (1 - d))
-        
+
         dresult[..., 1 : 1 + self.flowrule.nhist, 0] = (
             self.flowrule.dhist_dstress(stress / (1 - d), h, t, T, erate)
             / (1 - d)[..., None]
@@ -179,7 +179,7 @@ class ModelIntegrator(nn.Module):
         model,
         *args,
         method="backward-euler",
-        block_size = 1,
+        block_size=1,
         rtol=1.0e-6,
         atol=1.0e-4,
         miter=100,
@@ -246,7 +246,7 @@ class ModelIntegrator(nn.Module):
             bmodel,
             init,
             times,
-            block_size = self.block_size,
+            block_size=self.block_size,
             method=self.method,
             rtol=self.rtol,
             atol=self.atol,
@@ -296,7 +296,7 @@ class ModelIntegrator(nn.Module):
             emodel,
             init,
             times,
-            block_size = self.block_size,
+            block_size=self.block_size,
             method=self.method,
             rtol=self.rtol,
             atol=self.atol,
@@ -352,7 +352,7 @@ class ModelIntegrator(nn.Module):
             smodel,
             init,
             times,
-            block_size = self.block_size,
+            block_size=self.block_size,
             method=self.method,
             rtol=self.rtol,
             atol=self.atol,
