@@ -414,12 +414,12 @@ class BothBasedModel(nn.Module):
         e_control = self.control == 0
         s_control = self.control == 1
 
-        actual_rates[e_control] = strain_rates[e_control]
-        actual_rates[s_control] = stress_rates[s_control]
+        actual_rates[..., e_control, :] = strain_rates[..., e_control, :]
+        actual_rates[..., s_control, :] = stress_rates[..., s_control, :]
 
         actual_jacs = torch.zeros_like(strain_jacs)
-        actual_jacs[e_control] = strain_jacs[e_control]
-        actual_jacs[s_control] = stress_jacs[s_control]
+        actual_jacs[..., e_control, :, :] = strain_jacs[..., e_control, :, :]
+        actual_jacs[..., s_control, :, :] = stress_jacs[..., s_control, :, :]
 
         return actual_rates, actual_jacs
 
