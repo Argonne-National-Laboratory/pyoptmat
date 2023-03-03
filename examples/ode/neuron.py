@@ -1,19 +1,29 @@
 #!/usr/bin/env python
 
+"""
+    This example integrates a more complicated system of ODEs:
+    a model of coupled neurons responding to a cyclic 
+    electrical current (the Hodgkin and Huxley model, as
+    described by :cite:`schwemmer2012theory`).
+
+    The number of neurons, current cycles, time steps per 
+    cycle, vectorized time steps, etc. can be customized.
+    This is a decent benchmark problem for examining the performance
+    of pyoptmat on your machine.
+"""
+
 import sys
 sys.path.append('../..')
 
 import torch
 import torch.nn as nn
 
-import torch.jit
-from torch.profiler import ProfilerActivity
-
 import matplotlib.pyplot as plt
 
 from pyoptmat import ode, experiments, utility
 import time
 
+# Use doubles
 torch.set_default_tensor_type(torch.DoubleTensor)
 
 # Select device to run on
@@ -25,6 +35,20 @@ device = torch.device(dev)
 
 def driving_current(I_max, R, rate, thold, chold, Ncycles, nload,
         nhold, neq):
+    """
+        Setup cyclic current histories
+
+        Args:
+            I_max (tuple): (min,max) uniform distribution of max currents
+            R (tuple): (min,max) uniform distribution of load ratios
+            rate (tuple): (min, max) uniform distribution of current rates
+            thold (tuple): (min, max) uniform distribution of hold at max current times
+            chold (tuple): (min, max) uniform distribution of hold at min current times
+            Ncycles (int): number of load cycles
+            nload (int): number of time steps for current ramp
+            nhold (int): number of time steps for current holds
+            neq (int): number of independent current histories
+    """
     Ntotal = (4*nload + 2*nhold) * Ncycles + 1
     times = torch.empty((Ntotal,neq))
     I = torch.empty((Ntotal,neq))
@@ -37,13 +61,56 @@ def driving_current(I_max, R, rate, thold, chold, Ncycles, nload,
         I[:,i] = torch.tensor(Ii)
     
     return utility.ArbitraryBatchTimeSeriesInterpolator(
-            times.to(device), I.to(device)), times.to(device)
+            times.to(device), I.to(device)), times.to(device), I.to(device)
 
 class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
     """
-        From Schwemmer and Lewis 2012
+        As described by :cite:`schwemmer2012theory`
 
-        dX / dt = 
+        .. math::
+
+            F(y) = \\begin{bmatrix} F_1(y_1)
+            \\\\ F_2(y_2)
+            \\\\ \\vdots
+            \\\\ F_n(y_n) 
+            \\end{bmatrix}
+
+        with
+
+        .. math::
+
+            y = \\begin{bmatrix} y_1
+            \\\ y_2
+            \\\ \\vdots
+            \\\ y_n
+            \\end{bmatrix}
+
+        and
+
+        .. math::
+
+            F_i(y_i) = \\begin{bmatrix} V_i
+            \\\\ m_i
+            \\\\ h_i
+            \\\\ n_i
+            \\end{bmatrix}
+
+        and
+
+        .. math::
+
+            F_i(y_i) = \\begin{bmatrix} \\frac{1}{C_i}(-g_{Na,i}m_i^3h_i(V_i-E_{Na,i})-g_{K,i}n_i^4(V_i-E_{k,i})-g_{L,i}(V_i-E_{L,i})+I(t) + \\Delta V_{ij})
+            \\\\ \\frac{m_{\\infty,i}-m_i}{\\tau_{m,i}}
+            \\\\ \\frac{h_{\\infty,i}-h_i}{\\tau_{h,i}}
+            \\\\ \\frac{n_{\\infty,i}-n_i}{\\tau_{n,i}}
+            \\end{bmatrix}
+
+        with
+
+        .. math::
+
+            \\Delta V_{ij} = \\sum_{j=1}^{n_{neurons}}\\frac{g_{C,i}(V_i-V_j)}{C_i}
+
     """
     def __init__(self, C, g_Na, E_Na, g_K, E_K, g_L, E_L, m_inf,
             tau_m, h_inf, tau_h, n_inf, tau_n, g_C, I):
@@ -69,6 +136,17 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
         self.n_equations = self.n_neurons * 4
 
     def forward(self, t, y):
+        """
+            Evaluate the system of ODEs at a particular state
+
+            Args:
+                t (torch.tensor): current time 
+                y (torch.tensor): current state
+
+            Returns:
+                y_dot (torch.tensor): current ODEs
+                J (torch.tensor): current jacobian
+        """
         Ic = self.I(t)
 
         V = y[...,0::4].clone()
@@ -133,12 +211,19 @@ class HodgkinHuxleyCoupledNeurons(torch.nn.Module):
         return ydot, J
 
 if __name__ == "__main__":
-    nbatch = 1000
+    # Batch size
+    nbatch = 100
+    # Time chunk size
+    time_block = 50
+    # Number of neurons
     neq = 10
+    # Number of cycles
     N = 5
+    # Number of time steps per cycle
     n = 40
     
-    current, times = driving_current([0.1,1],
+    # Setup the driving current
+    current, times, discrete_current = driving_current([0.1,1],
             [-1,0.9], 
             [0.5,1.5],
             [0,1],
@@ -148,6 +233,12 @@ if __name__ == "__main__":
             n,
             nbatch)
 
+    plt.plot(times.cpu().numpy()[:,::4], discrete_current.cpu().numpy()[:,::4])
+    plt.xlabel("Time")
+    plt.ylabel("Current")
+    plt.show()
+
+    # Setup model and initial conditions
     nsteps = times.shape[0]
     
     model = HodgkinHuxleyCoupledNeurons(
@@ -172,14 +263,14 @@ if __name__ == "__main__":
 
     # Include a backward pass to give a better example of timing
     t1 = time.time()
-    res_imp = ode.odeint_adjoint(model, y0, times)
+    res_imp = ode.odeint_adjoint(model, y0, times, block_size = time_block)
     loss = torch.norm(res_imp)
     loss.backward()
     etime = time.time() - t1
     
-    print("%i batch size, %i neurons, %i time steps: %f s" % (nbatch, neq, nsteps, etime))
+    print("%i batch size, %i blocked time steps, %i neurons, %i time steps: %f s" % (nbatch, time_block, neq, nsteps, etime))
 
-    #plt.plot(times[:,0].detach().cpu().numpy(), res_imp[:,0,0::4].detach().cpu().numpy())
-    #plt.xlabel("Time")
-    #plt.ylabel("Voltage")
-    #plt.show()
+    plt.plot(times[:,0].detach().cpu().numpy(), res_imp[:,0,0::4].detach().cpu().numpy())
+    plt.xlabel("Time")
+    plt.ylabel("Voltage")
+    plt.show()

@@ -68,9 +68,12 @@ class VanderPolODE(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    # Common
+    # Common inputs
     y0 = torch.tensor([[-1.0, 1]])
     period = lambda m: (3.0 - 2 * np.log(2)) * m + 2.0 * np.pi / mu ** (1.0 / 3)
+
+    # Number of vectorized time steps
+    time_chunk = 10
 
     # Test for non-stiff version
     mu = 1.0
@@ -79,10 +82,10 @@ if __name__ == "__main__":
     model = VanderPolODE(mu)
 
     res_exp = ode.odeint(model, y0, times, method="forward-euler",
-            block_size = 100, guess_type = "previous")
+            block_size = time_chunk, guess_type = "previous")
     res_imp = ode.odeint(
         model, y0, times, method="backward-euler",
-        block_size = 100, guess_type = "previous"
+        block_size = time_chunk, guess_type = "previous"
     )
 
     plt.figure()
@@ -101,10 +104,10 @@ if __name__ == "__main__":
     model = VanderPolODE(mu)
 
     res_exp = ode.odeint(model, y0, times, method="forward-euler",
-            block_size = 10, guess_type = "previous")
+            block_size = time_chunk, guess_type = "previous")
     res_imp = ode.odeint(
         model, y0, times, method="backward-euler",
-        block_size = 25, guess_type = "previous"
+        block_size = time_chunk, guess_type = "previous"
     )
 
     plt.figure()
@@ -124,7 +127,7 @@ if __name__ == "__main__":
 
     res_imp = ode.odeint(
         model, y0, times, method="backward-euler",
-        block_size = 15, guess_type = "previous"
+        block_size = time_chunk, guess_type = "previous"
     )
 
     plt.figure()

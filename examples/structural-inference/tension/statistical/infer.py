@@ -53,7 +53,7 @@ def make(n, eta, s0, R, d, **kwargs):
 
 if __name__ == "__main__":
     # Number of vectorized time steps
-    time_chunk_size = 10
+    time_chunk_size = 40
 
     # 1) Load the data for the variance of interest,
     #    cut down to some number of samples, and flatten

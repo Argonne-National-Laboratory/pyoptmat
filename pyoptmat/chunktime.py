@@ -1,12 +1,12 @@
 # pylint: disable=abstract-method
 
 """
-    Functions and objects to help with chunked time integration.
+    Functions and objects to help with blocked/chunked time integration.
 
     These include:
-    1. Sparse matrix classes for banded systems
-    2. General sparse matrix classes
-    3. Specialized solver routines working with banded systems
+        1. Sparse matrix classes for banded systems
+        2. General sparse matrix classes
+        3. Specialized solver routines working with banded systems
 """
 
 import warnings
@@ -24,12 +24,9 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
     Args:
       fn (function):        function that returns R, J, and the solver context
       x0 (torch.tensor):    starting point
-      solver (BackwardEulerChunkTimeOperatorSolverContext): solver context
+      solver (ChunkTimeOperatorSolverContext): solver context
 
     Keyword Args:
-      linsolver (string):   method to use to solve the linear system, options are
-                            "diag" or "lu".  Defaults to "lu".  See
-                            :py:func:`pyoptmat.solvers.solve_linear_system`
       rtol (float):         nonlinear relative tolerance
       atol (float):         nonlinear absolute tolerance
       miter (int):          maximum number of nonlinear iterations
@@ -59,20 +56,25 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
 class BidiagonalOperator(torch.nn.Module):
     """
     An object working with a Batched block diagonal operator of the type
-    A1   0   0   0   ...   0
-    B1   A2  0   0   ...   0
-    0    B1  A3  0   ...   0
-    .    .   .   .   ...   0
-    .    .   .   .   ...   0
-    0    0   0   0    Bn   An
+
+    .. math::
+
+        \\begin{bmatrix}
+        A_1 & 0 & 0 & 0 & \\cdots  & 0\\\\
+        B_1 & A_2 & 0 & 0 & \\cdots & 0\\\\
+        0 & B_2 & A_3 & 0 & \\cdots & 0\\\\
+        \\vdots & \\vdots & \\ddots & \\ddots & \\ddots  & \\vdots \\\\
+        0 & 0 & 0 & B_{n-2} & A_{n-1} & 0\\\\
+        0 & 0 & 0 & 0 & B_{n-1} & A_n
+        \\end{bmatrix}
 
     that is, a blocked banded system with the main
     diagonal and the first lower diagonal filled
 
     We use the following sizes:
-        nblk:   number of blocks in the square matrix
-        sblk:   size of each block
-        sbat:   batch size
+        - nblk:   number of blocks in the square matrix
+        - sblk:   size of each block
+        - sbat:   batch size
 
     Args:
         A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
@@ -172,20 +174,25 @@ class BidiagonalThomasFactorization(BidiagonalOperator):
 class BidiagonalForwardOperator(BidiagonalOperator):
     """
     A batched block banded matrix of the form:
-    A1   0   0   0   ...   0
-    B1   A2  0   0   ...   0
-    0    B1  A3  0   ...   0
-    .    .   .   .   ...   0
-    .    .   .   .   ...   0
-    0    0   0   0    Bn   An
+
+    .. math::
+
+        \\begin{bmatrix}
+        A_1 & 0 & 0 & 0 & \\cdots  & 0\\\\
+        B_1 & A_2 & 0 & 0 & \\cdots & 0\\\\
+        0 & B_2 & A_3 & 0 & \\cdots & 0\\\\
+        \\vdots & \\vdots & \\ddots & \\ddots & \\ddots  & \\vdots \\\\
+        0 & 0 & 0 & B_{n-2} & A_{n-1} & 0\\\\
+        0 & 0 & 0 & 0 & B_{n-1} & A_n
+        \\end{bmatrix}
 
     that is, a blocked banded system with the main
     diagonal and first lower block diagonal filled
 
     We use the following sizes:
-        nblk:   number of blocks in the square matrix
-        sblk:   size of each block
-        sbat:   batch size
+        - nblk: number of blocks in the square matrix
+        - sblk: size of each block
+        - sbat: batch size
 
     Args:
         A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk)
@@ -290,24 +297,29 @@ class SquareBatchedBlockDiagonalMatrix:
     """
     A batched block diagonal matrix of the type
 
-    A1  B1  0   0
-    C1  A2  B2  0
-    0   C2  A3  B3
-    0   0   C3  A4
+    .. math::
 
-    where the matrix has diagonal blocks of non-zeros
+        \\begin{bmatrix}
+        A_1 & B_1 & 0 & 0\\\\
+        C_1 & A_2 & B_2 & 0 \\\\
+        0 & C_2 & A_3 & B_3\\\\
+        0 & 0 & C_3 & A_4
+        \\end{bmatrix}
+
+    where the matrix has diagonal blocks of non-zeros and
+    can have arbitrary numbers of filled diagonals
 
     Additionally, this matrix is batched.
 
     We use the following sizes:
-        nblk:     number of blocks in the each direction
-        sblk:     size of each block
-        sbat:     batch size
+        - nblk: number of blocks in the each direction
+        - sblk: size of each block
+        - sbat: batch size
 
     Args:
         data (list of tensors):     list of tensors of length ndiag.
                                     Each tensor
-                                    has shape (nblk-|d|,sbat,sblk,sblk)
+                                    has shape :code:`(nblk-abs(d),sbat,sblk,sblk)`
                                     where d is the diagonal number
                                     provided in the next input
         diags (list of ints):       list of ints of length ndiag.

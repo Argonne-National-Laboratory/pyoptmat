@@ -88,18 +88,19 @@ def model_act(times):
 
 
 class Integrator(pyro.nn.PyroModule):
-    def __init__(self, eqn, y0, extra_params=[]):
+    def __init__(self, eqn, y0, extra_params=[], block_size = 1):
         super().__init__()
         self.eqn = eqn
         self.y0 = y0
         self.extra_params = extra_params
+        self.block_size = block_size
 
     def forward(self, times):
         return ode.odeint_adjoint(
             self.eqn,
             self.y0,
             times,
-            block_size = 10,
+            block_size = self.block_size,
             extra_params=self.extra_params,
         )
 
@@ -251,6 +252,9 @@ if __name__ == "__main__":
     tmax = 20.0
     tnum = 100
 
+    # Number of vectorized time steps to evaluate at once
+    time_block = 50
+
     time = torch.linspace(0, tmax, tnum)
     times = torch.empty(tnum, nsamples)
     data = torch.empty(tnum, nsamples, 2)
@@ -270,7 +274,8 @@ if __name__ == "__main__":
     pyro.clear_param_store()
 
     def maker(v, a, **kwargs):
-        return Integrator(ODE(v, a), torch.zeros(nsamples, 2), **kwargs)
+        return Integrator(ODE(v, a), torch.zeros(nsamples, 2),
+                block_size = time_block, **kwargs)
 
     # Setup the model
     model = Model(

@@ -1,34 +1,39 @@
 """
-  Module defining the key objects and functions to integrate ODEs
-  and provide the sensitivity of the results with respect to the
-  model parameters either through backpropogation AD or the adjoint method.
+    Module defining the key objects and functions to integrate ODEs
+    and provide the sensitivity of the results with respect to the
+    model parameters either through backpropogation AD or the adjoint method.
 
-  The key functions are :py:func:`pyoptmat.odeint` and
-  :py:func:`pyoptmat.odeint_adjoint`.  These functions both
-  integrate a system of ODEs forward in time using one of several methods
-  and have identical function signature.  The only difference is that
-  backward passes over the results of :py:func:`pyoptmat.ode.odeint` will
-  use PyTorch backpropogation AD to return the gradients while
-  :py:func:`pyoptmat.ode.odeint_adjoint` will use the adjoint method.
+    The key functions are :py:func:`pyoptmat.odeint` and
+    :py:func:`pyoptmat.odeint_adjoint`.  These functions both
+    integrate a system of ODEs forward in time using one of several methods
+    and have identical function signature.  The only difference is that
+    backward passes over the results of :py:func:`pyoptmat.ode.odeint` will
+    use PyTorch backpropogation AD to return the gradients while
+    :py:func:`pyoptmat.ode.odeint_adjoint` will use the adjoint method.
 
-  The two different backward pass options are seamless, the end-user
-  can interchange them freely with other PyTorch code stacking on top
-  of the integrated results and obtain gradient information just as if they
-  were using AD.
+    The two different backward pass options are seamless, the end-user
+    can interchange them freely with other PyTorch code stacking on top
+    of the integrated results and obtain gradient information just as if they
+    were using AD.
 
-  In all realistic cases explored so far the adjoint method produces faster
-  results with far less memory use and should be preferred versus
-  the AD variant.
+    In all realistic cases explored so far the adjoint method produces faster
+    results with far less memory use and should be preferred versus
+    the AD variant.
 
-  The methods currently available to solve ODEs are detailed below, but
-  as a summary:
+    The methods currently available to solve ODEs are detailed below, but
+    as a summary:
 
-  * "forward_euler": simple forward Euler explicit integration
-  * "backward_euler": simple backward Euler implicit integration
+    * "forward_euler": simple forward Euler explicit integration
+    * "backward_euler": simple backward Euler implicit integration
 
-  The current methods all accept a :code:`substep` option which will
-  subdivide the provided time intervals into some number of subdivisions
-  to decrease integration error.
+    Both options take a `block_size` parameter, which sets up
+    vectorized/parallelized time integration.  This means the execution
+    device integrates `block_size` time steps at once, rather than
+    one at a time.  This *greatly* accelerates time integration, particularly
+    on GPUs.  The optimal `block_size` parameter will vary based on your
+    system and set of ODEs, but we highly recommend determining an
+    optimal block size for your system and not leaving it set to the
+    default value of 1.
 """
 import torch
 
@@ -88,6 +93,9 @@ class BackwardEulerScheme:
             J (torch.tensor):       block of Jacobians
             a_prev (torch.tensor):  previous adjoint
             grads (torch.tensor):   block of gradient values
+
+        Returns:
+            adjoint_block (torch.tensor): block of updated adjoint values
         """
         ntime = J.shape[0] - 1
         prob_size = J.shape[2]
@@ -123,6 +131,9 @@ class BackwardEulerScheme:
             grad (tensor): (ntime+1, nbatch, nsize) tensor of gradient values
             grad_fn (function): function that takes t,y,a and returns the dot product with
                 the model parameters
+
+        Returns:
+            next (tuple of tensor): updated gradients
         """
         dt = time.diff(dim=0)
         g = grad_fn(time[:-1], y[:-1], (a[1:] - grad[1:]) * -dt.unsqueeze(-1))
@@ -182,6 +193,9 @@ class ForwardEulerScheme:
             J (torch.tensor):       block of Jacobians
             a_prev (torch.tensor):  previous adjoint
             grads (torch.tensor):   block of gradient values
+
+        Returns:
+            adjoint_block (torch.tensor): block of updated adjoint values
         """
         ntime = J.shape[0] - 1
 
@@ -209,6 +223,9 @@ class ForwardEulerScheme:
             grad (tensor): (ntime+1, nbatch, nsize) tensor of gradient values
             grad_fn (function): function that takes t,y,a and returns the dot product with
                 the model parameters
+
+        Returns:
+            next (tuple of tensor): updated gradients
         """
         dt = time.diff(dim=0)
         g = grad_fn(time[1:], y[1:], a[:-1] * -dt.unsqueeze(-1))
