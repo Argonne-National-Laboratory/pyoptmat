@@ -101,24 +101,24 @@ class InelasticModel(nn.Module):
         )
 
         result = torch.empty_like(y, device=y.device)
-        dresult = torch.zeros(y.shape + y.shape[1:], device=y.device)
+        dresult = torch.zeros(y.shape + y.shape[-1:], device=y.device)
 
         result[..., 0] = self.E(T) * (erate - frate_p)
         result[..., 1 : 1 + self.flowrule.nhist] = hrate
         result[..., -1] = drate
 
         dresult[..., 0, 0] = -self.E(T) * dfrate_p
-
+        
         dresult[..., 0:1, 1 : 1 + self.flowrule.nhist] = (
             -self.E(T)[..., None, None]
-            * (1 - d)[:, None, None]
+            * (1 - d)[..., None, None]
             * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate)
         )
         dresult[..., 0, -1] = self.E(T) * (frate - dfrate * stress / (1 - d))
-
+        
         dresult[..., 1 : 1 + self.flowrule.nhist, 0] = (
             self.flowrule.dhist_dstress(stress / (1 - d), h, t, T, erate)
-            / (1 - d)[:, None]
+            / (1 - d)[..., None]
         )
         dresult[..., 1 : 1 + self.flowrule.nhist, 1 : 1 + self.flowrule.nhist] = dhrate
         dresult[..., 1 : 1 + self.flowrule.nhist, -1] = (
@@ -127,7 +127,7 @@ class InelasticModel(nn.Module):
             / (1 - d[..., None]) ** 2
         )
 
-        dresult[:, -1, 0] = self.dmodel.d_damage_rate_d_s(
+        dresult[..., -1, 0] = self.dmodel.d_damage_rate_d_s(
             stress / (1 - d), d, t, T, erate
         ) / (1 - d)
         # d_damage_d_hist is zero
@@ -479,28 +479,28 @@ class StressBasedModel(nn.Module):
         cs = self.stress_fn(t)
         cT = self.T_fn(t)
 
-        erate_guess = torch.zeros_like(y[:, 0])[:, None]
+        erate_guess = torch.zeros_like(y[..., 0])[..., None]
 
         def RJ(erate):
             yp = y.clone()
-            yp[:, 0] = cs
-            ydot, _, Je, _ = self.model(t, yp, erate[:, 0], cT)
+            yp[..., 0] = cs
+            ydot, _, Je, _ = self.model(t, yp, erate[..., 0], cT)
 
-            R = ydot[:, 0] - csr
-            J = Je[:, 0]
+            R = ydot[..., 0] - csr
+            J = Je[..., 0]
 
-            return R[:, None], J[:, None, None]
+            return R[..., None], J[..., None, None]
 
         erate, _ = solvers.newton_raphson(RJ, erate_guess)
         yp = y.clone()
-        yp[:, 0] = cs
-        ydot, J, Je, _ = self.model(t, yp, erate[:, 0], cT)
+        yp[..., 0] = cs
+        ydot, J, Je, _ = self.model(t, yp, erate[..., 0], cT)
 
         # Rescale the jacobian
-        J[:, 0, :] = -J[:, 0, :] / Je[:, 0][:, None]
-        J[:, :, 0] = 0
+        J[..., 0, :] = -J[..., 0, :] / Je[..., 0][..., None]
+        J[..., :, 0] = 0
 
         # Insert the strain rate
-        ydot[:, 0] = erate[:, 0]
+        ydot[..., 0] = erate[..., 0]
 
         return ydot, J
