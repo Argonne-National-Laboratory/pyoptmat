@@ -30,30 +30,15 @@
   subdivide the provided time intervals into some number of subdivisions
   to decrease integration error.
 """
-import numpy as np
-
 import torch
 
-from pyoptmat import solvers, utility, chunktime
+from pyoptmat import chunktime
 
 
-class TimeIntegrationScheme:
-    """
-    Takes the current residual and Jacobian values for a batch of time
-    and sets up the appropriate operator.
-    """
-
-    def __init__(self):
-        pass
-
-
-class BackwardEulerScheme(TimeIntegrationScheme):
+class BackwardEulerScheme:
     """
     Integration with the backward Euler method
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def form_operators(self, dy, yd, yJ, dt):
         """
@@ -67,8 +52,10 @@ class BackwardEulerScheme(TimeIntegrationScheme):
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
 
         Returns:
-            R (torch.tensor): residual tensor of shape (nbatch, ntime * nsize)
-            J (tensor.tensor): sparse Jacobian tensor of logical size (nbatch, ntime*nsize, ntime*nsize)
+            R (torch.tensor): residual tensor of shape
+                (nbatch, ntime * nsize)
+            J (tensor.tensor): sparse Jacobian tensor of logical
+                size (nbatch, ntime*nsize, ntime*nsize)
         """
         # Basic shape info
         ntime = dy.shape[0] - 1
@@ -142,13 +129,10 @@ class BackwardEulerScheme(TimeIntegrationScheme):
         return tuple(pi + gi for pi, gi in zip(prev, g))
 
 
-class ForwardEulerScheme(TimeIntegrationScheme):
+class ForwardEulerScheme:
     """
     Integration with the forward Euler method
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def form_operators(self, dy, yd, yJ, dt):
         """
@@ -162,8 +146,10 @@ class ForwardEulerScheme(TimeIntegrationScheme):
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
 
         Returns:
-            R (torch.tensor): residual tensor of shape (nbatch, ntime * nsize)
-            J (tensor.tensor): sparse Jacobian tensor of logical size (nbatch, ntime*nsize, ntime*nsize)
+            R (torch.tensor): residual tensor of shape
+                (nbatch, ntime * nsize)
+            J (tensor.tensor): sparse Jacobian tensor of logical size
+                (nbatch, ntime*nsize, ntime*nsize)
         """
         # Basic shape info
         ntime = dy.shape[0] - 1
@@ -198,8 +184,6 @@ class ForwardEulerScheme(TimeIntegrationScheme):
             grads (torch.tensor):   block of gradient values
         """
         ntime = J.shape[0] - 1
-        prob_size = J.shape[2]
-        batch_size = J.shape[1]
 
         adjoint_block = torch.zeros(J.shape[:-1], dtype=J.dtype, device=J.device)
         adjoint_block[0] = a_prev
@@ -264,7 +248,7 @@ class FixedGridBlockSolver:
         linear_solve_method="direct",
         adjoint_params=None,
         guess_type="zero",
-        **kwargs
+        **kwargs,
     ):
         # Store basic info about the system
         self.func = func
@@ -293,6 +277,10 @@ class FixedGridBlockSolver:
 
         # Initial guess for integration
         self.guess_type = guess_type
+
+        # Cached solutions
+        self.t = None
+        self.result = None
 
     def integrate(self, t, cache_adjoint=False):
         """
@@ -348,7 +336,7 @@ class FixedGridBlockSolver:
             blk = self.n - result[k : k + self.n].shape[0]
             guess = guess[blk:]
         else:
-            raise ValueError("Unknown initial guess strategy %s!" % self.guess_type)
+            raise ValueError(f"Unknown initial guess strategy {self.guess_type}!")
 
         return guess.transpose(0, 1).flatten(start_dim=1)
 
@@ -423,8 +411,6 @@ class FixedGridBlockSolver:
         """
         # Various useful sizes
         n = t.shape[0]  # Number of time steps to do at once
-        b = n * self.batch_size  # Size of megabatch
-        k = n * self.prob_size  # Size of operators
 
         def RJ(dy):
             # Make things into a more rational shape
@@ -497,42 +483,6 @@ def odeint(func, y0, times, method="backward-euler", extra_params=None, **kwargs
     solver = FixedGridBlockSolver(func, y0, scheme=int_methods[method], **kwargs)
 
     return solver.integrate(times)
-
-
-class IntegrateWithAdjoint(torch.autograd.Function):
-    # pylint: disable=abstract-method,arguments-differ
-    """
-    Wrapper to convince the thing that it needs to use the adjoint sensitivity
-    instead of AD
-    """
-
-    @staticmethod
-    def forward(ctx, solver, times, *params):
-        """
-        Args:
-          ctx:        context object we can use to stash state
-          solver:     ODE Solver object to use
-          times:      times to provide output for
-        """
-        with torch.no_grad():
-            # Do our first pass and get full results
-            y = solver.integrate(times, cache_adjoint=True)
-            # Save the info we will need for the backward pass
-            ctx.solver = solver
-            ctx.save_for_backward(times)
-            return y
-
-    @staticmethod
-    def backward(ctx, output_grad):
-        """
-        Args:
-          ctx:            context object with state
-          output_grad:    grads with which to dot product
-        """
-        with torch.no_grad():
-            times = ctx.saved_tensors[0]
-            grad_tuple = ctx.solver.rewind_adjoint(times, output_grad)
-            return (None, None, *grad_tuple)
 
 
 class IntegrateWithAdjoint(torch.autograd.Function):

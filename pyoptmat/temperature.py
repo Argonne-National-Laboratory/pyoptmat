@@ -42,10 +42,10 @@
   of shape :code:`(nbatch,)`, not just a scalar.
 """
 
-from pyoptmat import utility
-
 import torch
 from torch import nn
+
+from pyoptmat import utility
 
 
 class TemperatureParameter(nn.Module):

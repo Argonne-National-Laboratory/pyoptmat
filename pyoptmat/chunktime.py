@@ -1,3 +1,14 @@
+# pylint: disable=abstract-method
+
+"""
+    Functions and objects to help with chunked time integration.
+
+    These include:
+    1. Sparse matrix classes for banded systems
+    2. General sparse matrix classes
+    3. Specialized solver routines working with banded systems
+"""
+
 import warnings
 
 import torch
@@ -7,8 +18,8 @@ import numpy as np
 
 def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
     """
-    Solve a nonlinear system with Newton's method with a tensor for a BackwardEuler type chunking operator
-    context manager.
+    Solve a nonlinear system with Newton's method with a tensor for a
+    BackwardEuler type chunking operator context manager.
 
     Args:
       fn (function):        function that returns R, J, and the solver context
@@ -183,9 +194,6 @@ class BidiagonalForwardOperator(BidiagonalOperator):
             storing the nblk-1 off diagonal blocks
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def to_diag(self):
         """
         Convert to a SquareBatchedBlockDiagonalMatrix, for testing
@@ -195,7 +203,7 @@ class BidiagonalForwardOperator(BidiagonalOperator):
 
     def forward(self, v):
         """
-        $A \cdot v$ in an efficient manner
+        :math:`A \\cdot v` in an efficient manner
 
         Args:
             v (torch.tensor):   batch of vectors
@@ -252,10 +260,9 @@ class ChunkTimeOperatorSolverContext:
         """
         if self.solve_method == "dense":
             return self.solve_dense(J, R)
-        elif self.solve_method == "direct":
+        if self.solve_method == "direct":
             return self.solve_direct(J, R)
-        else:
-            raise RuntimeError("Unknown solver method...")
+        raise RuntimeError("Unknown solver method...")
 
     def solve_dense(self, J, R):
         """
