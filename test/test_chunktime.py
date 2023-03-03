@@ -3,6 +3,9 @@ from pyoptmat import chunktime
 import torch
 
 import unittest
+import warnings
+
+warnings.filterwarnings("ignore")
 
 torch.set_default_tensor_type(torch.DoubleTensor)
 

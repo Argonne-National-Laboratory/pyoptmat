@@ -179,6 +179,7 @@ class ModelIntegrator(nn.Module):
         model,
         *args,
         method="backward-euler",
+        block_size = 1,
         rtol=1.0e-6,
         atol=1.0e-4,
         miter=100,
@@ -190,6 +191,7 @@ class ModelIntegrator(nn.Module):
         super().__init__(*args, **kwargs)
         self.model = model
         self.method = method
+        self.block_size = block_size
         self.rtol = rtol
         self.atol = atol
         self.miter = miter
@@ -244,6 +246,7 @@ class ModelIntegrator(nn.Module):
             bmodel,
             init,
             times,
+            block_size = self.block_size,
             method=self.method,
             rtol=self.rtol,
             atol=self.atol,
@@ -293,13 +296,12 @@ class ModelIntegrator(nn.Module):
             emodel,
             init,
             times,
+            block_size = self.block_size,
             method=self.method,
-            substep=self.substeps,
             rtol=self.rtol,
             atol=self.atol,
             miter=self.miter,
             extra_params=self.extra_params,
-            jit_mode=self.jit_mode,
         )
 
     def solve_stress(self, times, stresses, temperatures):
@@ -350,6 +352,7 @@ class ModelIntegrator(nn.Module):
             smodel,
             init,
             times,
+            block_size = self.block_size,
             method=self.method,
             rtol=self.rtol,
             atol=self.atol,

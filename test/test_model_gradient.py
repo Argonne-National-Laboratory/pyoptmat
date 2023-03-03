@@ -10,8 +10,6 @@ from pyoptmat import ode, models, flowrules, hardening, utility, damage
 from pyoptmat.temperature import ConstantParameter as CP
 
 torch.set_default_tensor_type(torch.DoubleTensor)
-torch.autograd.set_detect_anomaly(True)
-
 
 def differ(mfn, p0, eps=1.0e-6):
     v0 = mfn(p0).numpy()
