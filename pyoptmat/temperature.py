@@ -562,7 +562,11 @@ class PiecewiseScaling(TemperatureParameter):
             T = T.unsqueeze(-1)
 
         ifn = utility.ArbitraryBatchTimeSeriesInterpolator(ccurr, vcurr)
-        val = ifn(T)
+
+        if T.dim() > 2:
+            val = ifn(T[0, :, :])
+        else:
+            val = ifn(T)
 
         if not self.batch:
             return val.squeeze(-1)
