@@ -20,12 +20,12 @@ This example
 The integration will use `n_time` points in the integration.
 """
 
-from functools import reduce
 import itertools
 
 import torch
 from torch import nn
-from functorch import jacrev, vmap
+
+from functorch import vmap, jacrev
 
 import tqdm
 import matplotlib.pyplot as plt
@@ -160,13 +160,24 @@ class NeuralODE(torch.nn.Module):
                         ) + [nn.Linear(self.n_inter, self.n_out)]
 
         self.model = nn.Sequential(*mods)
-
+    
     def forward(self, t, y):
-        inp = torch.empty(y.shape[:-1] + (self.n_in,), device = t.device)
-        inp[...,:-1] = y
-        inp[...,-1] = self.force(t)
+        """
 
-        return self.model(inp), vmap(vmap(jacrev(self.model)))(inp)[...,:-1]
+        """
+        # Concatenate state with current force
+        inp = torch.cat((y, self.force(t).unsqueeze(-1)), dim = -1) 
+        
+        # Wrapper to get both function value and derivative
+        @utility.jacobianize()
+        def f(inp):
+            return self.model(inp)
+        
+        # Calculate full values
+        val, jac = f(inp)
+        
+        # Return only the derivative wrt state
+        return val, jac[0][...,:-1]
 
     def initial_condition(self, nsamples):
         return torch.zeros(nsamples, self.n_out, device = device)
@@ -289,7 +300,7 @@ if __name__ == "__main__":
     # Setup the model
     n_hidden = n_chain # I don't know, seems reasonable
     n_layers = 3
-    n_inter = n_chain*4 # Same thing, seems reasonable
+    n_inter = n_chain # Same thing, seems reasonable
 
     nn_model = NeuralODE(force_continuous, n_hidden, n_layers, n_inter).to(device) 
     y0 = nn_model.initial_condition(n_samples)

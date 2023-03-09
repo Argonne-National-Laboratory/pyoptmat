@@ -4,12 +4,57 @@
   visualization routines.
 """
 
+from functools import reduce, wraps
+
 import numpy as np
 
 import matplotlib.pyplot as plt
 
 import torch
 from torch import nn
+import functorch
+
+
+def compose(f1, f2):
+    """A function composition operator...
+
+    Args:
+        f1 (function): first function
+        f2 (function): second function
+
+    Returns:
+        function: f2(f1)
+    """
+    return f2(f1)
+
+
+def jacobianize(argnums=None):
+    """Decorator that adds the multibatched Jacobian to a function
+
+    Assumes that the function itself has only a single dimension, the last in the shape
+
+    By default provides Jacobian for all *args, but argnums can be set to limit this
+    to certain arguments
+    """
+
+    def inner_jacobianize(fn):
+        @wraps(fn)
+        def wrapper(*args, argnums=argnums, **kwargs):
+            if argnums is None:
+                argnums = tuple(range(len(args)))
+            res = fn(*args, **kwargs)
+            repeats = res.dim() - 1
+            D = reduce(
+                compose,
+                [fn, lambda x: functorch.jacrev(x, argnums=argnums)]
+                + [functorch.vmap] * repeats,
+            )
+
+            return res, D(*args, **kwargs)
+
+        return wrapper
+
+    return inner_jacobianize
 
 
 def mbmm(A1, A2):
