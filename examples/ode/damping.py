@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 
 import sys
 sys.path.append("../..")
-from pyoptmat import ode, utility
+from pyoptmat import ode, utility, neuralode
 
 if torch.cuda.is_available():
     dev = "cuda:0"
@@ -138,49 +138,23 @@ class MassDamperSpring(torch.nn.Module):
         """
         return torch.zeros(nsamples, self.size, device = device)
 
-class NeuralODE(torch.nn.Module):
-    """
-    Neural ODE model:
-    - input of size 2 + n_hidden
-        - extra inputs are the current end displacement and the current force
-    - n_layers linear layers of size 2 + n_inter
-    - output of size 1 + n_hidden
-        - extra output is the end displacement rate
-    """
-    def __init__(self, force, n_hidden, n_layers, n_inter):
-        super().__init__()
-
-        self.force = force
-        self.n_in = n_hidden + 2 
-        self.n_out = n_hidden + 1
-        self.n_inter = n_inter + 1
-       
-        mods = [nn.Linear(self.n_in, self.n_inter), nn.ReLU()
-                ] + list(itertools.chain(*[[nn.Linear(self.n_inter, self.n_inter), nn.ReLU()] for i in range(n_layers)])
-                        ) + [nn.Linear(self.n_inter, self.n_out)]
-
-        self.model = nn.Sequential(*mods)
+def neural_ode_factory(n_hidden, n_layers, n_inter):
+    """Make a neural ODE to try
     
-    def forward(self, t, y):
-        """
+    Args:
+        n_hidden (int): number of hidden state variables
+        n_layers (int): network depth
+        n_inter (int): size of hidden layers
+    """
+    n_in = n_hidden + 2
+    n_out = n_hidden + 1
+    n_inter += 1
 
-        """
-        # Concatenate state with current force
-        inp = torch.cat((y, self.force(t).unsqueeze(-1)), dim = -1) 
-        
-        # Wrapper to get both function value and derivative
-        @utility.jacobianize()
-        def f(inp):
-            return self.model(inp)
-        
-        # Calculate full values
-        val, jac = f(inp)
-        
-        # Return only the derivative wrt state
-        return val, jac[0][...,:-1]
+    mods = [nn.Linear(n_in, n_inter), nn.ReLU()
+            ] + list(itertools.chain(*[[nn.Linear(n_inter, n_inter), nn.ReLU()] for i in range(n_layers)])
+                    ) + [nn.Linear(n_inter, n_out)]
 
-    def initial_condition(self, nsamples):
-        return torch.zeros(nsamples, self.n_out, device = device)
+    return nn.Sequential(*mods)
 
 def random_walk(time, mean, scale, mag):
     """
@@ -301,9 +275,11 @@ if __name__ == "__main__":
     n_hidden = n_chain # I don't know, seems reasonable
     n_layers = 3
     n_inter = n_chain # Same thing, seems reasonable
+    
+    nn = neural_ode_factory(n_hidden, n_layers, n_inter).to(device) 
+    y0 = torch.zeros(n_samples, n_hidden+1, device = device)
 
-    nn_model = NeuralODE(force_continuous, n_hidden, n_layers, n_inter).to(device) 
-    y0 = nn_model.initial_condition(n_samples)
+    nn_model = neuralode.NeuralODE(nn, lambda t: force_continuous(t).unsqueeze(-1)) 
 
     # Training parameters
     niter = 1000
