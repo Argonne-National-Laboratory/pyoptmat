@@ -552,19 +552,22 @@ class PiecewiseScaling(TemperatureParameter):
           torch.tensor:       value at the given temperatures
         """
         vcurr = self.values_scale_fn(self.values)
-        
+
         # Did we get batched input?
         batched_input = T.dim() > 0
 
+        # Batched control points, which means the input better be batched
         if self.batched_values:
             ccurr = self.control.unsqueeze(0).expand(vcurr.shape).T
             vcurr = vcurr.T
-            squeeze = False 
+            squeeze = False
+        # Not batched control points but batched input
         elif batched_input:
             target_shape = self.values.shape + (T.shape[-1],)
             ccurr = self.control.unsqueeze(-1).expand(target_shape)
             vcurr = vcurr.unsqueeze(-1).expand(target_shape)
             squeeze = False
+        # Boring scalar case
         else:
             ccurr = self.control.unsqueeze(-1)
             vcurr = vcurr.unsqueeze(-1)
@@ -636,6 +639,7 @@ class ArrheniusScaling(TemperatureParameter):
         Shape of the underlying parameter
         """
         return self.A.shape
+
 
 class InverseArrheniusScaling(TemperatureParameter):
     """
