@@ -532,7 +532,7 @@ class PiecewiseScaling(TemperatureParameter):
 
         self.values_scale_fn = values_scale_fn
 
-        self.batch = values.dim() > 1
+        self.batched_values = values.dim() > 1
 
     @property
     def device(self):
@@ -552,19 +552,29 @@ class PiecewiseScaling(TemperatureParameter):
           torch.tensor:       value at the given temperatures
         """
         vcurr = self.values_scale_fn(self.values)
+        
+        # Did we get batched input?
+        batched_input = T.dim() > 0
 
-        if self.batch:
+        if self.batched_values:
             ccurr = self.control.unsqueeze(0).expand(vcurr.shape).T
             vcurr = vcurr.T
+            squeeze = False 
+        elif batched_input:
+            target_shape = self.values.shape + (T.shape[-1],)
+            ccurr = self.control.unsqueeze(-1).expand(target_shape)
+            vcurr = vcurr.unsqueeze(-1).expand(target_shape)
+            squeeze = False
         else:
             ccurr = self.control.unsqueeze(-1)
             vcurr = vcurr.unsqueeze(-1)
             T = T.unsqueeze(-1)
+            squeeze = True
 
         ifn = utility.ArbitraryBatchTimeSeriesInterpolator(ccurr, vcurr)
         val = ifn(T)
 
-        if not self.batch:
+        if squeeze:
             return val.squeeze(-1)
 
         return val
@@ -619,6 +629,56 @@ class ArrheniusScaling(TemperatureParameter):
           torch.tensor:       value at the given temperatures
         """
         return self.A_scale(self.A) * torch.exp(-self.Q_scale(self.Q) / T)
+
+    @property
+    def shape(self):
+        """
+        Shape of the underlying parameter
+        """
+        return self.A.shape
+
+class InverseArrheniusScaling(TemperatureParameter):
+    """
+    Simple Arrhenius scaling of the type
+
+    .. math::
+
+      A (1 - \\exp(-Q/T))
+
+    Args:
+      A (torch.tensor):  Prefactor
+      Q (torch.tensor):  Activation energy (times R)
+
+    Keyword Args
+      A_scale (function):  numerical scaling for A, defaults to no scaling
+      Q_scale (function):  numerical scaling for Q, defaults to no scaling
+    """
+
+    def __init__(self, A, Q, *args, A_scale=lambda x: x, Q_scale=lambda x: x, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.A = A
+        self.Q = Q
+        self.A_scale = A_scale
+        self.Q_scale = Q_scale
+
+    @property
+    def device(self):
+        """
+        Return the device used by the scaling function
+        """
+        return self.A.device
+
+    def value(self, T):
+        """
+        Return the function value
+
+        Args:
+          T (torch.tensor):   current temperature
+
+        Returns:
+          torch.tensor:       value at the given temperatures
+        """
+        return self.A_scale(self.A) * (1.0 - torch.exp(-self.Q_scale(self.Q) / T))
 
     @property
     def shape(self):
