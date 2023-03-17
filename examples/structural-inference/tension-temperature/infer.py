@@ -68,7 +68,7 @@ if __name__ == "__main__":
         return models.ModelIntegrator(model, **kwargs).to(device)
     
     # Setup initial guesses
-    names = ["n", "eta", "theta", "tau"]
+    names = ["n_vals", "eta_vals", "theta_vals", "tau_vals"]
     scale_functions = [
             scaling.BoundedScalingFunction(torch.tensor(1.1, device = device), torch.tensor(15.0, device = device)),
             scaling.BoundedScalingFunction(torch.tensor(20.0, device = device), torch.tensor(1000.0, device = device)),
