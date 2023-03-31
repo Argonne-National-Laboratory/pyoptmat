@@ -19,15 +19,15 @@ class LogisticODE(torch.nn.Module):
     def forward(self, t, y):
         return (
             self.r * (1.0 - y / self.K) * y,
-            (self.r - (2 * self.r * y) / self.K)[:, :, None],
+            (self.r - (2 * self.r * y) / self.K)[..., None],
         )
 
     def exact(self, t, y0):
         return (
             self.K
             * torch.exp(self.r * t)
-            * y0[:, 0]
-            / (self.K + (torch.exp(self.r * t) - 1) * y0[:, 0])
+            * y0[..., 0]
+            / (self.K + (torch.exp(self.r * t) - 1) * y0[..., 0])
         )[..., None]
 
 
@@ -58,10 +58,44 @@ class TestBatchSimple(unittest.TestCase):
 
         self.assertTrue(torch.max(torch.abs((numerical - exact) / exact)) < 1.0e-2)
 
-    def test_backward_full(self):
+
+class TestBatchSimpleChunkTime(unittest.TestCase):
+    def setUp(self):
+        self.r = 1.0
+        self.K = 1.0
+
+        self.model = LogisticODE(self.r, self.K)
+        self.nbatch = 20
+        self.y0 = torch.linspace(0.51, 0.76, self.nbatch).reshape(self.nbatch, 1)
+
+        self.nsteps = 100
+
+        self.tchunk = 3
+
+        self.times = torch.tensor(
+            np.array([np.linspace(0, 7.5, self.nsteps) for i in range(self.nbatch)]).T
+        )
+
+    def test_forward_default(self):
         exact = self.model.exact(self.times, self.y0)
         numerical = ode.odeint(
-            self.model, self.y0, self.times, method="backward-euler", solver_method="lu"
+            self.model,
+            self.y0,
+            self.times,
+            method="forward-euler",
+            block_size=self.tchunk,
+        )
+
+        self.assertTrue(torch.max(torch.abs((numerical - exact) / exact)) < 1.0e-2)
+
+    def test_backward_default(self):
+        exact = self.model.exact(self.times, self.y0)
+        numerical = ode.odeint(
+            self.model,
+            self.y0,
+            self.times,
+            method="backward-euler",
+            block_size=self.tchunk,
         )
 
         self.assertTrue(torch.max(torch.abs((numerical - exact) / exact)) < 1.0e-2)
@@ -103,7 +137,7 @@ class FallingODE(torch.nn.Module):
                 4.0 * (1 - torch.exp(-8.0 * t)),
             ),
             dim=1,
-        )
+        ).permute(0, 2, 1)
 
 
 class TestFallingBatch(unittest.TestCase):
@@ -115,7 +149,8 @@ class TestFallingBatch(unittest.TestCase):
         self.nbatch = 20
         self.y0 = torch.zeros(self.nbatch, 2)
 
-        self.nsteps = 100
+        self.nsteps = 1000
+        self.nchunk = 10
         self.times = torch.tensor(
             np.array([np.linspace(0, 5.0, self.nsteps) for i in range(self.nbatch)]).T
         )
@@ -123,39 +158,28 @@ class TestFallingBatch(unittest.TestCase):
         self.model = FallingODE(self.m, self.w, self.k)
 
     def test_forward(self):
-        exact = self.model.exact(self.times, self.y0).permute(0, 2, 1)
+        exact = self.model.exact(self.times, self.y0)
         numerical = ode.odeint(
-            self.model, self.y0, self.times, method="forward-euler", substep=100
+            self.model,
+            self.y0,
+            self.times,
+            method="forward-euler",
+            block_size=self.nchunk,
         )
 
-        self.assertTrue(
-            torch.max(torch.abs((numerical[1:] - exact[1:]) / exact[1:])) < 1.0e-2
-        )
+        self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
 
     def test_backward(self):
-        exact = self.model.exact(self.times, self.y0).permute(0, 2, 1)
-        numerical = ode.odeint(
-            self.model, self.y0, self.times, method="backward-euler", substep=10
-        )
-
-        self.assertTrue(
-            torch.max(torch.abs((numerical[1:] - exact[1:]) / exact[1:])) < 1.0e-1
-        )
-
-    def test_backward_lu(self):
-        exact = self.model.exact(self.times, self.y0).permute(0, 2, 1)
+        exact = self.model.exact(self.times, self.y0)
         numerical = ode.odeint(
             self.model,
             self.y0,
             self.times,
             method="backward-euler",
-            substep=10,
-            solver_method="lu",
+            block_size=self.nchunk,
         )
 
-        self.assertTrue(
-            torch.max(torch.abs((numerical[1:] - exact[1:]) / exact[1:])) < 1.0e-1
-        )
+        self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
 
 
 class FallingParameterizedODE(torch.nn.Module):
@@ -197,18 +221,14 @@ class FallingParameterizedODE(torch.nn.Module):
         )
 
 
-def run_model(
-    model, nbatch=4, method="forward-euler", nsteps=10, substep=2, solver_method="diag"
-):
+def run_model(model, nbatch=4, method="forward-euler", nsteps=10):
     y0 = torch.zeros(nbatch, 2)
 
     times = torch.tensor(
         np.array([np.linspace(0, 1.0, nsteps) for i in range(nbatch)]).T
     )
 
-    numerical = ode.odeint_adjoint(
-        model, y0, times, method=method, substep=substep, solver_method=solver_method
-    )
+    numerical = ode.odeint_adjoint(model, y0, times, method=method)
 
     return torch.norm(numerical)
 
@@ -306,58 +326,6 @@ class TestGradient(unittest.TestCase):
                     run_model(
                         FallingParameterizedODE(self.m, self.w, self.k * (1 + eps)),
                         method="backward-euler",
-                    )
-                    - r0
-                )
-                / (eps * self.k)
-            ).numpy()
-
-        self.assertAlmostEqual(dm, dmp, places=3)
-        self.assertAlmostEqual(dw, dwp, places=3)
-        self.assertAlmostEqual(dk, dwk, places=3)
-
-    def test_grad_backward_lu(self):
-        model = FallingParameterizedODE(self.m, self.w, self.k)
-
-        res1 = run_model(model, method="backward-euler", solver_method="lu")
-        res1.backward()
-
-        r0 = res1.data.numpy()
-
-        dm = model.m.grad.numpy()
-        dw = model.w.grad.numpy()
-        dk = model.k.grad.numpy()
-
-        with torch.no_grad():
-            eps = 1.0e-6
-            dmp = (
-                (
-                    run_model(
-                        FallingParameterizedODE(self.m + self.m * eps, self.w, self.k),
-                        method="backward-euler",
-                        solver_method="lu",
-                    )
-                    - r0
-                )
-                / (eps * self.m)
-            ).numpy()
-            dwp = (
-                (
-                    run_model(
-                        FallingParameterizedODE(self.m, self.w * (1 + eps), self.k),
-                        method="backward-euler",
-                        solver_method="lu",
-                    )
-                    - r0
-                )
-                / (eps * self.w)
-            ).numpy()
-            dwk = (
-                (
-                    run_model(
-                        FallingParameterizedODE(self.m, self.w, self.k * (1 + eps)),
-                        method="backward-euler",
-                        solver_method="lu",
                     )
                     - r0
                 )

@@ -102,14 +102,14 @@ class TestFullModelStrain(unittest.TestCase):
     def test_explicit(self):
         self.compare(method="forward-euler")
 
-    def test_explicit_substep(self):
-        self.compare(method="forward-euler", substeps=2)
-
     def test_implicit(self):
         self.compare(method="backward-euler")
 
-    def test_implicit_substep(self):
-        self.compare(method="backward-euler", substeps=2)
+    def test_explicit_block(self):
+        self.compare(method="forward-euler", block_size=5)
+
+    def test_implicit_block(self):
+        self.compare(method="backward-euler", block_size=5)
 
 
 class TestFullerModelStrain(unittest.TestCase):
@@ -203,14 +203,14 @@ class TestFullerModelStrain(unittest.TestCase):
     def test_explicit(self):
         self.compare(method="forward-euler")
 
-    def test_explicit_substep(self):
-        self.compare(method="forward-euler", substeps=2)
-
     def test_implicit(self):
         self.compare(method="backward-euler")
 
-    def test_implicit_substep(self):
-        self.compare(method="backward-euler", substeps=2)
+    def test_explicit_block(self):
+        self.compare(method="forward-euler", block_size=5)
+
+    def test_implicit_block(self):
+        self.compare(method="backward-euler", block_size=5)
 
 
 class TestFullModelStress(unittest.TestCase):
@@ -305,14 +305,14 @@ class TestFullModelStress(unittest.TestCase):
     def test_explicit(self):
         self.compare(method="forward-euler")
 
-    def test_explicit_substep(self):
-        self.compare(method="forward-euler", substeps=2)
-
     def test_implicit(self):
         self.compare(method="backward-euler")
 
-    def test_implicit_substep(self):
-        self.compare(method="backward-euler", substeps=2)
+    def test_explicit_block(self):
+        self.compare(method="forward-euler", block_size=5)
+
+    def test_implicit_block(self):
+        self.compare(method="backward-euler", block_size=5)
 
 
 class TestFullerModelStress(unittest.TestCase):
@@ -406,11 +406,11 @@ class TestFullerModelStress(unittest.TestCase):
     def test_explicit(self):
         self.compare(method="forward-euler")
 
-    def test_explicit_substep(self):
-        self.compare(method="forward-euler", substeps=2)
-
     def test_implicit(self):
         self.compare(method="backward-euler")
 
-    def test_implicit_substep(self):
-        self.compare(method="backward-euler", substeps=2)
+    def test_explicit_block(self):
+        self.compare(method="forward-euler", block_size=5)
+
+    def test_implicit_block(self):
+        self.compare(method="backward-euler", block_size=5)

@@ -28,6 +28,14 @@ repeats the :doc:`tutorial <structural_tutorial>`, but using
 synthetic cyclic test data a :py:class:`pyoptmat.hardening.ChabocheHardeningModel` viscoplastic model capable
 of capturing kinematic hardening behavior.
 
+Neural ODE example
+------------------
+
+Inferring the response of a coupled mass-spring-damper system using
+trajectory data (1) a physical ODE model and (2) a neural ODE model.
+
+.. literalinclude:: /../../examples/ode/damping.py
+
 Implicit versus explicit integration
 ------------------------------------
 
@@ -56,6 +64,13 @@ method or AD to calculate the sensitivities, to compare the relative
 performance of both approaches.
 
 .. literalinclude:: /../../examples/ode/trajectory.py
+
+Hogdkin-Huxley coupled neuron model
+-----------------------------------
+
+An example, scalable system of ODEs for benchmarking.
+
+.. literalinclude:: /../../examples/ode/neuron.py
 
 Temperature dependent parameters
 --------------------------------

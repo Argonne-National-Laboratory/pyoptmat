@@ -4,12 +4,64 @@
   visualization routines.
 """
 
+from functools import reduce, wraps
+
 import numpy as np
 
 import matplotlib.pyplot as plt
 
 import torch
 from torch import nn
+import functorch
+
+
+def compose(f1, f2):
+    """A function composition operator...
+
+    Args:
+        f1 (function): first function
+        f2 (function): second function
+
+    Returns:
+        function: f2(f1)
+    """
+    return f2(f1)
+
+
+def jacobianize(argnums=None):
+    """Decorator that adds the multibatched Jacobian to a function
+
+    Assumes that the function itself has only a single dimension, the last in the shape
+
+    By default provides Jacobian for all *args, but argnums can be set to limit this
+    to certain arguments
+    """
+
+    def inner_jacobianize(fn):
+        @wraps(fn)
+        def wrapper(*args, argnums=argnums, **kwargs):
+            if argnums is None:
+                argnums = tuple(range(len(args)))
+            res = fn(*args, **kwargs)
+            repeats = res.dim() - 1
+            D = reduce(
+                compose,
+                [fn, lambda x: functorch.jacrev(x, argnums=argnums)]
+                + [functorch.vmap] * repeats,
+            )
+
+            return res, D(*args, **kwargs)
+
+        return wrapper
+
+    return inner_jacobianize
+
+
+def mbmm(A1, A2):
+    """
+    Batched matrix-matrix multiplication with several batch dimensions
+    """
+    return torch.einsum("...ik,...kj->...ij", A1, A2)
 
 
 def visualize_variance(strain, stress_true, stress_calc, alpha=0.05):
@@ -58,6 +110,69 @@ def visualize_variance(strain, stress_true, stress_calc, alpha=0.05):
     plt.show()
 
 
+def batch_differentiate(fn, x0, eps=1.0e-6, nbatch_dim=1):
+    """
+    New numerical differentiation function to handle the batched-model cases
+
+    This version handles arbitrary batch sizes
+
+    Args:
+      fn (torch.tensor):    function to differentiate via finite differences
+      x0 (torch.tensor):    point at which to take the numerical derivative
+
+    Keyword Args:
+      eps (float):          perturbation to use
+
+    Returns:
+      torch.tensor:         finite difference approximation to
+                            :math:`\\frac{df}{dx}|_{x_0}`
+    """
+    v0 = fn(x0)
+    bs = v0.shape[:nbatch_dim]
+
+    s1 = v0.shape[nbatch_dim:]
+    s2 = x0.shape[nbatch_dim:]
+    squeeze1 = False
+    squeeze2 = False
+
+    if len(s1) == 0:
+        s1 = (1,)
+        squeeze1 = True
+
+    if len(s2) == 0:
+        s2 = (1,)
+        squeeze2 = True
+
+    d = torch.empty(bs + s1 + s2, device=x0.device)
+
+    x0 = x0.reshape(bs + s2)
+    v0 = v0.reshape(bs + s1)
+
+    for i2 in np.ndindex(s2):
+        dx = torch.zeros_like(x0)
+        inc = torch.abs(x0[..., i2]) * eps
+        inc[inc < eps] = eps
+        dx[..., i2] = inc
+
+        x = x0 + dx
+        if squeeze2:
+            x = x.squeeze(-1)
+
+        v1 = fn(x).reshape(bs + s1)
+        d[..., i2] = (v1 - v0).unsqueeze(-1).expand(d[..., i2].shape) / inc.unsqueeze(
+            -2
+        ).expand(d[..., i2].shape)
+
+    if squeeze1 and squeeze2:
+        d = d.squeeze(-1).squeeze(-1)
+    elif squeeze2:
+        d = d.squeeze(-1)
+    elif squeeze1:
+        d = d.squeeze(-len(s2) - 1)
+
+    return d
+
+
 def new_differentiate(fn, x0, eps=1.0e-6):
     """
     New numerical differentiation function to handle the batched-model cases
@@ -89,7 +204,7 @@ def new_differentiate(fn, x0, eps=1.0e-6):
         flatten = False
     fs2 = (nbatch,) + s2
 
-    d = torch.empty((nbatch,) + s1 + s2)
+    d = torch.empty((nbatch,) + s1 + s2, device=x0.device)
 
     v0 = v0.reshape(fs1)
 
@@ -159,6 +274,72 @@ def differentiate(fn, x0, eps=1.0e-6):
             d[..., i2] = ((v1 - v0) / dx)[..., None]
 
     return d
+
+
+class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
+    """
+    Interpolate :code:`data` located at discrete :code:`times`
+    linearly to point :code:`t`.
+
+    This version handles batched of arbitrary size -- only the rightmost
+    batch dimension must agree with the input data.  All other dimensions are
+    broadcast.
+
+    Args:
+      times (torch.tensor):     input time series as a code:`(ntime,nbatch)`
+                                array
+      values (torch.tensor):    input values series as a code:`(ntime,nbatch)`
+                                array
+    """
+
+    def __init__(self, times, data):
+        super().__init__()
+        # Transpose to put the shared dimension first
+        self.times = times.t()
+        self.values = data.t()
+
+        self.slopes = torch.diff(self.values, dim=-1) / torch.diff(self.times, dim=-1)
+
+    def forward(self, t):
+        """
+        Calculate the linearly-interpolated current values
+
+        Args:
+          t (torch.tensor):   batched times as :code:`(...,nbatch,)` array
+
+        Returns:
+          torch.tensor:       batched values at :code:`t`
+        """
+        squeeze = t.dim() == 1
+
+        t = t.t()  # Transpose so the common dimension is first
+        if squeeze:
+            t = t.unsqueeze(-1)
+
+        # Which dimensions to offset -- likely there is some efficiency
+        # to be gained by flipping these, but probably depends on the
+        # input shape
+        d1 = -1
+        d2 = -2
+
+        offsets = t.unsqueeze(d1) - self.times[..., :-1].unsqueeze(d2)
+
+        poss = self.slopes.unsqueeze(d2) * offsets + self.values[..., :-1].unsqueeze(d2)
+
+        locs = torch.logical_and(
+            t.unsqueeze(d1) <= self.times[..., 1:].unsqueeze(d2),
+            t.unsqueeze(d1) > self.times[..., :-1].unsqueeze(d2),
+        )
+
+        # Now we need to fix up the stupid left side
+        locs[..., 0] = torch.logical_or(
+            locs[..., 0], t == self.times[..., 0].unsqueeze(-1)
+        )
+
+        if squeeze:
+            return poss[locs].squeeze(-1).t()
+
+        return poss[locs].reshape(t.shape).t()
 
 
 class BatchTimeSeriesInterpolator(nn.Module):

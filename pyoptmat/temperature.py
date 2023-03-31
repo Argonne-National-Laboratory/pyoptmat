@@ -456,199 +456,6 @@ class KMViscosityScaling(TemperatureParameter):
         return self.B.shape
 
 
-class KMViscosityScalingGC(TemperatureParameter):
-    """
-    Parameter that varies as
-
-    .. math::
-
-      \\exp{B} \\mu \\dot{\\varepsilon}_0^{-1/n}
-
-    where :math:`B = C - g_0 A` is the Kocks-Mecking intercept parameter
-    and the rest are defined in the
-    :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object.
-
-    :math:`n` is the rate sensitivity, again given by the
-    :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object
-
-    Args:
-      A (torch.tensor):     Kocks-Mecking slope parameter
-      C (torch.tensor):     Kocks-Mecking cutoff parameter
-      g0 (torch.tensor):    Kocks-Mecking critical energy
-      mu (|TP|):            scalar, temperature-dependent shear modulus
-      eps0 (torch.tensor):  scalar, reference strain rate
-      b (torch.tensor):     scalar, Burger's vector
-      k (torch.tensor):     scalar, Boltzmann constant
-
-    Keyword Args:
-      A_scale (function):   numerical scaling function for A, defaults to
-                            no scaling
-      C_scale (function):   numerical scaling function for C, defaults to
-                            no scaling
-      g0_scale (function):  numerical scaling function g0, defaults to no
-                            scaling
-    """
-
-    def __init__(
-        self,
-        A,
-        C,
-        g0,
-        mu,
-        eps0,
-        b,
-        k,
-        *args,
-        A_scale=lambda x: x,
-        C_scale=lambda x: x,
-        g0_scale=lambda x: x,
-        **kwargs
-    ):
-        super().__init__(*args, **kwargs)
-        self.A = A
-        self.C = C
-        self.g0 = g0
-        self.mu = mu
-        self.eps0 = eps0
-        self.b = b
-        self.k = k
-
-        self.A_scale = A_scale
-        self.C_scale = C_scale
-        self.g0_scale = g0_scale
-
-        self.n = KMRateSensitivityScaling(
-            self.A, self.mu, self.b, self.k, A_scale=self.A_scale, cutoff=1000
-        )
-
-    @property
-    def device(self):
-        """
-        Return the device used by the scaling function
-        """
-        return self.A.device
-
-    def value(self, T):
-        """
-        Return the function value
-
-        Args:
-          T (torch.tensor):   current temperature
-
-        Returns:
-          torch.tensor:       value at the given temperatures
-        """
-        n = self.n(T)
-        B = self.C_scale(self.C) - self.g0_scale(self.g0) * self.A_scale(self.A)
-        return torch.exp(B) * self.mu(T) * self.eps0 ** (-1.0 / n)
-
-    @property
-    def shape(self):
-        """
-        Shape of the underlying parameter
-        """
-        return self.B.shape
-
-
-class KMViscosityScalingCutoff(TemperatureParameter):
-    """
-    Parameter that varies as
-
-    .. math::
-
-      \\exp{B} \\mu \\dot{\\varepsilon}_0^{-1/n}
-
-    where :math:`B` is the Kocks-Mecking intercept parameter and the
-    rest are defined in the :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object.
-
-    This variant cuts off the viscosity in the high rate/low temperature
-    regime to limit it by :math:`C * \\mu`
-
-    :math:`n` is the rate sensitivity, again given by the
-    :py:class:`pyoptmat.temperature.KMRateSensitivityScaling` object
-
-    Args:
-      A (torch.tensor):     Kocks-Mecking slope parameter
-      B (torch.tensor):     Kocks-Mecking intercept parameter, sets shape,
-                            must be same shape as A
-      C (torch.tensor):     High rate/low temperature cutff
-      mu (|TP|):            scalar, temperature-dependent shear modulus
-      eps0 (torch.tensor):  scalar, reference strain rate
-      b (torch.tensor):     scalar, Burger's vector
-      k (torch.tensor):     scalar, Boltzmann constant
-
-    Keyword Args:
-      A_scale:              numerical scaling function for A, defaults to
-                            no scaling
-      B_scale:              numerical scaling function for B, defaults to
-                            no scaling
-      C_scale:              numerical scaling function for C, defaults to
-                            no scaling
-    """
-
-    def __init__(
-        self,
-        A,
-        B,
-        C,
-        mu,
-        eps0,
-        b,
-        k,
-        *args,
-        A_scale=lambda x: x,
-        B_scale=lambda x: x,
-        C_scale=lambda x: x,
-        **kwargs
-    ):
-        super().__init__(*args, **kwargs)
-        self.A = A
-        self.B = B
-        self.C = C
-        self.mu = mu
-        self.eps0 = eps0
-        self.b = b
-        self.k = k
-
-        self.A_scale = A_scale
-        self.B_scale = B_scale
-        self.C_scale = C_scale
-
-        self.n = KMRateSensitivityScaling(
-            self.A, self.mu, self.b, self.k, A_scale=self.A_scale, cutoff=1000
-        )
-
-    @property
-    def device(self):
-        """
-        Return the device used by the scaling function
-        """
-        return self.A.device
-
-    def value(self, T):
-        """
-        Return the function value
-
-        Args:
-          T (torch.tensor):   current temperature
-
-        Returns:
-          torch.tensor:       value at the given temperatures
-        """
-        n = self.n(T)
-        return torch.minimum(
-            torch.exp(self.B_scale(self.B)) * self.mu(T) * self.eps0 ** (-1.0 / n),
-            torch.exp(self.C_scale(self.C)) * self.mu(T),
-        )
-
-    @property
-    def shape(self):
-        """
-        Shape of the underlying parameter
-        """
-        return self.B.shape
-
-
 class PolynomialScaling(TemperatureParameter):
     """
     Mimics np.polyval using Horner's method to evaluate a polynomial
@@ -707,9 +514,8 @@ class PiecewiseScaling(TemperatureParameter):
     default options
 
     Args:
-      control (torch.tensor):   temperature control points (npoints,)
-      values (torch.tensor):    values at control points (npoints, ) +
-                                param.shape
+      control (torch.tensor):   temperature control points (npoints)
+      values (torch.tensor):    values at control points (optional_batch, npoints)
 
     Keyword Args:
       values_scale_fn (function):   numerical scaling function for values,
@@ -723,8 +529,6 @@ class PiecewiseScaling(TemperatureParameter):
         self.values = values
 
         self.values_scale_fn = values_scale_fn
-
-        self.batch = values.dim() > 1
 
     @property
     def device(self):
@@ -743,24 +547,29 @@ class PiecewiseScaling(TemperatureParameter):
         Returns:
           torch.tensor:       value at the given temperatures
         """
-        gi = (
-            torch.remainder(
-                torch.sum((self.control[:, None] - T) <= 0, dim=0),
-                self.control.shape[0],
-            )
-            - 1
-        )
-
         vcurr = self.values_scale_fn(self.values)
-        slopes = torch.diff(vcurr, dim=-1) / torch.diff(self.control, dim=0)
 
-        if self.batch:
-            return torch.gather(vcurr, -1, gi[:, None])[:, 0] + torch.gather(
-                slopes, -1, gi[:, None]
-            )[:, 0] * (T - self.control[gi])
-        return torch.gather(vcurr, -1, gi) + torch.gather(slopes, -1, gi) * (
-            T - self.control[gi]
+        slopes = (vcurr[..., 1:] - vcurr[..., :-1]) / (
+            self.control[..., 1:] - self.control[..., :-1]
         )
+
+        offsets = T.unsqueeze(-1) - self.control[..., :-1]
+
+        poss = (slopes[None, ...] * offsets + vcurr[None, ..., :-1]).reshape(
+            offsets.shape
+        )
+
+        locs = torch.logical_and(
+            T <= self.control[1:][(...,) + (None,) * T.dim()],
+            T > self.control[:-1][(...,) + (None,) * T.dim()],
+        )
+
+        # Problem is now that we can have stuff right on control[0]...
+        locs[0] = torch.logical_or(
+            locs[0], T == self.control[0][(...,) + (None,) * T.dim()]
+        )
+
+        return poss[locs.movedim(0, -1)].reshape(T.shape)
 
     @property
     def shape(self):
@@ -812,6 +621,57 @@ class ArrheniusScaling(TemperatureParameter):
           torch.tensor:       value at the given temperatures
         """
         return self.A_scale(self.A) * torch.exp(-self.Q_scale(self.Q) / T)
+
+    @property
+    def shape(self):
+        """
+        Shape of the underlying parameter
+        """
+        return self.A.shape
+
+
+class InverseArrheniusScaling(TemperatureParameter):
+    """
+    Simple Arrhenius scaling of the type
+
+    .. math::
+
+      A (1 - \\exp(-Q/T))
+
+    Args:
+      A (torch.tensor):  Prefactor
+      Q (torch.tensor):  Activation energy (times R)
+
+    Keyword Args
+      A_scale (function):  numerical scaling for A, defaults to no scaling
+      Q_scale (function):  numerical scaling for Q, defaults to no scaling
+    """
+
+    def __init__(self, A, Q, *args, A_scale=lambda x: x, Q_scale=lambda x: x, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.A = A
+        self.Q = Q
+        self.A_scale = A_scale
+        self.Q_scale = Q_scale
+
+    @property
+    def device(self):
+        """
+        Return the device used by the scaling function
+        """
+        return self.A.device
+
+    def value(self, T):
+        """
+        Return the function value
+
+        Args:
+          T (torch.tensor):   current temperature
+
+        Returns:
+          torch.tensor:       value at the given temperatures
+        """
+        return self.A_scale(self.A) * (1.0 - torch.exp(-self.Q_scale(self.Q) / T))
 
     @property
     def shape(self):

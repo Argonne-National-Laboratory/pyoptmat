@@ -19,3 +19,6 @@ doc/sphinx/_build
 build/
 dist/
 pyoptmat.egg-info/
+examples/ode/results.txt
+examples/ode/log
+results.txt

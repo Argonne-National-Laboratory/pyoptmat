@@ -51,6 +51,9 @@ def make(n, eta, s0, R, d, **kwargs):
 
 
 if __name__ == "__main__":
+    # Number of vectorized time steps
+    time_chunk_size = 40
+
     # 1) Load the data for the variance of interest,
     #    cut down to some number of samples, and flatten
     scale = 0.01
@@ -73,10 +76,12 @@ if __name__ == "__main__":
     print("")
 
     # 3) Create the actual model
-    model = optimize.DeterministicModel(make, names, ics)
+    model = optimize.DeterministicModel(
+            lambda *args, **kwargs: make(*args, block_size = time_chunk_size, **kwargs),
+            names, ics)
 
     # 4) Setup the optimizer
-    niter = 10
+    niter = 5
     optim = torch.optim.LBFGS(model.parameters())
 
     # 5) Setup the objective function

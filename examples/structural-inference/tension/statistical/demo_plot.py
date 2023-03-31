@@ -40,6 +40,9 @@ def make(n, eta, s0, R, d, **kwargs):
 
 
 if __name__ == "__main__":
+    # Number of vectorized time steps
+    time_chunk_size = 40
+
     # 1) Load the data for the variance of interest,
     #    cut down to some number of samples, and flatten
     scale = 0.05
@@ -54,7 +57,7 @@ if __name__ == "__main__":
 
     names = ["n", "eta", "s0", "R", "d"]
     sampler = optimize.StatisticalModel(
-        make,
+        lambda *args, **kwargs: make(*args, block_size = time_chunk_size, **kwargs),
         names,
         [0.50, 0.49, 0.49, 0.48, 0.48],
         [0.02, 0.02, 0.03, 0.05, 0.05],

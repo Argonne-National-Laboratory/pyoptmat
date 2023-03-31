@@ -40,6 +40,8 @@ pyoptmat features
   uncertain data.
 - Efficient backward pass/gradient calculation using the adjoint method.  This
   approach vastly outperforms automatic differentiation for time series data. 
+- Blocked time integration for both the forward and backward/adjoint passes, which 
+  vectorizes/parallelizes integrating ODEs through time.
 - Implicit time integration algorithms suitable for material models represents
   as stiff systems of ordinary differential equations.
 - Prebuilt model components aimed at high temperature structural materials.
@@ -78,6 +80,7 @@ The following are links to the complete API descriptions of each pyoptmat submod
    optimize
    experiments
    ode
+   chunktime
    solvers
    models
    flowrules

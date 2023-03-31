@@ -58,7 +58,7 @@ class VanderPolODE(torch.nn.Module):
         f[..., 0] = y[..., 1]
         f[..., 1] = -y[..., 0] + self.mu * (1.0 - y[..., 0] ** 2.0) * y[..., 1]
 
-        df = torch.empty(y.shape + y.shape[1:])
+        df = torch.empty(y.shape + y.shape[-1:])
         df[..., 0, 0] = 0
         df[..., 0, 1] = 1
         df[..., 1, 0] = -1 - 2.0 * self.mu * y[..., 0] * y[..., 1]
@@ -68,19 +68,24 @@ class VanderPolODE(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    # Common
+    # Common inputs
     y0 = torch.tensor([[-1.0, 1]])
     period = lambda m: (3.0 - 2 * np.log(2)) * m + 2.0 * np.pi / mu ** (1.0 / 3)
 
+    # Number of vectorized time steps
+    time_chunk = 10
+
     # Test for non-stiff version
     mu = 1.0
-    times = torch.linspace(0, period(mu) * 10, 1000).reshape(1000, 1)
+    times = torch.linspace(0, period(mu) * 10, 10000).unsqueeze(-1)
 
     model = VanderPolODE(mu)
 
-    res_exp = ode.odeint(model, y0, times, method="forward-euler", substep=10)
+    res_exp = ode.odeint(model, y0, times, method="forward-euler",
+            block_size = time_chunk, guess_type = "previous")
     res_imp = ode.odeint(
-        model, y0, times, method="backward-euler", substep=10, solver_method="lu"
+        model, y0, times, method="backward-euler",
+        block_size = time_chunk, guess_type = "previous"
     )
 
     plt.figure()
@@ -94,13 +99,15 @@ if __name__ == "__main__":
 
     # Test for moderately stiff version
     mu = 14.0
-    times = torch.linspace(0, period(mu) * 10, 1000).reshape(1000, 1)
+    times = torch.linspace(0, period(mu) * 10, 10000).unsqueeze(-1)
 
     model = VanderPolODE(mu)
 
-    res_exp = ode.odeint(model, y0, times, method="forward-euler", substep=10)
+    res_exp = ode.odeint(model, y0, times, method="forward-euler",
+            block_size = time_chunk, guess_type = "previous")
     res_imp = ode.odeint(
-        model, y0, times, method="backward-euler", substep=10, solver_method="lu"
+        model, y0, times, method="backward-euler",
+        block_size = time_chunk, guess_type = "previous"
     )
 
     plt.figure()
@@ -114,12 +121,13 @@ if __name__ == "__main__":
 
     # Test for highly stiff version (explicit just explodes)
     mu = 30.0
-    times = torch.linspace(0, period(mu) * 10 * 10.0 / 16, 1000).reshape(1000, 1)
+    times = torch.linspace(0, period(mu) * 10 * 10.0 / 16, 20000).unsqueeze(-1)
 
     model = VanderPolODE(mu)
 
     res_imp = ode.odeint(
-        model, y0, times, method="backward-euler", substep=20, solver_method="lu"
+        model, y0, times, method="backward-euler",
+        block_size = time_chunk, guess_type = "previous"
     )
 
     plt.figure()
