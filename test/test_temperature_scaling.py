@@ -134,7 +134,7 @@ class TestPiecewiseScaling(unittest.TestCase):
         points = torch.tensor([0.0, 10.0, 20.0, 30.0])
         values = torch.tensor([1.0, 2.0, 4.0, -1.0])
 
-        x = torch.linspace(0.1, 29.9, 5)
+        x = torch.linspace(0.1, 29.9, 5)[torch.randperm(5)]
         obj = temperature.PiecewiseScaling(points, values)
 
         y1 = obj.value(x)
@@ -151,17 +151,17 @@ class TestPiecewiseScaling(unittest.TestCase):
         values = torch.tensor(
             np.array(
                 [
-                    np.linspace(0, 1, nbatch),
-                    np.linspace(1, -1, nbatch),
-                    np.linspace(-1, 3, nbatch),
-                    np.linspace(3, 4, nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
                 ]
             )
         ).T
 
         obj = temperature.PiecewiseScaling(points, values)
 
-        x = torch.linspace(0.1, 29.9, nbatch)
+        x = torch.linspace(0.1, 29.9, nbatch)[torch.randperm(nbatch)]
 
         y1 = obj.value(x)
 
@@ -183,26 +183,60 @@ class TestPiecewiseScaling(unittest.TestCase):
         values = torch.tensor(
             np.array(
                 [
-                    np.linspace(0, 1, nbatch),
-                    np.linspace(1, -1, nbatch),
-                    np.linspace(-1, 3, nbatch),
-                    np.linspace(3, 4, nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
                 ]
             )
         ).T
 
         obj = temperature.PiecewiseScaling(points, values)
 
-        x = torch.linspace(0.1, 29.9, nbatch)
-        xt = x.unsqueeze(0).expand(7, nbatch)
+        xt = torch.rand(7,nbatch) * 28.8 + 0.1
 
         y1 = obj.value(xt)
 
         y2 = np.zeros(y1.numpy().shape)
+        
+        for j in range(7):
+            for i in range(nbatch):
+                ifn = inter.interp1d(points.numpy(), values[i].numpy())
+                y2[j, i] = ifn(xt[j,i].numpy())
 
-        for i in range(nbatch):
-            ifn = inter.interp1d(points.numpy(), values[i].numpy())
-            y2[:, i] = ifn(x[i].numpy())
+        self.assertEqual(y1.shape, (7, 50))
+        self.assertEqual(y2.shape, (7, 50))
+
+        self.assertTrue(np.allclose(y1, y2))
+
+    def test_value_batch_batch_lb(self):
+        nbatch = 50
+        points = torch.tensor([0.0, 10.0, 20.0, 30.0])
+
+        values = torch.tensor(
+            np.array(
+                [
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
+                    np.random.rand(nbatch),
+                ]
+            )
+        ).T
+
+        obj = temperature.PiecewiseScaling(points, values)
+
+        xt = torch.rand(7,nbatch) * 28.8 + 0.1
+        xt[0,0] = 0.0
+
+        y1 = obj.value(xt)
+
+        y2 = np.zeros(y1.numpy().shape)
+        
+        for j in range(7):
+            for i in range(nbatch):
+                ifn = inter.interp1d(points.numpy(), values[i].numpy())
+                y2[j, i] = ifn(xt[j,i].numpy())
 
         self.assertEqual(y1.shape, (7, 50))
         self.assertEqual(y2.shape, (7, 50))

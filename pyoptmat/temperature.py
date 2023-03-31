@@ -564,6 +564,11 @@ class PiecewiseScaling(TemperatureParameter):
             T > self.control[:-1][(...,) + (None,) * T.dim()],
         )
 
+        # Problem is now that we can have stuff right on control[0]...
+        locs[0] = torch.logical_or(
+            locs[0], T == self.control[0][(...,) + (None,) * T.dim()]
+        )
+
         return poss[locs.movedim(0, -1)].reshape(T.shape)
 
     @property
