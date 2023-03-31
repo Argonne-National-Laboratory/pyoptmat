@@ -294,11 +294,11 @@ class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
 
     def __init__(self, times, data):
         super().__init__()
-        self.times = times
-        self.values = data
+        # Transpose to put the shared dimension first
+        self.times = times.t()
+        self.values = data.t()
 
-        self.ntime = self.times.shape[0]
-        self.nbatch_native = self.times.shape[1]
+        self.slopes = torch.diff(self.values, dim=-1) / torch.diff(self.times, dim=-1)
 
     def forward(self, t):
         """
@@ -310,31 +310,36 @@ class ArbitraryBatchTimeSeriesInterpolator(nn.Module):
         Returns:
           torch.tensor:       batched values at :code:`t`
         """
-        tp = t.t()  # Transpose so the common dimension is first
-        tgt = self.values.shape + tp.shape[1:]
-        nexp = len(tgt) - 2  # Values always has dim 2...
+        squeeze = t.dim() == 1
 
-        # Expand both the reference times and values
-        t = self.times[(...,) + (None,) * nexp].expand(tgt).flatten(start_dim=1)
-        v = self.values[(...,) + (None,) * nexp].expand(tgt).flatten(start_dim=1)
+        t = t.t()  # Transpose so the common dimension is first
+        if squeeze:
+            t = t.unsqueeze(-1)
 
-        # Calculate slopes, offsets, and values as usual but then
-        # reshape at the very end...
-        slopes = torch.diff(v, dim=0) / torch.diff(t, dim=0)
+        # Which dimensions to offset -- likely there is some efficiency
+        # to be gained by flipping these, but probably depends on the
+        # input shape
+        d1 = -1
+        d2 = -2
 
-        gi = torch.remainder(
-            torch.sum((t - tp.flatten()) <= 0, dim=0), self.times.shape[0]
+        offsets = t.unsqueeze(d1) - self.times[..., :-1].unsqueeze(d2)
+
+        poss = self.slopes.unsqueeze(d2) * offsets + self.values[..., :-1].unsqueeze(d2)
+
+        locs = torch.logical_and(
+            t.unsqueeze(d1) <= self.times[..., 1:].unsqueeze(d2),
+            t.unsqueeze(d1) > self.times[..., :-1].unsqueeze(d2),
         )
 
-        return (
-            (
-                torch.diagonal(v[gi - 1])
-                + torch.diagonal(slopes[gi - 1])
-                * (tp.flatten() - torch.diagonal(t[gi - 1]))
-            )
-            .reshape(tp.shape)
-            .t()
+        # Now we need to fix up the stupid left side
+        locs[..., 0] = torch.logical_or(
+            locs[..., 0], t == self.times[..., 0].unsqueeze(-1)
         )
+
+        if squeeze:
+            return poss[locs].squeeze(-1).t()
+
+        return poss[locs].reshape(t.shape).t()
 
 
 class BatchTimeSeriesInterpolator(nn.Module):

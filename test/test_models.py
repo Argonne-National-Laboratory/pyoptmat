@@ -23,6 +23,10 @@ class CommonModel:
         )
         strain_rates[torch.isnan(strain_rates)] = 0
 
+        #print(self.times.shape)
+        #print(strain_rates.shape)
+        #print(self.t.shape)
+
         erate_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             self.times, strain_rates
         )
