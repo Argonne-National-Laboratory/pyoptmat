@@ -45,8 +45,6 @@
 import torch
 from torch import nn
 
-from pyoptmat import utility
-
 
 class TemperatureParameter(nn.Module):
     """
@@ -532,8 +530,6 @@ class PiecewiseScaling(TemperatureParameter):
 
         self.values_scale_fn = values_scale_fn
 
-        self.batched_values = values.dim() > 1
-
     @property
     def device(self):
         """
@@ -553,34 +549,22 @@ class PiecewiseScaling(TemperatureParameter):
         """
         vcurr = self.values_scale_fn(self.values)
 
-        # Did we get batched input?
-        batched_input = T.dim() > 0
+        slopes = (vcurr[..., 1:] - vcurr[..., :-1]) / (
+            self.control[..., 1:] - self.control[..., :-1]
+        )
 
-        # Batched control points, which means the input better be batched
-        if self.batched_values:
-            ccurr = self.control.unsqueeze(0).expand(vcurr.shape).T
-            vcurr = vcurr.T
-            squeeze = False
-        # Not batched control points but batched input
-        elif batched_input:
-            target_shape = self.values.shape + (T.shape[-1],)
-            ccurr = self.control.unsqueeze(-1).expand(target_shape)
-            vcurr = vcurr.unsqueeze(-1).expand(target_shape)
-            squeeze = False
-        # Boring scalar case
-        else:
-            ccurr = self.control.unsqueeze(-1)
-            vcurr = vcurr.unsqueeze(-1)
-            T = T.unsqueeze(-1)
-            squeeze = True
+        offsets = T.unsqueeze(-1) - self.control[..., :-1]
 
-        ifn = utility.ArbitraryBatchTimeSeriesInterpolator(ccurr, vcurr)
-        val = ifn(T)
+        poss = (slopes[None, ...] * offsets + vcurr[None, ..., :-1]).reshape(
+            offsets.shape
+        )
 
-        if squeeze:
-            return val.squeeze(-1)
+        locs = torch.logical_and(
+            T <= self.control[1:][(...,) + (None,) * T.dim()],
+            T > self.control[:-1][(...,) + (None,) * T.dim()],
+        )
 
-        return val
+        return poss[locs.movedim(0, -1)].reshape(T.shape)
 
     @property
     def shape(self):
