@@ -111,7 +111,7 @@ class HayhurstLeckie(DamageModel):
         """
         return (torch.abs(s) / self.A(T)) ** self.xi(T) * (1 - d) ** (
             self.xi(T) - self.phi(T)
-        ), -((torch.abs(s) / self.A(T)) ** self.xi(T)) * (1 - d) ** (
+        ), -(self.xi(T) - self.phi(T))*((torch.abs(s) / self.A(T)) ** self.xi(T)) * (1 - d) ** (
             self.xi(T) - self.phi(T) - 1
         )
 
@@ -126,7 +126,7 @@ class HayhurstLeckie(DamageModel):
           T (torch.tensor):      temperature
         """
         return (
-            (torch.abs(s) / self.A(T)) ** (self.xi(T) - 1)
+            self.xi(T) * (torch.abs(s) / self.A(T)) ** (self.xi(T) - 1) / self.A(T)
             * (1 - d) ** (self.xi(T) - self.phi(T))
             * torch.sign(s)
         )
