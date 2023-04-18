@@ -72,6 +72,61 @@ class NoDamage(DamageModel):
         """
         return torch.zeros_like(e)
 
+class SimpleDamage(DamageModel):
+    """
+    Simplest possible damage model, linear in time
+
+    Args:
+        R (parameter): damage rate
+    """
+
+    def __init__(self, R):
+        super().__init__()
+        self.R = R
+
+    def damage_rate(self, s, d, t, T, e):
+        """
+        The damage rate and the derivative wrt to the damage variable.
+        Here it's just zero.
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      current value of damage
+          t (torch.tensor):      current time
+          T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.ones_like(s)*self.R(T), torch.zeros_like(s)
+
+    def d_damage_rate_d_s(self, s, d, t, T, e):
+        """
+        Derivative of the damage rate with respect to the stress.
+
+        Here again it's zero
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      current value of damage
+          t (torch.tensor):      current time
+          T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.zeros_like(s)
+
+    def d_damage_rate_d_e(self, s, d, t, T, e):
+        """
+        Derivative of the damage rate with respect to the strain rate
+
+        Here again it's zero
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      current value of damage
+          t (torch.tensor):      current time
+          T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.zeros_like(e)
 
 class HayhurstLeckie(DamageModel):
     """
