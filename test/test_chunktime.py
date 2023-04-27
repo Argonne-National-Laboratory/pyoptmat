@@ -13,7 +13,7 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
     def setUp(self):
         self.sblk = 6
-        self.nblk = 4
+        self.nblk = 2
         self.sbat = 2
 
         self.blk_A = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
@@ -26,6 +26,13 @@ class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
 
     def test_inv_mat_vec_thomas(self):
         M = chunktime.BidiagonalThomasFactorization(self.blk_A, self.blk_B)
+        one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+        two = M(self.b)
+
+        self.assertTrue(torch.allclose(one, two))
+
+    def test_inv_mat_pcr(self):
+        M = chunktime.BidiagonalPCRFactorization(self.blk_A, self.blk_B)
         one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
         two = M(self.b)
 

@@ -10,6 +10,7 @@
 """
 
 import warnings
+import math
 
 import torch
 import torch.jit
@@ -170,6 +171,43 @@ class BidiagonalThomasFactorization(BidiagonalOperator):
         """
         self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.A)
 
+class BidiagonalPCRFactorization(BidiagonalOperator):
+    """
+    Manages the data needed to solve our bidiagonal system via parallel cyclic reduction 
+
+    Args:
+        A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
+        B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if not ((self.nblk & (self.nblk - 1) == 0) and self.nblk !=0):
+            raise ValueError("nblk has to be a power of two for now...")
+
+        # Wow, same thing works...
+        self._setup_factorization()
+
+    def forward(self, v):
+        """
+        Complete the backsolve for a given right hand side
+
+        Args:
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+        """
+        y = torch.empty_like(v)
+
+        return y
+
+    def _setup_factorization(self):
+        """
+        Form the factorization...
+
+        Args:
+            diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
+        """
+        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.A)
 
 class BidiagonalForwardOperator(BidiagonalOperator):
     """
