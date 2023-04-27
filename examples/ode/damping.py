@@ -172,11 +172,12 @@ if __name__ == "__main__":
     # Basic parameters
     n_chain = 5     # Number of spring-dashpot-mass elements
     n_samples = 5   # Number of random force samples
-    n_time = 500    # Number of time steps
+    n_time = 512+1    # Number of time steps
     integration_method = 'backward-euler'
+    direct_solver = "thomas" # Batched, block, bidiagonal direct solver method
 
     # Time chunking -- best value may vary on your system
-    n_chunk = 100
+    n_chunk = 2**7
 
     # Ending time
     t_end = 1.0
@@ -215,7 +216,9 @@ if __name__ == "__main__":
 
     # Generate the data
     with torch.no_grad():
-        y_data = ode.odeint(model, y0, time, method = integration_method, block_size = n_chunk)
+        y_data = ode.odeint(model, y0, time, method = integration_method, 
+                block_size = n_chunk,
+                direct_solve_method = direct_solver)
 
     # The observations will just be the first entry
     observable = y_data[...,0]
@@ -239,7 +242,10 @@ if __name__ == "__main__":
     optim = torch.optim.Adam(ode_model.parameters(), lr)
     def closure():
         optim.zero_grad()
-        pred = ode.odeint_adjoint(ode_model, y0, time, method = integration_method, block_size = n_chunk)
+        pred = ode.odeint_adjoint(ode_model, y0, time, 
+                method = integration_method, 
+                block_size = n_chunk,
+                direct_solve_method = direct_solver)
         obs = pred[...,0]
         lossv = loss(obs, observable)
         lossv.backward()

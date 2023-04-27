@@ -45,7 +45,9 @@ class BackwardEulerScheme:
     Integration with the backward Euler method
     """
 
-    def form_operators(self, dy, yd, yJ, dt):
+    def form_operators(
+        self, dy, yd, yJ, dt, solver=chunktime.BidiagonalThomasFactorization
+    ):
         """
         Form the residual and sparse Jacobian of the batched system
 
@@ -55,6 +57,9 @@ class BackwardEulerScheme:
             yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
                 of the ODE
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+
+        Keyword Args:
+            solver (chunktime.BidiagonalOperator): inverse method
 
         Returns:
             R (torch.tensor): residual tensor of shape
@@ -81,7 +86,7 @@ class BackwardEulerScheme:
         I = torch.eye(prob_size, device=dt.device).expand(ntime, batch_size, -1, -1)
 
         return R, chunktime.BidiagonalForwardOperator(
-            I - yJ[1:] * dt.unsqueeze(-1).unsqueeze(-1), -I[1:]
+            I - yJ[1:] * dt.unsqueeze(-1).unsqueeze(-1), -I[1:], inverse_operator=solver
         )
 
     def update_adjoint(self, dt, J, a_prev, grads):
@@ -145,7 +150,9 @@ class ForwardEulerScheme:
     Integration with the forward Euler method
     """
 
-    def form_operators(self, dy, yd, yJ, dt):
+    def form_operators(
+        self, dy, yd, yJ, dt, solver=chunktime.BidiagonalThomasFactorization
+    ):
         """
         Form the residual and sparse Jacobian of the batched system
 
@@ -155,6 +162,9 @@ class ForwardEulerScheme:
             yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
                 of the ODE
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+
+        Keyword Args:
+            solver (chunktime.BidiagonalOperator): inverse method
 
         Returns:
             R (torch.tensor): residual tensor of shape
@@ -181,7 +191,9 @@ class ForwardEulerScheme:
         I = torch.eye(prob_size, device=dt.device).expand(ntime, batch_size, -1, -1)
 
         return R, chunktime.BidiagonalForwardOperator(
-            I, -I[1:] - yJ[1:-1] * dt[1:].unsqueeze(-1).unsqueeze(-1)
+            I,
+            -I[1:] - yJ[1:-1] * dt[1:].unsqueeze(-1).unsqueeze(-1),
+            inverse_operator=solver,
         )
 
     def update_adjoint(self, dt, J, a_prev, grads):
@@ -263,6 +275,7 @@ class FixedGridBlockSolver:
         atol=1.0e-4,
         miter=100,
         linear_solve_method="direct",
+        direct_solve_method="thomas",
         adjoint_params=None,
         guess_type="zero",
         **kwargs,
@@ -291,6 +304,16 @@ class FixedGridBlockSolver:
         self.linear_solve_context = chunktime.ChunkTimeOperatorSolverContext(
             linear_solve_method, **kwargs
         )
+
+        # Setup the direct solver type
+        if direct_solve_method == "thomas":
+            self.direct_solver = chunktime.BidiagonalThomasFactorization
+        elif direct_solve_method == "pcr":
+            self.direct_solver = chunktime.BidiagonalPCRFactorization
+        else:
+            raise ValueError(
+                f"Unknown batched bidiagonal solver method {direct_solve_method}!"
+            )
 
         # Initial guess for integration
         self.guess_type = guess_type
@@ -444,7 +467,7 @@ class FixedGridBlockSolver:
             # Batch update the rate and jacobian
             yd, yJ = func(times, y)
 
-            return self.scheme.form_operators(dy, yd, yJ, dt)
+            return self.scheme.form_operators(dy, yd, yJ, dt, solver=self.direct_solver)
 
         dy = chunktime.newton_raphson_chunk(
             RJ,

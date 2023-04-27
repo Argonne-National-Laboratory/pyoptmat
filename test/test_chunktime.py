@@ -13,8 +13,8 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
     def setUp(self):
         self.sblk = 6
-        self.nblk = 2
-        self.sbat = 2
+        self.nblk = 2**3
+        self.sbat = 5
 
         self.blk_A = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
         self.blk_B = (
