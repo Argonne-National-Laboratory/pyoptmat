@@ -10,7 +10,7 @@
 """
 
 import warnings
-from math import prod
+from math import prod, log2, floor
 
 import torch
 from torch.nn.functional import pad
@@ -182,9 +182,6 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        if not ((self.nblk & (self.nblk - 1) == 0) and self.nblk != 0):
-            raise ValueError("nblk has to be a power of two for PCR factorization")
-
     def forward(self, v):
         """
         Complete the backsolve for a given right hand side
@@ -192,7 +189,7 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
         Args:
             v (torch.tensor): tensor of shape (sbat, sblk*nblk)
         """
-        # Doing this in place is maybe possible but would require additional storage
+        # Get the factors
         lu, pivots, _ = torch.linalg.lu_factor_ex(self.A)
 
         # Reshape and add dimensions
@@ -203,16 +200,35 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
             v.reshape((self.sbat, self.nblk, self.sblk))
             .transpose(0, 1)
             .unsqueeze(-1)
-            .unsqueeze(0)
             .contiguous()
         )
-        # B will have 1 less block than A, so pad for convenience
-        B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0)).unsqueeze(0)
+
+        # We could do this in place...
+        B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0))
+
+        # Now figure out how many powers of 2 we need to complete our matrix
+        for s, e in zip(*self._pow2(self.nblk)):
+            B[s+1:e], v[s+1:e] = self._solve_block(lu[s:e], pivots[s:e], B[s:e], v[s:e])
+
+        return torch.linalg.lu_solve(lu, pivots, v).squeeze(-1).transpose(0,1).flatten(start_dim = 1)
+
+    def _solve_block(self, lu, pivots, B, v):
+        """Solve a subsection of the matrix via PCR
+
+        Args:
+            lu (torch.tensor): (ncurr,sbat,sblk,sblk)
+            pivots (torch.tensor): (ncurr,sbat,sblk)
+            B (torch.tensor): (ncurr,sbat,sblk,sblk)
+            v (torch.tensor): (ncurr,sbat,sblk,1)
+        """
+        # Number of iterations required to reduce this block
+        niter = lu.shape[0].bit_length() - 1
+        
+        # Add the extra working dimension to the start of everything
         lu = lu.unsqueeze(0)
         pivots = pivots.unsqueeze(0)
-
-        # How many iterations we will need to completely reduce
-        niter = self.nblk.bit_length() - 1
+        B = B.unsqueeze(0)
+        v = v.unsqueeze(0)
 
         # Actually start reduction!
         for i in range(niter):
@@ -233,14 +249,25 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
             lu = self._cyclic_shift(lu, i)
             pivots = self._cyclic_shift(pivots, i)
 
-        # When we're done just solve and return
-        return (
-            torch.linalg.lu_solve(lu, pivots, v)
-            .squeeze(1)
-            .squeeze(-1)
-            .transpose(0, 1)
-            .flatten(start_dim=1)
-        )
+        return B.squeeze(1)[1:], v.squeeze(1)[1:]
+
+    @staticmethod
+    def _pow2(n):
+        """Calculate submatrix sizes
+        """
+        sz = lambda n: 2**floor(log2(n))
+
+        start = [0]
+        end = [sz(n)]
+        n -= end[-1]
+
+        while n > 0:
+            cz = sz(n+1)
+            start.append(end[-1]-1)
+            end.append(start[-1]+cz)
+            n -= (cz-1)
+        
+        return start, end
 
     @staticmethod
     def _cyclic_shift(A, n):
