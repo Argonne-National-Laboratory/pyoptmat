@@ -181,6 +181,16 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._setup_factorization()
+
+    def _setup_factorization(self):
+        """
+        Form the factorization...
+
+        Args:
+            diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
+        """
+        self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.A)
 
     def forward(self, v):
         """
@@ -189,9 +199,6 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
         Args:
             v (torch.tensor): tensor of shape (sbat, sblk*nblk)
         """
-        # Get the factors
-        lu, pivots, _ = torch.linalg.lu_factor_ex(self.A)
-
         # Reshape and add dimensions
         # This puts the input into "blocked form"
         # contiguous is necessary because my _cyclic_shift function assumes initially
@@ -203,14 +210,17 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
             .contiguous()
         )
 
-        # We could do this in place...
-        B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0))
+        # We could do this in place if it wasn't for the pad
+        self.B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0))
 
         # Now figure out how many powers of 2 we need to complete our matrix
         for s, e in zip(*self._pow2(self.nblk)):
-            B[s+1:e], v[s+1:e] = self._solve_block(lu[s:e], pivots[s:e], B[s:e], v[s:e])
+            self.B[s+1:e], v[s+1:e] = self._solve_block(self.lu[s:e], self.pivots[s:e], self.B[s:e], v[s:e])
 
-        return torch.linalg.lu_solve(lu, pivots, v).squeeze(-1).transpose(0,1).flatten(start_dim = 1)
+        # To retain consistent sizes
+        self.B = self.B[1:]
+
+        return torch.linalg.lu_solve(self.lu, self.pivots, v).squeeze(-1).transpose(0,1).flatten(start_dim = 1)
 
     def _solve_block(self, lu, pivots, B, v):
         """Solve a subsection of the matrix via PCR
@@ -254,6 +264,17 @@ class BidiagonalPCRFactorization(BidiagonalOperator):
     @staticmethod
     def _pow2(n):
         """Calculate submatrix sizes
+
+        Args:
+            n (int): number of blocks
+
+        Returns:
+            two lists, one giving start block indices and the
+            second giving end block indices.
+
+        The first (start,end) pair is the largest power of 2 that fits in 
+        n.  Subsequent pairs are the largest power of 2 that fit in the remainder
+        *with one overlap between the next increment and the previous*.
         """
         sz = lambda n: 2**floor(log2(n))
 
