@@ -161,43 +161,18 @@ class ModelIntegrator(nn.Module):
       model:                        base strain-controlled model
       method (optional):            integrate method used to solve the equations, defaults
                                     to `"backward-euler"`
-      rtol (optional):              relative tolerance for implicit integration
-      atol (optional):              absolute tolerance for implicit integration
-      miter (optional):             maximum nonlinear iterations for implicit time integration
       d0 (optional):                intitial value of damage
       use_adjoint (optional):       if `True` use the adjoint approach to
-                                    calculate sensitivities, if `False` use
-                                    pytorch automatic differentiation
-      extra_params (optional):      additional, external parameter to include
-                                    in the adjoint calculation.  Used if not
-                                    all the parameters can be determined by
-                                    introspection
+      **kwargs:                     passed on to the odeint method
+
     """
 
-    def __init__(
-        self,
-        model,
-        *args,
-        method="backward-euler",
-        block_size=1,
-        rtol=1.0e-6,
-        atol=1.0e-4,
-        miter=100,
-        d0=0,
-        use_adjoint=True,
-        extra_params=None,
-        **kwargs
-    ):
-        super().__init__(*args, **kwargs)
+    def __init__(self, model, *args, d0=0, use_adjoint=True, **kwargs):
+        super().__init__(*args)
         self.model = model
-        self.method = method
-        self.block_size = block_size
-        self.rtol = rtol
-        self.atol = atol
-        self.miter = miter
         self.d0 = d0
         self.use_adjoint = use_adjoint
-        self.extra_params = extra_params
+        self.kwargs_for_integration = kwargs
 
         if self.use_adjoint:
             self.imethod = ode.odeint_adjoint
@@ -242,17 +217,7 @@ class ModelIntegrator(nn.Module):
             control,
         )
 
-        return self.imethod(
-            bmodel,
-            init,
-            times,
-            block_size=self.block_size,
-            method=self.method,
-            rtol=self.rtol,
-            atol=self.atol,
-            miter=self.miter,
-            extra_params=self.extra_params,
-        )
+        return self.imethod(bmodel, init, times, **self.kwargs_for_integration)
 
     def solve_strain(self, times, strains, temperatures):
         """
@@ -292,17 +257,7 @@ class ModelIntegrator(nn.Module):
             self.model, erate_interpolator, temperature_interpolator
         )
 
-        return self.imethod(
-            emodel,
-            init,
-            times,
-            block_size=self.block_size,
-            method=self.method,
-            rtol=self.rtol,
-            atol=self.atol,
-            miter=self.miter,
-            extra_params=self.extra_params,
-        )
+        return self.imethod(emodel, init, times, **self.kwargs_for_integration)
 
     def solve_stress(self, times, stresses, temperatures):
         """
@@ -348,17 +303,7 @@ class ModelIntegrator(nn.Module):
             temperature_interpolator,
         )
 
-        return self.imethod(
-            smodel,
-            init,
-            times,
-            block_size=self.block_size,
-            method=self.method,
-            rtol=self.rtol,
-            atol=self.atol,
-            miter=self.miter,
-            extra_params=self.extra_params,
-        )
+        return self.imethod(smodel, init, times, **self.kwargs_for_integration)
 
     def forward(self, t, y):
         """
