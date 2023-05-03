@@ -41,7 +41,8 @@ if __name__ == "__main__":
     nsize = 30
     nbat = 100
     
-    nblks = [10**i for i in range(0,4)]
+    #nblks = [10**i for i in range(0,4)]
+    nblks = list(range(1,1000))
     time_pcr = []
     time_thomas = []
 
