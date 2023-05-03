@@ -122,6 +122,7 @@ class BidiagonalOperator(torch.nn.Module):
         """
         return (self.sbat, self.n, self.n)
 
+
 class LUFactorization(BidiagonalOperator):
     """A factorization that uses the LU decomposition of A
 
@@ -129,6 +130,7 @@ class LUFactorization(BidiagonalOperator):
         A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -142,6 +144,7 @@ class LUFactorization(BidiagonalOperator):
             diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
         """
         self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.A)
+
 
 def thomas_solve(lu, pivots, B, v):
     """Simple function implementing a Thomas solve
@@ -158,9 +161,11 @@ def thomas_solve(lu, pivots, B, v):
     v[i] = torch.linalg.lu_solve(lu[i], pivots[i], v[i])
     for i in range(1, lu.shape[0]):
         v[i] = torch.linalg.lu_solve(
-                lu[i], pivots[i], v[i] - torch.bmm(B[i-1], v[i-1].clone()))
+            lu[i], pivots[i], v[i] - torch.bmm(B[i - 1], v[i - 1].clone())
+        )
 
     return v
+
 
 class BidiagonalThomasFactorization(LUFactorization):
     """
@@ -171,9 +176,6 @@ class BidiagonalThomasFactorization(LUFactorization):
         A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def forward(self, v):
         """
@@ -187,6 +189,7 @@ class BidiagonalThomasFactorization(LUFactorization):
 
         return v.squeeze(-1).transpose(0, 1).flatten(start_dim=1)
 
+
 class BidiagonalPCRFactorization(LUFactorization):
     """
     Manages the data needed to solve our bidiagonal system via parallel cyclic reduction
@@ -195,9 +198,6 @@ class BidiagonalPCRFactorization(LUFactorization):
         A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def forward(self, v):
         """
@@ -222,12 +222,19 @@ class BidiagonalPCRFactorization(LUFactorization):
 
         # Now figure out how many powers of 2 we need to complete our matrix
         for s, e in zip(*self._pow2(self.nblk)):
-            self.B[s+1:e], v[s+1:e] = self._solve_block(self.lu[s:e], self.pivots[s:e], self.B[s:e], v[s:e])
+            self.B[s + 1 : e], v[s + 1 : e] = self._solve_block(
+                self.lu[s:e], self.pivots[s:e], self.B[s:e], v[s:e]
+            )
 
         # To retain consistent sizes
         self.B = self.B[1:]
 
-        return torch.linalg.lu_solve(self.lu, self.pivots, v).squeeze(-1).transpose(0,1).flatten(start_dim = 1)
+        return (
+            torch.linalg.lu_solve(self.lu, self.pivots, v)
+            .squeeze(-1)
+            .transpose(0, 1)
+            .flatten(start_dim=1)
+        )
 
     def _solve_block(self, lu, pivots, B, v):
         """Solve a subsection of the matrix via PCR
@@ -240,7 +247,7 @@ class BidiagonalPCRFactorization(LUFactorization):
         """
         # Number of iterations required to reduce this block
         niter = lu.shape[0].bit_length() - 1
-        
+
         # Add the extra working dimension to the start of everything
         lu = lu.unsqueeze(0)
         pivots = pivots.unsqueeze(0)
@@ -250,7 +257,7 @@ class BidiagonalPCRFactorization(LUFactorization):
         # Actually start reduction!
         for i in range(niter):
             # Reduce RHS
-            v[:, 1:] = v[:, 1:] - mbmm(
+            v[:, 1:] -= mbmm(
                 B[:, 1:], torch.linalg.lu_solve(lu[:, :-1], pivots[:, :-1], v[:, :-1])
             )
 
@@ -279,22 +286,24 @@ class BidiagonalPCRFactorization(LUFactorization):
             two lists, one giving start block indices and the
             second giving end block indices.
 
-        The first (start,end) pair is the largest power of 2 that fits in 
+        The first (start,end) pair is the largest power of 2 that fits in
         n.  Subsequent pairs are the largest power of 2 that fit in the remainder
         *with one overlap between the next increment and the previous*.
         """
-        sz = lambda n: 2**floor(log2(n))
+
+        def sz(n):
+            return 2 ** floor(log2(n))
 
         start = [0]
         end = [sz(n)]
         n -= end[-1]
 
         while n > 0:
-            cz = sz(n+1)
-            start.append(end[-1]-1)
-            end.append(start[-1]+cz)
-            n -= (cz-1)
-        
+            cz = sz(n + 1)
+            start.append(end[-1] - 1)
+            end.append(start[-1] + cz)
+            n -= cz - 1
+
         return start, end
 
     @staticmethod
@@ -310,10 +319,11 @@ class BidiagonalPCRFactorization(LUFactorization):
             (prod(A.shape[2:]), 2 ** (n + 1) * prod(A.shape[2:])) + A.stride()[2:],
         )
 
+
 class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
     """A factorization approach that switches from PCR to Thomas
 
-    Specifically, this class uses PCR until the PCR chunk size is 
+    Specifically, this class uses PCR until the PCR chunk size is
     smaller than user provided minimum chunk size.  Then it switches
     to Thomas.
 
@@ -324,10 +334,12 @@ class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
     Keyword Args:
         min_size (int): minimum block size, default is zero
     """
-    def __init__(self, *args, min_size = 0, **kwargs):
+
+    def __init__(self, *args, min_size=0, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        self.min_size = min_size
+
+        # I use < below...
+        self.min_size = min_size + 1
 
     def forward(self, v):
         """
@@ -352,14 +364,16 @@ class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
 
         # Get the PCR blocks to actually use
         start, end, last = self._pcr_blocks()
-        
+
         # Do PCR
         for s, e in zip(start, end):
-            self.B[s+1:e], v[s+1:e] = self._solve_block(self.lu[s:e], self.pivots[s:e], self.B[s:e], v[s:e])
+            self.B[s + 1 : e], v[s + 1 : e] = self._solve_block(
+                self.lu[s:e], self.pivots[s:e], self.B[s:e], v[s:e]
+            )
 
         # To retain consistent sizes
         self.B = self.B[1:]
-        
+
         # We still need to solve the first block even if last is 0
 
         # The actual LU solve for the solution
@@ -368,25 +382,28 @@ class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
         # Now take over for Thomas
         for i in range(last, self.nblk):
             v[i] = torch.linalg.lu_solve(
-                    self.lu[i], self.pivots[i], v[i] - torch.bmm(self.B[i-1], v[i-1].clone())) 
+                self.lu[i],
+                self.pivots[i],
+                v[i] - torch.bmm(self.B[i - 1], v[i - 1].clone()),
+            )
 
-        return v.squeeze(-1).transpose(0,1).flatten(start_dim = 1)
-        
+        return v.squeeze(-1).transpose(0, 1).flatten(start_dim=1)
+
     def _pcr_blocks(self):
-        """Figure out the PCR blocks we are actually going to use
-        """
+        """Figure out the PCR blocks we are actually going to use"""
         # Figure out which blocks we're going to use
         start, end = self._pow2(self.nblk)
         # These are sorted...
-        blk_size = [e-s for e,s in zip(end,start)]
+        blk_size = [e - s for e, s in zip(end, start)]
         if blk_size[0] < self.min_size:
             return [], [], 1
-        
-        ilast = [i for i,j in enumerate(blk_size) if j < self.min_size]
+
+        ilast = [i for i, j in enumerate(blk_size) if j < self.min_size]
         if len(ilast) == 0:
             ilast = len(start)
         else:
             ilast = ilast[0]
+
         start = start[:ilast]
         end = end[:ilast]
 

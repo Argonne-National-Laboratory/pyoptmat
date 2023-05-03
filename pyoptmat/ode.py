@@ -1,3 +1,5 @@
+# pylint: disable=too-many-arguments
+
 """
     Module defining the key objects and functions to integrate ODEs
     and provide the sensitivity of the results with respect to the
@@ -259,8 +261,11 @@ class FixedGridBlockSolver:
         rtol (float): relative tolerance for Newton's method
         atol (float): absolute tolerance for Newton's method
         miter (int): maximum number of Newton iterations
-        sparse_linear_solver (str): method to solve batched sparse Ax = b, options
+        linear_solve_method (str): method to solve batched sparse Ax = b, options
             are currently "direct" or "dense"
+        direct_solve_method (str): method to use for the direct solver, options are
+            currently "thomas", "pcr", or "hybrid"
+        direct_solve_min_size (int): minimum PCR block size for the hybrid approach
         adjoint_params: parameters to track for the adjoint backward pass
         guess_type (string): strategy for initial guess, options are "zero" and "previous"
     """
@@ -276,6 +281,7 @@ class FixedGridBlockSolver:
         miter=100,
         linear_solve_method="direct",
         direct_solve_method="thomas",
+        direct_solve_min_size=0,
         adjoint_params=None,
         guess_type="zero",
         **kwargs,
@@ -310,6 +316,10 @@ class FixedGridBlockSolver:
             self.direct_solver = chunktime.BidiagonalThomasFactorization
         elif direct_solve_method == "pcr":
             self.direct_solver = chunktime.BidiagonalPCRFactorization
+        elif direct_solve_method == "hybrid":
+            self.direct_solver = lambda A, B: chunktime.BidiagonalHybridFactorization(
+                A, B, min_size=direct_solve_min_size
+            )
         else:
             raise ValueError(
                 f"Unknown batched bidiagonal solver method {direct_solve_method}!"
