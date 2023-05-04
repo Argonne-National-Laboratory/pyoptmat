@@ -517,18 +517,31 @@ def odeint(func, y0, times, method="backward-euler", extra_params=None, **kwargs
     Output history has shape :code:`(ntime, nbatch, nvar)`
 
     Args:
-      func (function):      returns tensor defining the derivative y_dot and,
-                            optionally, the jacobian as a second return value
-      y0 (torch.tensor):    initial conditions
-      times (torch.tensor): time locations to provide solutions at
+        func (function):        returns tensor defining the derivative y_dot and,
+                                optionally, the jacobian as a second return value
+        y0 (torch.tensor):      initial conditions
+        times (torch.tensor):   time locations to provide solutions at
 
     Keyword Args:
-      method (string):                      integration method, currently `"backward-euler"` or
+        method (string):                    integration method, currently `"backward-euler"` or
                                             `"forward-euler"`
-      extra-params (list of parameters):    not used here, just maintains compatibility with
-                                            the adjoint interface
-      kwargs:                               keyword arguments passed on to specific
-                                            solver methods
+        extra_params (list of parameters):  additional parameters that need to be included
+                                            in the backward pass that are not determinable
+                                            via introsection of :code:`func`
+        scheme (TimeIntegrationScheme):     time integration scheme, default is
+                                            `BackwardEulerScheme`
+        block_size (int):                   target block size
+        rtol (float):                       relative tolerance for Newton's method
+        atol (float):                       absolute tolerance for Newton's method
+        miter (int):                        maximum number of Newton iterations
+        linear_solve_method (str):          method to solve batched sparse Ax = b, options
+                                            are currently "direct" or "dense"
+        direct_solve_method (str):          method to use for the direct solver, options are
+                                            currently "thomas", "pcr", or "hybrid"
+        direct_solve_min_size (int):        minimum PCR block size for the hybrid approach
+        adjoint_params:                     parameters to track for the adjoint backward pass
+        guess_type (string):                strategy for initial guess, options are "zero"
+                                            and "previous"
     """
     solver = FixedGridBlockSolver(func, y0, scheme=int_methods[method], **kwargs)
 
@@ -588,19 +601,31 @@ def odeint_adjoint(
     Output history has shape :code:`(ntime, nbatch, nvar)`
 
     Args:
-      func (function):      returns tensor defining the derivative y_dot and,
-                            optionally, the jacobian as a second return value
-      y0 (torch.tensor):    initial conditions
-      times (torch.tensor): time locations to provide solutions at
+        func (function):        returns tensor defining the derivative y_dot and,
+                                optionally, the jacobian as a second return value
+        y0 (torch.tensor):      initial conditions
+        times (torch.tensor):   time locations to provide solutions at
 
     Keyword Args:
-      method (string):                      integration method, currently `"backward-euler"` or
+        method (string):                    integration method, currently `"backward-euler"` or
                                             `"forward-euler"`
-      extra-params (list of parameters):    additional parameters that need to be included
+        extra_params (list of parameters):  additional parameters that need to be included
                                             in the backward pass that are not determinable
                                             via introsection of :code:`func`
-      kwargs:                               keyword arguments passed on to specific
-                                            solver methods
+        scheme (TimeIntegrationScheme):     time integration scheme, default is
+                                            `BackwardEulerScheme`
+        block_size (int):                   target block size
+        rtol (float):                       relative tolerance for Newton's method
+        atol (float):                       absolute tolerance for Newton's method
+        miter (int):                        maximum number of Newton iterations
+        linear_solve_method (str):          method to solve batched sparse Ax = b, options
+                                            are currently "direct" or "dense"
+        direct_solve_method (str):          method to use for the direct solver, options are
+                                            currently "thomas", "pcr", or "hybrid"
+        direct_solve_min_size (int):        minimum PCR block size for the hybrid approach
+        adjoint_params:                     parameters to track for the adjoint backward pass
+        guess_type (string):                strategy for initial guess, options are "zero"
+                                            and "previous"
     """
     # Grab parameters for backward
     if extra_params is None:
