@@ -54,6 +54,8 @@ def make(n, eta, s0, R, d, **kwargs):
 if __name__ == "__main__":
     # Number of vectorized time steps
     time_chunk_size = 40
+    # Method to use to solve linearized implicit systems
+    linear_solve_method = "pcr"
 
     # 1) Load the data for the variance of interest,
     #    cut down to some number of samples, and flatten
@@ -87,7 +89,8 @@ if __name__ == "__main__":
 
     # 3) Create the actual model
     model = optimize.HierarchicalStatisticalModel(
-            lambda *args, **kwargs: make(*args, block_size = time_chunk_size, **kwargs), 
+            lambda *args, **kwargs: make(*args, block_size = time_chunk_size, direct_solve_method = linear_solve_method,
+                **kwargs), 
             names, loc_loc_priors, loc_scale_priors, scale_scale_priors, eps
     ).to(device)
 

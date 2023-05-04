@@ -10,10 +10,13 @@
 """
 
 import warnings
+from math import prod, log2, floor
 
 import torch
-import torch.jit
+from torch.nn.functional import pad
 import numpy as np
+
+from pyoptmat.utility import mbmm
 
 
 def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100):
@@ -120,10 +123,8 @@ class BidiagonalOperator(torch.nn.Module):
         return (self.sbat, self.n, self.n)
 
 
-class BidiagonalThomasFactorization(BidiagonalOperator):
-    """
-    Manages the data needed to solve our bidiagonal system via Thomas
-    factorization
+class LUFactorization(BidiagonalOperator):
+    """A factorization that uses the LU decomposition of A
 
     Args:
         A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
@@ -135,32 +136,6 @@ class BidiagonalThomasFactorization(BidiagonalOperator):
 
         self._setup_factorization()
 
-    def forward(self, v):
-        """
-        Complete the backsolve for a given right hand side
-
-        Args:
-            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
-        """
-        y = torch.empty_like(v)
-        i = 0
-        s = self.sblk
-        y[:, i * s : (i + 1) * s] = torch.linalg.lu_solve(
-            self.lu[i], self.pivots[i], v[:, i * s : (i + 1) * s].unsqueeze(-1)
-        ).squeeze(-1)
-        # The .clone() here really makes no sense to me, but torch assures me it is necessary
-        for i in range(1, self.nblk):
-            y[:, i * s : (i + 1) * s] = torch.linalg.lu_solve(
-                self.lu[i],
-                self.pivots[i],
-                v[:, i * s : (i + 1) * s].unsqueeze(-1)
-                - torch.bmm(
-                    self.B[i - 1], y[:, (i - 1) * s : i * s].clone().unsqueeze(-1)
-                ),
-            ).squeeze(-1)
-
-        return y
-
     def _setup_factorization(self):
         """
         Form the factorization...
@@ -169,6 +144,270 @@ class BidiagonalThomasFactorization(BidiagonalOperator):
             diag (torch.tensor): diagonal blocks of shape (nblk, sbat, sblk, sblk)
         """
         self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.A)
+
+
+def thomas_solve(lu, pivots, B, v):
+    """Simple function implementing a Thomas solve
+
+    Solves in place of v
+
+    Args:
+        lu (torch.tensor): factorized diagonal blocks, (nblk,sbat,sblk,sblk)
+        pivots (torch.tensor): pivots for factorization
+        B (torch.tensor): lower diagonal blocks (nblk-1,sbat,sblk,sblk)
+        v (torch.tensor): right hand side (nblk,sbat,sblk)
+    """
+    i = 0
+    v[i] = torch.linalg.lu_solve(lu[i], pivots[i], v[i])
+    for i in range(1, lu.shape[0]):
+        v[i] = torch.linalg.lu_solve(
+            lu[i], pivots[i], v[i] - torch.bmm(B[i - 1], v[i - 1].clone())
+        )
+
+    return v
+
+
+class BidiagonalThomasFactorization(LUFactorization):
+    """
+    Manages the data needed to solve our bidiagonal system via Thomas
+    factorization
+
+    Args:
+        A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
+        B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
+    """
+
+    def forward(self, v):
+        """
+        Complete the backsolve for a given right hand side
+
+        Args:
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+        """
+        v = v.reshape((self.sbat, self.nblk, self.sblk)).transpose(0, 1).unsqueeze(-1)
+        v = thomas_solve(self.lu, self.pivots, self.B, v)
+
+        return v.squeeze(-1).transpose(0, 1).flatten(start_dim=1)
+
+
+class BidiagonalPCRFactorization(LUFactorization):
+    """
+    Manages the data needed to solve our bidiagonal system via parallel cyclic reduction
+
+    Args:
+        A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
+        B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
+    """
+
+    def forward(self, v):
+        """
+        Complete the backsolve for a given right hand side
+
+        Args:
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+        """
+        # Reshape and add dimensions
+        # This puts the input into "blocked form"
+        # contiguous is necessary because my _cyclic_shift function assumes initially
+        # contiguous memory
+        v = (
+            v.reshape((self.sbat, self.nblk, self.sblk))
+            .transpose(0, 1)
+            .unsqueeze(-1)
+            .contiguous()
+        )
+
+        # We could do this in place if it wasn't for the pad
+        self.B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0))
+
+        # Now figure out how many powers of 2 we need to complete our matrix
+        for s, e in zip(*self._pow2(self.nblk)):
+            self.B[s + 1 : e], v[s + 1 : e] = self._solve_block(
+                self.lu[s:e], self.pivots[s:e], self.B[s:e], v[s:e]
+            )
+
+        # To retain consistent sizes
+        self.B = self.B[1:]
+
+        return (
+            torch.linalg.lu_solve(self.lu, self.pivots, v)
+            .squeeze(-1)
+            .transpose(0, 1)
+            .flatten(start_dim=1)
+        )
+
+    def _solve_block(self, lu, pivots, B, v):
+        """Solve a subsection of the matrix via PCR
+
+        Args:
+            lu (torch.tensor): (ncurr,sbat,sblk,sblk)
+            pivots (torch.tensor): (ncurr,sbat,sblk)
+            B (torch.tensor): (ncurr,sbat,sblk,sblk)
+            v (torch.tensor): (ncurr,sbat,sblk,1)
+        """
+        # Number of iterations required to reduce this block
+        niter = lu.shape[0].bit_length() - 1
+
+        # Add the extra working dimension to the start of everything
+        lu = lu.unsqueeze(0)
+        pivots = pivots.unsqueeze(0)
+        B = B.unsqueeze(0)
+        v = v.unsqueeze(0)
+
+        # Actually start reduction!
+        for i in range(niter):
+            # Reduce RHS
+            v[:, 1:] -= mbmm(
+                B[:, 1:], torch.linalg.lu_solve(lu[:, :-1], pivots[:, :-1], v[:, :-1])
+            )
+
+            # Reduce off diagonal coefficients
+            B[:, 2:] = -mbmm(
+                B[:, 2:],
+                torch.linalg.lu_solve(lu[:, 1:-1], pivots[:, 1:-1], B[:, 1:-1]),
+            )
+
+            # Shuffle dimensions
+            v = self._cyclic_shift(v, i)
+            B = self._cyclic_shift(B, i)
+            lu = self._cyclic_shift(lu, i)
+            pivots = self._cyclic_shift(pivots, i)
+
+        return B.squeeze(1)[1:], v.squeeze(1)[1:]
+
+    @staticmethod
+    def _pow2(n):
+        """Calculate submatrix sizes
+
+        Args:
+            n (int): number of blocks
+
+        Returns:
+            two lists, one giving start block indices and the
+            second giving end block indices.
+
+        The first (start,end) pair is the largest power of 2 that fits in
+        n.  Subsequent pairs are the largest power of 2 that fit in the remainder
+        *with one overlap between the next increment and the previous*.
+        """
+
+        def sz(n):
+            return 2 ** floor(log2(n))
+
+        start = [0]
+        end = [sz(n)]
+        n -= end[-1]
+
+        while n > 0:
+            cz = sz(n + 1)
+            start.append(end[-1] - 1)
+            end.append(start[-1] + cz)
+            n -= cz - 1
+
+        return start, end
+
+    @staticmethod
+    def _cyclic_shift(A, n):
+        """Provide a view of the input with a cyclic shift applied
+
+        Args:
+            A (torch.tensor): input tensor
+            n (int): number of cyclic shifts
+        """
+        return A.as_strided(
+            (A.shape[0] * 2, A.shape[1] // 2) + A.shape[2:],
+            (prod(A.shape[2:]), 2 ** (n + 1) * prod(A.shape[2:])) + A.stride()[2:],
+        )
+
+
+class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
+    """A factorization approach that switches from PCR to Thomas
+
+    Specifically, this class uses PCR until the PCR chunk size is
+    smaller than user provided minimum chunk size.  Then it switches
+    to Thomas.
+
+    Args:
+        A (torch.tensor): tensor of shape (nblk,sbat,sblk,sblk) with the main diagonal
+        B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
+
+    Keyword Args:
+        min_size (int): minimum block size, default is zero
+    """
+
+    def __init__(self, *args, min_size=0, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # I use < below...
+        self.min_size = min_size + 1
+
+    def forward(self, v):
+        """
+        Complete the backsolve for a given right hand side
+
+        Args:
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+        """
+        # Reshape and add dimensions
+        # This puts the input into "blocked form"
+        # contiguous is necessary because my _cyclic_shift function assumes initially
+        # contiguous memory
+        v = (
+            v.reshape((self.sbat, self.nblk, self.sblk))
+            .transpose(0, 1)
+            .unsqueeze(-1)
+            .contiguous()
+        )
+
+        # We could do this in place if it wasn't for the pad
+        self.B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0))
+
+        # Get the PCR blocks to actually use
+        start, end, last = self._pcr_blocks()
+
+        # Do PCR
+        for s, e in zip(start, end):
+            self.B[s + 1 : e], v[s + 1 : e] = self._solve_block(
+                self.lu[s:e], self.pivots[s:e], self.B[s:e], v[s:e]
+            )
+
+        # To retain consistent sizes
+        self.B = self.B[1:]
+
+        # We still need to solve the first block even if last is 0
+
+        # The actual LU solve for the solution
+        v[:last] = torch.linalg.lu_solve(self.lu[:last], self.pivots[:last], v[:last])
+
+        # Now take over for Thomas
+        for i in range(last, self.nblk):
+            v[i] = torch.linalg.lu_solve(
+                self.lu[i],
+                self.pivots[i],
+                v[i] - torch.bmm(self.B[i - 1], v[i - 1].clone()),
+            )
+
+        return v.squeeze(-1).transpose(0, 1).flatten(start_dim=1)
+
+    def _pcr_blocks(self):
+        """Figure out the PCR blocks we are actually going to use"""
+        # Figure out which blocks we're going to use
+        start, end = self._pow2(self.nblk)
+        # These are sorted...
+        blk_size = [e - s for e, s in zip(end, start)]
+        if blk_size[0] < self.min_size:
+            return [], [], 1
+
+        ilast = [i for i, j in enumerate(blk_size) if j < self.min_size]
+        if len(ilast) == 0:
+            ilast = len(start)
+        else:
+            ilast = ilast[0]
+
+        start = start[:ilast]
+        end = end[:ilast]
+
+        return start, end, end[-1]
 
 
 class BidiagonalForwardOperator(BidiagonalOperator):
@@ -200,6 +439,10 @@ class BidiagonalForwardOperator(BidiagonalOperator):
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk)
             storing the nblk-1 off diagonal blocks
     """
+
+    def __init__(self, *args, inverse_operator=BidiagonalThomasFactorization, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.inverse_operator = inverse_operator
 
     def to_diag(self):
         """
@@ -240,7 +483,7 @@ class BidiagonalForwardOperator(BidiagonalOperator):
         """
         Return an inverse operator
         """
-        return BidiagonalThomasFactorization(self.A, self.B)
+        return self.inverse_operator(self.A, self.B)
 
 
 class ChunkTimeOperatorSolverContext:

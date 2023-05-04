@@ -1,3 +1,5 @@
+# pylint: disable=too-many-arguments
+
 """
     Module defining the key objects and functions to integrate ODEs
     and provide the sensitivity of the results with respect to the
@@ -45,7 +47,9 @@ class BackwardEulerScheme:
     Integration with the backward Euler method
     """
 
-    def form_operators(self, dy, yd, yJ, dt):
+    def form_operators(
+        self, dy, yd, yJ, dt, solver=chunktime.BidiagonalThomasFactorization
+    ):
         """
         Form the residual and sparse Jacobian of the batched system
 
@@ -55,6 +59,9 @@ class BackwardEulerScheme:
             yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
                 of the ODE
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+
+        Keyword Args:
+            solver (chunktime.BidiagonalOperator): inverse method
 
         Returns:
             R (torch.tensor): residual tensor of shape
@@ -81,7 +88,7 @@ class BackwardEulerScheme:
         I = torch.eye(prob_size, device=dt.device).expand(ntime, batch_size, -1, -1)
 
         return R, chunktime.BidiagonalForwardOperator(
-            I - yJ[1:] * dt.unsqueeze(-1).unsqueeze(-1), -I[1:]
+            I - yJ[1:] * dt.unsqueeze(-1).unsqueeze(-1), -I[1:], inverse_operator=solver
         )
 
     def update_adjoint(self, dt, J, a_prev, grads):
@@ -145,7 +152,9 @@ class ForwardEulerScheme:
     Integration with the forward Euler method
     """
 
-    def form_operators(self, dy, yd, yJ, dt):
+    def form_operators(
+        self, dy, yd, yJ, dt, solver=chunktime.BidiagonalThomasFactorization
+    ):
         """
         Form the residual and sparse Jacobian of the batched system
 
@@ -155,6 +164,9 @@ class ForwardEulerScheme:
             yJ (torch.tensor): (ntime, nbatch, nsize, nsize) tensor giving the derivative
                 of the ODE
             dt (torch.tensor): (ntime, nbatch) tensor giving the time step
+
+        Keyword Args:
+            solver (chunktime.BidiagonalOperator): inverse method
 
         Returns:
             R (torch.tensor): residual tensor of shape
@@ -181,7 +193,9 @@ class ForwardEulerScheme:
         I = torch.eye(prob_size, device=dt.device).expand(ntime, batch_size, -1, -1)
 
         return R, chunktime.BidiagonalForwardOperator(
-            I, -I[1:] - yJ[1:-1] * dt[1:].unsqueeze(-1).unsqueeze(-1)
+            I,
+            -I[1:] - yJ[1:-1] * dt[1:].unsqueeze(-1).unsqueeze(-1),
+            inverse_operator=solver,
         )
 
     def update_adjoint(self, dt, J, a_prev, grads):
@@ -247,8 +261,11 @@ class FixedGridBlockSolver:
         rtol (float): relative tolerance for Newton's method
         atol (float): absolute tolerance for Newton's method
         miter (int): maximum number of Newton iterations
-        sparse_linear_solver (str): method to solve batched sparse Ax = b, options
+        linear_solve_method (str): method to solve batched sparse Ax = b, options
             are currently "direct" or "dense"
+        direct_solve_method (str): method to use for the direct solver, options are
+            currently "thomas", "pcr", or "hybrid"
+        direct_solve_min_size (int): minimum PCR block size for the hybrid approach
         adjoint_params: parameters to track for the adjoint backward pass
         guess_type (string): strategy for initial guess, options are "zero" and "previous"
     """
@@ -263,6 +280,8 @@ class FixedGridBlockSolver:
         atol=1.0e-4,
         miter=100,
         linear_solve_method="direct",
+        direct_solve_method="thomas",
+        direct_solve_min_size=0,
         adjoint_params=None,
         guess_type="zero",
         **kwargs,
@@ -291,6 +310,20 @@ class FixedGridBlockSolver:
         self.linear_solve_context = chunktime.ChunkTimeOperatorSolverContext(
             linear_solve_method, **kwargs
         )
+
+        # Setup the direct solver type
+        if direct_solve_method == "thomas":
+            self.direct_solver = chunktime.BidiagonalThomasFactorization
+        elif direct_solve_method == "pcr":
+            self.direct_solver = chunktime.BidiagonalPCRFactorization
+        elif direct_solve_method == "hybrid":
+            self.direct_solver = lambda A, B: chunktime.BidiagonalHybridFactorization(
+                A, B, min_size=direct_solve_min_size
+            )
+        else:
+            raise ValueError(
+                f"Unknown batched bidiagonal solver method {direct_solve_method}!"
+            )
 
         # Initial guess for integration
         self.guess_type = guess_type
@@ -444,7 +477,7 @@ class FixedGridBlockSolver:
             # Batch update the rate and jacobian
             yd, yJ = func(times, y)
 
-            return self.scheme.form_operators(dy, yd, yJ, dt)
+            return self.scheme.form_operators(dy, yd, yJ, dt, solver=self.direct_solver)
 
         dy = chunktime.newton_raphson_chunk(
             RJ,
@@ -484,18 +517,31 @@ def odeint(func, y0, times, method="backward-euler", extra_params=None, **kwargs
     Output history has shape :code:`(ntime, nbatch, nvar)`
 
     Args:
-      func (function):      returns tensor defining the derivative y_dot and,
-                            optionally, the jacobian as a second return value
-      y0 (torch.tensor):    initial conditions
-      times (torch.tensor): time locations to provide solutions at
+        func (function):        returns tensor defining the derivative y_dot and,
+                                optionally, the jacobian as a second return value
+        y0 (torch.tensor):      initial conditions
+        times (torch.tensor):   time locations to provide solutions at
 
     Keyword Args:
-      method (string):                      integration method, currently `"backward-euler"` or
+        method (string):                    integration method, currently `"backward-euler"` or
                                             `"forward-euler"`
-      extra-params (list of parameters):    not used here, just maintains compatibility with
-                                            the adjoint interface
-      kwargs:                               keyword arguments passed on to specific
-                                            solver methods
+        extra_params (list of parameters):  additional parameters that need to be included
+                                            in the backward pass that are not determinable
+                                            via introsection of :code:`func`
+        scheme (TimeIntegrationScheme):     time integration scheme, default is
+                                            `BackwardEulerScheme`
+        block_size (int):                   target block size
+        rtol (float):                       relative tolerance for Newton's method
+        atol (float):                       absolute tolerance for Newton's method
+        miter (int):                        maximum number of Newton iterations
+        linear_solve_method (str):          method to solve batched sparse Ax = b, options
+                                            are currently "direct" or "dense"
+        direct_solve_method (str):          method to use for the direct solver, options are
+                                            currently "thomas", "pcr", or "hybrid"
+        direct_solve_min_size (int):        minimum PCR block size for the hybrid approach
+        adjoint_params:                     parameters to track for the adjoint backward pass
+        guess_type (string):                strategy for initial guess, options are "zero"
+                                            and "previous"
     """
     solver = FixedGridBlockSolver(func, y0, scheme=int_methods[method], **kwargs)
 
@@ -555,19 +601,31 @@ def odeint_adjoint(
     Output history has shape :code:`(ntime, nbatch, nvar)`
 
     Args:
-      func (function):      returns tensor defining the derivative y_dot and,
-                            optionally, the jacobian as a second return value
-      y0 (torch.tensor):    initial conditions
-      times (torch.tensor): time locations to provide solutions at
+        func (function):        returns tensor defining the derivative y_dot and,
+                                optionally, the jacobian as a second return value
+        y0 (torch.tensor):      initial conditions
+        times (torch.tensor):   time locations to provide solutions at
 
     Keyword Args:
-      method (string):                      integration method, currently `"backward-euler"` or
+        method (string):                    integration method, currently `"backward-euler"` or
                                             `"forward-euler"`
-      extra-params (list of parameters):    additional parameters that need to be included
+        extra_params (list of parameters):  additional parameters that need to be included
                                             in the backward pass that are not determinable
                                             via introsection of :code:`func`
-      kwargs:                               keyword arguments passed on to specific
-                                            solver methods
+        scheme (TimeIntegrationScheme):     time integration scheme, default is
+                                            `BackwardEulerScheme`
+        block_size (int):                   target block size
+        rtol (float):                       relative tolerance for Newton's method
+        atol (float):                       absolute tolerance for Newton's method
+        miter (int):                        maximum number of Newton iterations
+        linear_solve_method (str):          method to solve batched sparse Ax = b, options
+                                            are currently "direct" or "dense"
+        direct_solve_method (str):          method to use for the direct solver, options are
+                                            currently "thomas", "pcr", or "hybrid"
+        direct_solve_min_size (int):        minimum PCR block size for the hybrid approach
+        adjoint_params:                     parameters to track for the adjoint backward pass
+        guess_type (string):                strategy for initial guess, options are "zero"
+                                            and "previous"
     """
     # Grab parameters for backward
     if extra_params is None:

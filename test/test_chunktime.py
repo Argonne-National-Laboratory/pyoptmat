@@ -13,9 +13,10 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
     def setUp(self):
         self.sblk = 6
-        self.nblk = 4
-        self.sbat = 2
+        self.max_nblk = 31
+        self.sbat = 5
 
+    def _gen_operators(self):
         self.blk_A = torch.rand(self.nblk, self.sbat, self.sblk, self.sblk)
         self.blk_B = (
             torch.rand(self.nblk - 1, self.sbat, self.sblk, self.sblk) / 10
@@ -25,17 +26,65 @@ class TestBackwardEulerChunkTimeOperator(unittest.TestCase):
         self.b = torch.rand(self.sbat, self.nblk * self.sblk)
 
     def test_inv_mat_vec_thomas(self):
-        M = chunktime.BidiagonalThomasFactorization(self.blk_A, self.blk_B)
-        one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
-        two = M(self.b)
+        for self.nblk in range(1,self.max_nblk):
+            self._gen_operators()
+            M = chunktime.BidiagonalThomasFactorization(self.blk_A, self.blk_B)
+            one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+            two = M(self.b)
 
-        self.assertTrue(torch.allclose(one, two))
+            self.assertTrue(torch.allclose(one, two))
+
+    def test_inv_mat_vec_pcr(self):
+        for self.nblk in range(1, self.max_nblk):
+            self._gen_operators()
+            M = chunktime.BidiagonalPCRFactorization(self.blk_A, self.blk_B)
+            one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+            two = M(self.b)
+
+            self.assertTrue(torch.allclose(one, two))
+
+    def test_inv_mat_vec_hybrid_pcr(self):
+        """Hybrid method, but set min_size so it always uses PCR
+        """
+        for self.nblk in range(1, self.max_nblk):
+            self._gen_operators()
+            M = chunktime.BidiagonalHybridFactorization(self.blk_A, self.blk_B)
+            one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+            two = M(self.b)
+
+            self.assertTrue(torch.allclose(one, two))
+
+    def test_inv_mat_vec_hybrid_thomas(self):
+        """Hybrid method, but set min_size so it always uses Thomas
+        """
+        for self.nblk in range(1, self.max_nblk):
+            self._gen_operators()
+            M = chunktime.BidiagonalHybridFactorization(self.blk_A, self.blk_B, 
+                    min_size = self.max_nblk + 1)
+            one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+            two = M(self.b)
+
+            self.assertTrue(torch.allclose(one, two))
+
+    def test_inv_mat_vec_hybrid_actual(self):
+        """Hybrid method actually set to do something
+        """
+        for self.nblk in range(1, self.max_nblk):
+            self._gen_operators()
+            M = chunktime.BidiagonalHybridFactorization(self.blk_A, self.blk_B, 
+                    min_size = self.nblk//2)
+            one = torch.linalg.solve(self.A.to_diag().to_dense(), self.b)
+            two = M(self.b)
+
+            self.assertTrue(torch.allclose(one, two))
 
     def test_mat_vec(self):
-        one = self.A.to_diag().to_dense().matmul(self.b.unsqueeze(-1)).squeeze(-1)
-        two = self.A(self.b)
+        for self.nblk in range(1, self.max_nblk):
+            self._gen_operators()
+            one = self.A.to_diag().to_dense().matmul(self.b.unsqueeze(-1)).squeeze(-1)
+            two = self.A(self.b)
 
-        self.assertTrue(torch.allclose(one, two))
+            self.assertTrue(torch.allclose(one, two))
 
 
 class TestBasicSparseSetup(unittest.TestCase):
