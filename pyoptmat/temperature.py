@@ -113,6 +113,103 @@ class ConstantParameter(TemperatureParameter):
         """
         return self.pvalue.shape
 
+class RBFScaling(TemperatureParameter):
+    """
+    Radial basis function nscaling using :math:`\\exp{-(\\epsilon r)^2}`
+    as the basis function
+    
+    Args:
+        T (torch.tensor): temperature control points
+        V (torch.tensor): values at those control points
+        eps (torch.tensor): basis parameter
+
+    Keyword Args:
+        T_scale (function): scaling function for temperature
+        V_scale (function): scaling function for V
+        eps_scale (function): scaling function for epsilon
+
+    """
+    def __init__(self, T, V, eps, *args, T_scale = lambda x: x,
+            V_scale = lambda x: x, eps_scale = lambda x: x, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.X = T
+        self.V = V
+        self.eps = eps
+        
+        self.T_scale = T_scale
+        self.V_scale = V_scale
+        self.eps_scale = eps_scale
+
+    @property
+    def device(self):
+        """
+        Return the current device
+        """
+        return self.X.device
+
+    def value(self, T):
+        """
+        Return the function value
+
+        Args:
+            T (torch.tensor): current temperatures
+
+        Returns:
+            torch.tensor: values at current temperatures
+        """
+        X = self.T_scale(self.X)
+        V = self.V_scale(self.V)
+        eps = self.eps_scale(self.eps)
+        
+        # Need to force this to have a second dimension
+        y = self.T_scale(T)
+        squeeze = False
+        if y.dim() == 1:
+            squeeze = True
+            y = y.unsqueeze(0)
+        y = y.transpose(0,1)
+
+        W = self._weights(X, V, eps)
+
+        # Now interpolate to the points...
+        vals = torch.sum(W[...,None,:] * self._f(self._dist(X, y), eps), dim = -1).transpose(0,1)
+        
+        if squeeze:
+            return vals.squeeze(0)
+
+        return vals
+
+    def _weights(self, X, V, eps):
+        """Calculate the weights for the current values
+        
+        Args:
+            X (torch.tensor): current points
+            V (torch.tensor): current values
+            eps (torch.tensor): current RB parameter
+        """
+        A = self._f(self._dist(X, X), eps)
+        return torch.linalg.solve(A, V)
+
+    def _f(self, X, eps):
+        """Calculate the RBF for a given set of points
+
+        Args:
+            V (torch.tensor): current values
+            eps (torch.tensor): current eps
+        """
+        return torch.exp(-(eps*X)**2.0)
+    
+    @staticmethod
+    def _dist(X1, X2):
+        """
+        Calculate the distance matrix between two batched sets of points
+
+        Args:
+            X1 (torch.tensor): first set of points
+            X2 (torch.tensor): second set of points
+        """
+        return torch.abs(X1[...,None,:] - X2[...,:,None])
 
 class ShearModulusScaling(TemperatureParameter):
     """

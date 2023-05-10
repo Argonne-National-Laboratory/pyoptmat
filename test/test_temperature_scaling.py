@@ -128,6 +128,32 @@ class TestPolynomialScaling(unittest.TestCase):
 
         self.assertTrue(np.allclose(y1.numpy(), y2))
 
+class TestRBFScalingScalar(unittest.TestCase):
+    def setUp(self):
+        self.nbatch = 50
+        self.notherbatch = 7
+        self.npoints = 5
+
+        self.T = torch.linspace(0, 100, self.npoints).unsqueeze(0).expand((self.nbatch, self.npoints))
+        self.V = torch.rand((self.nbatch,self.npoints))
+        self.eps = torch.tensor(0.1)
+
+        self.obj = temperature.RBFScaling(self.T, self.V, self.eps)
+
+    def test_one_batch(self):
+        x = torch.rand((self.nbatch,))*100.0
+
+        y = self.obj.value(x)
+
+        self.assertEqual(x.shape, y.shape)
+
+
+    def test_two_batch(self):
+        x = torch.rand((self.notherbatch,self.nbatch)) * 100.0
+        
+        y = self.obj.value(x)
+
+        self.assertEqual(x.shape, y.shape)
 
 class TestPiecewiseScaling(unittest.TestCase):
     def test_value(self):
