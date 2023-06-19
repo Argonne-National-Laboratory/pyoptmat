@@ -68,6 +68,10 @@ class InelasticModel(nn.Module):
         self.flowrule = flowrule
         self.dmodel = dmodel
 
+    @property
+    def nsize(self):
+        return self.flowrule.nhist + 2
+
     def forward(self, t, y, erate, T):
         """
         Return the rate equations for the strain-based version of the model
@@ -205,7 +209,7 @@ class ModelIntegrator(nn.Module):
         )
 
         init = torch.zeros(
-            times.shape[1], 2 + self.model.flowrule.nhist, device=idata.device
+            times.shape[1], self.model.nsize, device=idata.device
         )
         init[:, -1] = self.d0
 
@@ -249,7 +253,7 @@ class ModelIntegrator(nn.Module):
         )
 
         init = torch.zeros(
-            times.shape[1], 2 + self.model.flowrule.nhist, device=strains.device
+            times.shape[1], self.model.nsize, device=strains.device
         )
         init[:, -1] = self.d0
 
@@ -292,7 +296,7 @@ class ModelIntegrator(nn.Module):
         )
 
         init = torch.zeros(
-            times.shape[1], 2 + self.model.flowrule.nhist, device=stresses.device
+            times.shape[1], self.model.nsize, device=stresses.device
         )
         init[:, -1] = self.d0
 
@@ -445,10 +449,11 @@ class StressBasedModel(nn.Module):
         ydot, J, Je, _ = self.model(t, yp, erate[..., 0], cT)
 
         # Rescale the jacobian
-        J[..., 0, :] = -J[..., 0, :] / Je[..., 0][..., None]
-        J[..., :, 0] = 0
+        Jp = torch.zeros_like(J)
+        Jp[..., 0, :] = -J[..., 0, :] / Je[..., 0][..., None]
+        Jp[..., 1:, 1:] = J[..., 1:, 1:]
 
         # Insert the strain rate
         ydot[..., 0] = erate[..., 0]
 
-        return ydot, J
+        return ydot, Jp
