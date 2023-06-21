@@ -371,6 +371,9 @@ class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
 
         # Now take over for Thomas
         for i in range(last, self.nblk):
+            # The .clone() here should not be necessary, but for whatever
+            # reason torch autograd give the usual "in place" complaint
+            # without it...
             v[i] = torch.linalg.lu_solve(
                 self.lu[i],
                 self.pivots[i],
