@@ -145,6 +145,26 @@ class LUFactorization(BidiagonalOperator):
         """
         self.lu, self.pivots, _ = torch.linalg.lu_factor_ex(self.A)
 
+    def forward(self, v):
+        """
+        Run the solve using the linear algebra type interface
+        with the number of blocks and block size squeezed
+
+        Args:
+            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+        """
+        return (
+            self.matvec(
+                v.reshape((self.sbat, self.nblk, self.sblk))
+                .transpose(0, 1)
+                .unsqueeze(-1)
+                .contiguous()
+            )
+            .squeeze(-1)
+            .transpose(0, 1)
+            .flatten(start_dim=1)
+        )
+
 
 def thomas_solve(lu, pivots, B, v):
     """Simple function implementing a Thomas solve
@@ -177,17 +197,14 @@ class BidiagonalThomasFactorization(LUFactorization):
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
     """
 
-    def forward(self, v):
+    def matvec(self, v):
         """
         Complete the backsolve for a given right hand side
 
         Args:
-            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+            v (torch.tensor): tensor of shape (nblk, sbat, sblk, 1)
         """
-        v = v.reshape((self.sbat, self.nblk, self.sblk)).transpose(0, 1).unsqueeze(-1)
-        v = thomas_solve(self.lu, self.pivots, self.B, v)
-
-        return v.squeeze(-1).transpose(0, 1).flatten(start_dim=1)
+        return thomas_solve(self.lu, self.pivots, self.B, v)
 
 
 class BidiagonalPCRFactorization(LUFactorization):
@@ -199,24 +216,13 @@ class BidiagonalPCRFactorization(LUFactorization):
         B (torch.tensor): tensor of shape (nblk-1,sbat,sblk,sblk) with the off diagonal
     """
 
-    def forward(self, v):
+    def matvec(self, v):
         """
         Complete the backsolve for a given right hand side
 
         Args:
-            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+            v (torch.tensor): tensor of shape (nblk, sbat, sblk, 1)
         """
-        # Reshape and add dimensions
-        # This puts the input into "blocked form"
-        # contiguous is necessary because my _cyclic_shift function assumes initially
-        # contiguous memory
-        v = (
-            v.reshape((self.sbat, self.nblk, self.sblk))
-            .transpose(0, 1)
-            .unsqueeze(-1)
-            .contiguous()
-        )
-
         # We could do this in place if it wasn't for the pad
         self.B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0))
 
@@ -229,12 +235,7 @@ class BidiagonalPCRFactorization(LUFactorization):
         # To retain consistent sizes
         self.B = self.B[1:]
 
-        return (
-            torch.linalg.lu_solve(self.lu, self.pivots, v)
-            .squeeze(-1)
-            .transpose(0, 1)
-            .flatten(start_dim=1)
-        )
+        return torch.linalg.lu_solve(self.lu, self.pivots, v)
 
     def _solve_block(self, lu, pivots, B, v):
         """Solve a subsection of the matrix via PCR
@@ -341,24 +342,13 @@ class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
         # I use < below...
         self.min_size = min_size + 1
 
-    def forward(self, v):
+    def matvec(self, v):
         """
         Complete the backsolve for a given right hand side
 
         Args:
-            v (torch.tensor): tensor of shape (sbat, sblk*nblk)
+            v (torch.tensor): tensor of shape (nblk, sbat, sblk, 1)
         """
-        # Reshape and add dimensions
-        # This puts the input into "blocked form"
-        # contiguous is necessary because my _cyclic_shift function assumes initially
-        # contiguous memory
-        v = (
-            v.reshape((self.sbat, self.nblk, self.sblk))
-            .transpose(0, 1)
-            .unsqueeze(-1)
-            .contiguous()
-        )
-
         # We could do this in place if it wasn't for the pad
         self.B = pad(self.B, (0, 0, 0, 0, 0, 0, 1, 0))
 
@@ -381,13 +371,16 @@ class BidiagonalHybridFactorization(BidiagonalPCRFactorization):
 
         # Now take over for Thomas
         for i in range(last, self.nblk):
+            # The .clone() here should not be necessary, but for whatever
+            # reason torch autograd give the usual "in place" complaint
+            # without it...
             v[i] = torch.linalg.lu_solve(
                 self.lu[i],
                 self.pivots[i],
                 v[i] - torch.bmm(self.B[i - 1], v[i - 1].clone()),
             )
 
-        return v.squeeze(-1).transpose(0, 1).flatten(start_dim=1)
+        return v
 
     def _pcr_blocks(self):
         """Figure out the PCR blocks we are actually going to use"""

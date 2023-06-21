@@ -40,6 +40,7 @@
 import torch
 
 from pyoptmat import chunktime
+from pyoptmat.utility import mbmm
 
 
 class BackwardEulerScheme:
@@ -91,7 +92,9 @@ class BackwardEulerScheme:
             I - yJ[1:] * dt.unsqueeze(-1).unsqueeze(-1), -I[1:], inverse_operator=solver
         )
 
-    def update_adjoint(self, dt, J, a_prev, grads):
+    def update_adjoint(
+        self, dt, J, a_prev, grads, solver=chunktime.BidiagonalThomasFactorization
+    ):
         """
         Update the adjoint for a block of time
 
@@ -104,27 +107,28 @@ class BackwardEulerScheme:
         Returns:
             adjoint_block (torch.tensor): block of updated adjoint values
         """
+        # Setup and useful sizes
         ntime = J.shape[0] - 1
         prob_size = J.shape[2]
         batch_size = J.shape[1]
 
         adjoint_block = torch.zeros(J.shape[:-1], dtype=J.dtype, device=J.device)
-        adjoint_block[0] = a_prev
 
-        # Invert J all at once
+        # Basic operators
         I = torch.eye(prob_size, device=dt.device).expand(ntime, batch_size, -1, -1)
-        lu, pivot, _ = torch.linalg.lu_factor_ex(
-            I + J[:-1].transpose(-1, -2) * dt.unsqueeze(-1).unsqueeze(-1)
+        dJ = J[:-1].transpose(-1, -2) * dt.unsqueeze(-1).unsqueeze(-1)
+
+        # The operator is pretty trivial
+        op = solver(I + dJ, -I[:-1])
+        rhs = grads[1:].unsqueeze(-1) + mbmm(
+            dJ,
+            grads[1:].unsqueeze(-1)
+            - a_prev.unsqueeze(0).expand(ntime, batch_size, -1).unsqueeze(-1),
         )
 
-        # This has to be done sequentially...
-        for i in range(ntime):
-            adjoint_block[i + 1] = torch.linalg.lu_solve(
-                lu[i], pivot[i], adjoint_block[i].unsqueeze(-1)
-            ).squeeze(-1)
-            adjoint_block[i + 1] += grads[i + 1]
-
-        return adjoint_block
+        # Actually do the batch solve
+        adjoint_block[1:] = op.matvec(rhs).squeeze(-1)
+        return adjoint_block + a_prev
 
     def accumulate(self, prev, time, y, a, grad, grad_fn):
         """
@@ -198,7 +202,9 @@ class ForwardEulerScheme:
             inverse_operator=solver,
         )
 
-    def update_adjoint(self, dt, J, a_prev, grads):
+    def update_adjoint(
+        self, dt, J, a_prev, grads, solver=chunktime.BidiagonalThomasFactorization
+    ):
         """
         Update the adjoint for a block of time
 
@@ -211,19 +217,27 @@ class ForwardEulerScheme:
         Returns:
             adjoint_block (torch.tensor): block of updated adjoint values
         """
+        # Setup and useful sizes
         ntime = J.shape[0] - 1
+        prob_size = J.shape[2]
+        batch_size = J.shape[1]
 
         adjoint_block = torch.zeros(J.shape[:-1], dtype=J.dtype, device=J.device)
-        adjoint_block[0] = a_prev
 
-        # This has to be done sequentially...
-        for i in range(ntime):
-            adjoint_block[i + 1] = adjoint_block[i] - torch.bmm(
-                J[i + 1].transpose(-1, -2), adjoint_block[i].unsqueeze(-1)
-            ).squeeze(-1) * dt[i].unsqueeze(-1)
-            adjoint_block[i + 1] += grads[i + 1]
+        # Basic operators
+        I = torch.eye(prob_size, device=dt.device).expand(ntime, batch_size, -1, -1)
+        dJ = J[1:].transpose(-1, -2) * dt.unsqueeze(-1).unsqueeze(-1)
 
-        return adjoint_block
+        # The operator is pretty trivial
+        op = solver(I, (dJ - I)[1:])
+        rhs = grads[1:].unsqueeze(-1) + mbmm(
+            dJ,
+            -a_prev.unsqueeze(0).expand(ntime, batch_size, -1).unsqueeze(-1),
+        )
+
+        # Actually do the batch solve
+        adjoint_block[1:] = op.matvec(rhs).squeeze(-1)
+        return adjoint_block + a_prev
 
     def accumulate(self, prev, time, y, a, grad, grad_fn):
         """
@@ -432,6 +446,7 @@ class FixedGridBlockSolver:
                 J,
                 prev_adjoint,
                 output_grad[k - 1 : k + self.n],
+                solver=self.direct_solver,
             )
 
             # Ugh, best way I can think to do this is to combine everything...
