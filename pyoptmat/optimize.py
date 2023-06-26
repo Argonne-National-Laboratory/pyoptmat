@@ -295,6 +295,9 @@ class HierarchicalStatisticalModel(PyroModule):
                                             :code:`"_param"`
       include_noise (str):                  if :code:`True` include white noise in the inference,
                                             default :code:`False`
+      weights (dict or None):               weights for each test type given as a dict mapping
+                                            {test_type: weight}.  If None then weight all test
+                                            types equally
     """
 
     def __init__(
@@ -309,6 +312,7 @@ class HierarchicalStatisticalModel(PyroModule):
         scale_suffix="_scale",
         param_suffix="_param",
         include_noise=False,
+        weights=None,
     ):
         super().__init__()
 
@@ -320,6 +324,12 @@ class HierarchicalStatisticalModel(PyroModule):
         self.include_noise = include_noise
 
         self.names = names
+
+        # Figure out the weights
+        if weights is None:
+            self.weights = {v: 1.0 for v in experiments.exp_map.values()}
+        else:
+            self.weights = {experiments.exp_map[n]: v for n, v in weights.items()}
 
         # We need these for the shapes...
         self.loc_loc_priors = loc_loc_priors
@@ -512,7 +522,9 @@ class HierarchicalStatisticalModel(PyroModule):
         else:
             full_noise = eps
 
-        with pyro.plate("trials", exp_data.shape[2]):
+        with pyro.plate("trials", exp_data.shape[2]), pyro.poutine.scale(
+            scale=self._make_weight_tensor(exp_types)
+        ):
             # Sample the bottom level parameters
             bmodel = self.maker(
                 *self.sample_bot(), extra_params=self.get_extra_params()
@@ -531,3 +543,14 @@ class HierarchicalStatisticalModel(PyroModule):
                 pyro.sample("obs", dist.Normal(results, full_noise), obs=exp_results)
 
         return results
+
+    def _make_weight_tensor(self, exp_types):
+        """
+        Assemble a full tensor for the data weights, based on the self.weights
+        dictionary
+        """
+        weights = torch.zeros_like(exp_types)
+        for tt, v in self.weights.items():
+            weights[exp_types == tt] = v
+
+        return weights
