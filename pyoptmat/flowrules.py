@@ -1274,54 +1274,67 @@ class IsoKinViscoplasticity(FlowRule):
                                                 derivative of the history rate
                                                 with respect to history
         """
-        hrate = torch.zeros_like(h)
-        hdiv = torch.zeros(h.shape + h.shape[-1:], device=h.device)
         erate, _ = self.flow_rate(s, h, t, T, e)
 
         hiso = h[..., : self.isotropic.nhist]
         hkin = h[..., self.isotropic.nhist :]
 
-        hrate[..., : self.isotropic.nhist] = self.isotropic.history_rate(
-            s, hiso, t, erate, T, e
-        )
-        hrate[..., self.isotropic.nhist :] = self.kinematic.history_rate(
-            s, hkin, t, erate, T, e
+        # History evolution rate
+        hrate = torch.cat(
+            [
+                self.isotropic.history_rate(s, hiso, t, erate, T, e),
+                self.kinematic.history_rate(s, hkin, t, erate, T, e),
+            ],
+            dim=-1,
         )
 
-        # History partials
-        hdiv[
-            ..., : self.isotropic.nhist, : self.isotropic.nhist
-        ] = self.isotropic.dhistory_rate_dhistory(s, hiso, t, erate, T, e)
-        hdiv[
-            ..., self.isotropic.nhist :, self.isotropic.nhist :
-        ] = self.kinematic.dhistory_rate_dhistory(s, hkin, t, erate, T, e)
-
-        # Strain rate components
-        hdiv[..., : self.isotropic.nhist, : self.isotropic.nhist] += utility.mbmm(
-            self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
-            utility.mbmm(
-                self.dflow_diso(s, h, t, T, e)[..., None, None],
-                self.isotropic.dvalue(hiso)[..., None, :],
-            ),
-        )
-        hdiv[..., : self.isotropic.nhist, self.isotropic.nhist :] += (
-            self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e)
-            * self.dflow_dkin(s, h, t, T, e)[..., None, None]
-            * self.kinematic.dvalue(hkin)[..., None, :]
-        )
-        hdiv[..., self.isotropic.nhist :, : self.isotropic.nhist] += utility.mbmm(
-            self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
-            utility.mbmm(
-                self.dflow_diso(s, h, t, T, e)[..., None, None],
-                self.isotropic.dvalue(hiso)[..., None, :],
-            ),
-        )
-        hdiv[..., self.isotropic.nhist :, self.isotropic.nhist :] += utility.mbmm(
-            self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
-            utility.mbmm(
-                self.dflow_dkin(s, h, t, T, e)[..., None, None],
-                self.kinematic.dvalue(hkin)[..., None, :],
-            ),
+        # Jacobian contribution
+        hdiv = torch.cat(
+            [
+                torch.cat(
+                    [
+                        self.isotropic.dhistory_rate_dhistory(s, hiso, t, erate, T, e)
+                        + utility.mbmm(
+                            self.isotropic.dhistory_rate_derate(
+                                s, hiso, t, erate, T, e
+                            ),
+                            utility.mbmm(
+                                self.dflow_diso(s, h, t, T, e)[..., None, None],
+                                self.isotropic.dvalue(hiso)[..., None, :],
+                            ),
+                        ),
+                        self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e)
+                        * self.dflow_dkin(s, h, t, T, e)[..., None, None]
+                        * self.kinematic.dvalue(hkin)[..., None, :],
+                    ],
+                    dim=-1,
+                ),
+                torch.cat(
+                    [
+                        utility.mbmm(
+                            self.kinematic.dhistory_rate_derate(
+                                s, hkin, t, erate, T, e
+                            ),
+                            utility.mbmm(
+                                self.dflow_diso(s, h, t, T, e)[..., None, None],
+                                self.isotropic.dvalue(hiso)[..., None, :],
+                            ),
+                        ),
+                        self.kinematic.dhistory_rate_dhistory(s, hkin, t, erate, T, e)
+                        + utility.mbmm(
+                            self.kinematic.dhistory_rate_derate(
+                                s, hkin, t, erate, T, e
+                            ),
+                            utility.mbmm(
+                                self.dflow_dkin(s, h, t, T, e)[..., None, None],
+                                self.kinematic.dvalue(hkin)[..., None, :],
+                            ),
+                        ),
+                    ],
+                    dim=-1,
+                ),
+            ],
+            dim=-2,
         )
 
         return hrate, hdiv
@@ -1340,19 +1353,16 @@ class IsoKinViscoplasticity(FlowRule):
         Returns:
           torch.tensor:       the derivative of the flow rate
         """
-        res = torch.zeros(s.shape + (1,) + h.shape[-1:], device=h.device)
-
         hiso = h[..., : self.isotropic.nhist]
         hkin = h[..., self.isotropic.nhist :]
 
-        res[..., 0, : self.isotropic.nhist] = self.dflow_diso(s, h, t, T, e)[
-            ..., None
-        ] * self.isotropic.dvalue(hiso)
-        res[..., 0, self.isotropic.nhist :] = self.dflow_dkin(s, h, t, T, e)[
-            ..., None
-        ] * self.kinematic.dvalue(hkin)
-
-        return res
+        return torch.cat(
+            [
+                self.dflow_diso(s, h, t, T, e)[..., None] * self.isotropic.dvalue(hiso),
+                self.dflow_dkin(s, h, t, T, e)[..., None] * self.kinematic.dvalue(hkin),
+            ],
+            dim=-1,
+        ).unsqueeze(-2)
 
     def dhist_dstress(self, s, h, t, T, e):
         """
@@ -1368,29 +1378,26 @@ class IsoKinViscoplasticity(FlowRule):
         Returns:
           torch.tensor:       the derivative of the flow rate
         """
-        res = torch.zeros(h.shape, device=h.device)
-
         erate, derate = self.flow_rate(s, h, t, T, e)
 
         hiso = h[..., : self.isotropic.nhist]
         hkin = h[..., self.isotropic.nhist :]
 
-        res[..., : self.isotropic.nhist] = (
-            self.isotropic.dhistory_rate_dstress(s, hiso, t, erate, T, e)
-            + utility.mbmm(
-                self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
-                derate[..., None, None],
-            )[..., 0]
+        return torch.cat(
+            [
+                self.isotropic.dhistory_rate_dstress(s, hiso, t, erate, T, e)
+                + utility.mbmm(
+                    self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
+                    derate[..., None, None],
+                )[..., 0],
+                self.kinematic.dhistory_rate_dstress(s, hkin, t, erate, T, e)
+                + utility.mbmm(
+                    self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
+                    derate[..., None, None],
+                )[..., 0],
+            ],
+            dim=-1,
         )
-        res[..., self.isotropic.nhist :] = (
-            self.kinematic.dhistory_rate_dstress(s, hkin, t, erate, T, e)
-            + utility.mbmm(
-                self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
-                derate[..., None, None],
-            )[..., 0]
-        )
-
-        return res
 
     def dhist_derate(self, s, h, t, T, e):
         """
@@ -1406,18 +1413,15 @@ class IsoKinViscoplasticity(FlowRule):
         Returns:
           torch.tensor:       derivative of flow rate with respect to the strain rate
         """
-        res = torch.zeros(h.shape, device=h.device)
-
         erate, _ = self.flow_rate(s, h, t, T, e)
 
         hiso = h[..., : self.isotropic.nhist]
         hkin = h[..., self.isotropic.nhist :]
 
-        res[..., : self.isotropic.nhist] = self.isotropic.dhistory_rate_dtotalrate(
-            s, hiso, t, erate, T, e
+        return torch.cat(
+            [
+                self.isotropic.dhistory_rate_dtotalrate(s, hiso, t, erate, T, e),
+                self.kinematic.dhistory_rate_dtotalrate(s, hkin, t, erate, T, e),
+            ],
+            dim=-1,
         )
-        res[..., self.isotropic.nhist :] = self.kinematic.dhistory_rate_dtotalrate(
-            s, hkin, t, erate, T, e
-        )
-
-        return res

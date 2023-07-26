@@ -23,10 +23,6 @@ class CommonModel:
         )
         strain_rates[torch.isnan(strain_rates)] = 0
 
-        #print(self.times.shape)
-        #print(strain_rates.shape)
-        #print(self.t.shape)
-
         erate_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
             self.times, strain_rates
         )
@@ -276,8 +272,8 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatc
             * 0
         )
 
-        self.state_strain = torch.tensor([[90.0], [100.0], [101.0]])
-        self.state_stress = torch.tensor([[0.0], [0.0], [0.0]])
+        self.state_strain = torch.tensor([[90.0, 0], [100.0, 0], [101.0, 0]])
+        self.state_stress = torch.tensor([[0.0, 0], [0.0, 0], [0.0, 0]])
         self.t = self.times[2]
 
         self.flowrule = flowrules.PerfectViscoplasticity(CP(self.n), CP(self.eta))
