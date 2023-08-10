@@ -451,7 +451,7 @@ class HierarchicalStatisticalModel(PyroModule):
             if self.include_noise:
                 eps_param = pyro.param(
                     "eps" + self.param_suffix,
-                    torch.tensor(self.noise_prior),
+                    self.noise_prior,
                     constraint=constraints.positive,
                 )
                 if self.type_noise:
