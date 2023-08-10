@@ -549,7 +549,7 @@ class HierarchicalStatisticalModel(PyroModule):
         Assemble a full tensor for the data weights, based on the self.weights
         dictionary
         """
-        weights = torch.zeros_like(exp_types)
+        weights = torch.zeros(exp_types.shape, device = exp_types.device)
         for tt, v in self.weights.items():
             weights[exp_types == tt] = v
 
