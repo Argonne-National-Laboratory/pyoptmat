@@ -145,3 +145,73 @@ class HayhurstLeckie(DamageModel):
           e (torch.tensor):      total strain rate
         """
         return torch.zeros_like(e)
+
+class LarsonMillerDamage(DamageModel):
+    """
+    Time-fraction Larson-Miller damage based on 
+
+    .. math::
+
+        \\dot{d} = 10^{C - \\frac{B}{T}} \\sigma^{-\\frac{A}{T}}
+
+    where :math:`A` and :math:`B` are the slope and intercept of a
+    linear relation between log stress and the Larson-Miller parameter.
+    :math:`C` is the Larson-Miller constant.
+
+    Args:
+      a (torch.tensor):     Log stress slope
+      b (torch.tensor):     Log stress intercept
+      C (torch.tensor):     Larson-Miller C
+    """
+
+    def __init__(self, a, b, C):
+        super().__init__()
+
+        self.a = a
+        self.b = b
+        self.C = C
+
+    def damage_rate(self, s, d, t, T, e):
+        """
+        Damage rate and the derivative of the rate with respect to the
+        damage variable
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      damage variable
+          t (torch.tensor):      time
+          T (torch.tensor):      temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.ones_like(s) * 1e-6, torch.zeros_like(d)
+        #return (10.0**(self.C(T) - self.b(T) / T) * torch.abs(s - d*s)**(-self.a(T) / T),
+        #        (10.0**(self.C(T) - self.b(T) / T) * self.a(T) * s * torch.abs(s - d*s)**(-(self.a(T) + T)/T))/T * torch.sign(s-d*s))
+
+    def d_damage_rate_d_s(self, s, d, t, T, e):
+        """
+        Derivative of the damage rate with respect to the stress
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      damage variable
+          t (torch.tensor):      time
+          T (torch.tensor):      temperature
+        """
+        return torch.zeros_like(s)
+        #return (10.0**(self.C(T) - self.b(T) / T) * self.a(T) * (d - 1) * torch.abs(s-d*s)**(-(self.a(T) + T)/T)) / (s*T) * torch.sign(s - d*s)
+
+    def d_damage_rate_d_e(self, s, d, t, T, e):
+        """
+        Derivative of the damage rate with respect to the strain rate
+
+        Here again it's zero
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      current value of damage
+          t (torch.tensor):      current time
+          T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.zeros_like(e)
+

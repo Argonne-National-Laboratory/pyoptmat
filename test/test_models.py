@@ -272,8 +272,8 @@ class TestPerfectViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatc
             * 0
         )
 
-        self.state_strain = torch.tensor([[90.0, 0], [100.0, 0], [101.0, 0]])
-        self.state_stress = torch.tensor([[0.0, 0], [0.0, 0], [0.0, 0]])
+        self.state_strain = torch.tensor([[90.0], [100.0], [101.0]])
+        self.state_stress = torch.tensor([[0.0], [0.0], [0.0]])
         self.t = self.times[2]
 
         self.flowrule = flowrules.PerfectViscoplasticity(CP(self.n), CP(self.eta))
@@ -317,13 +317,13 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatch
 
         self.state_strain = (
             torch.tensor(
-                [[90.0, 30.0, 10.0, 0], [100.0, 10.0, 15.0, 0], [101.0, 50.0, 60.0, 0]]
+                [[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]]
             )
             / 3
         )
         self.state_stress = (
             torch.tensor(
-                [[0.05, 30.0, 10.0, 0], [0.07, 10.0, 15.0, 0], [0.08, 50.0, 60.0, 0]]
+                [[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]]
             )
             / 3
         )
@@ -375,13 +375,13 @@ class TestIsoKinViscoplasticityRecovery(
 
         self.state_strain = (
             torch.tensor(
-                [[90.0, 30.0, 10.0, 0], [100.0, 10.0, 15.0, 0], [101.0, 50.0, 60.0, 0]]
+                [[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]]
             )
             / 3
         )
         self.state_stress = (
             torch.tensor(
-                [[0.05, 30.0, 10.0, 0], [0.07, 10.0, 15.0, 0], [0.08, 50.0, 60.0, 0]]
+                [[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]]
             )
             / 3
         )
@@ -413,7 +413,7 @@ class TestDamage(unittest.TestCase, CommonModel, CommonModelBatchBatch):
         self.flowrule = flowrules.IsoKinViscoplasticity(
             CP(self.n), CP(self.eta), CP(self.s0), self.iso, self.kin
         )
-        self.model = models.InelasticModel(
+        self.model = models.DamagedInelasticModel(
             CP(self.E), self.flowrule, dmodel=self.dmodel
         )
 
@@ -465,7 +465,7 @@ class TestAll(unittest.TestCase, CommonModel, CommonModelBatchBatch):
         self.flowrule = flowrules.IsoKinViscoplasticity(
             CP(self.n), CP(self.eta), CP(self.s0), self.iso, self.kin
         )
-        self.model = models.InelasticModel(
+        self.model = models.DamagedInelasticModel(
             CP(self.E), self.flowrule, dmodel=self.dmodel
         )
 

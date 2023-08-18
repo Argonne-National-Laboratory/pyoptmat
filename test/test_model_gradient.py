@@ -308,7 +308,7 @@ class TestHardeningViscoplasticityDamage(unittest.TestCase, CommonGradient):
         ]
 
         self.model_fn = lambda p: models.ModelIntegrator(
-            models.InelasticModel(
+            models.DamagedInelasticModel(
                 CP(p[0]),
                 flowrules.IsoKinViscoplasticity(
                     CP(p[1]),
