@@ -188,30 +188,21 @@ class DamagedInelasticModel(nn.Module):
         hrate, dhrate = self.flowrule.history_rate(stress / (1 - d), h, t, T, erate)
         drate, ddrate = self.dmodel.damage_rate(stress / (1 - d), d, t, T, erate)
 
-        # Modify for damage
-        frate_p = (1 - d) * frate - drate * stress
-        dfrate_p = (
-            dfrate
-            - self.dmodel.d_damage_rate_d_s(stress / (1 - d), d, t, T, erate) / (1 - d)
-            - drate
-        )
-
         # Stacked rate of evolution vector
         result = torch.cat(
-            [(self.E(T) * (erate - frate_p)).unsqueeze(-1), hrate, drate.unsqueeze(-1)],
+            [((1-d) * self.E(T) * (erate - frate)).unsqueeze(-1), hrate, drate.unsqueeze(-1)],
             dim=-1,
         )
 
         # Form the large blocked matrix of d(y_dot)/d(y)
         row1 = torch.cat(
             [
-                (-self.E(T) * dfrate_p).unsqueeze(-1).unsqueeze(-1),
+                (-self.E(T) * dfrate).unsqueeze(-1).unsqueeze(-1),
                 (
                     -self.E(T)[..., None, None]
-                    * (1 - d)[..., None, None]
-                    * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate)
+                    * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate) * (1-d)[...,None,None]
                 ),
-                (self.E(T) * (frate - dfrate * stress / (1 - d)))
+                (-self.E(T) * (erate - frate)  - self.E(T) * dfrate * stress / (1-d))
                 .unsqueeze(-1)
                 .unsqueeze(-1),
             ],
@@ -249,16 +240,7 @@ class DamagedInelasticModel(nn.Module):
         drate = torch.cat(
             [
                 (
-                    self.E(T)
-                    * (
-                        1.0
-                        - (1 - d)
-                        * self.flowrule.dflow_derate(stress / (1 - d), h, t, T, erate)
-                        - self.dmodel.d_damage_rate_d_e(
-                            stress / (1 - d), d, t, T, erate
-                        )
-                        * stress
-                    )
+                    self.E(T) * (1-d) * (1.0 - self.flowrule.dflow_derate(stress / (1 - d), h, t, T, erate))
                 ).unsqueeze(-1),
                 self.flowrule.dhist_derate(stress / (1 - d), h, t, T, erate),
                 self.dmodel.d_damage_rate_d_e(

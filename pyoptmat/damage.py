@@ -146,30 +146,22 @@ class HayhurstLeckie(DamageModel):
         """
         return torch.zeros_like(e)
 
-class LarsonMillerDamage(DamageModel):
+class ConstantDamage(DamageModel):
     """
-    Time-fraction Larson-Miller damage based on 
+    Debugging damage model
 
     .. math::
 
-        \\dot{d} = 10^{C - \\frac{B}{T}} \\sigma^{-\\frac{A}{T}}
-
-    where :math:`A` and :math:`B` are the slope and intercept of a
-    linear relation between log stress and the Larson-Miller parameter.
-    :math:`C` is the Larson-Miller constant.
+        \\dot{d} = R(T)
 
     Args:
-      a (torch.tensor):     Log stress slope
-      b (torch.tensor):     Log stress intercept
-      C (torch.tensor):     Larson-Miller C
+      R (torch.tensor):     Damage rate
     """
 
-    def __init__(self, a, b, C):
+    def __init__(self, R):
         super().__init__()
 
-        self.a = a
-        self.b = b
-        self.C = C
+        self.R = R
 
     def damage_rate(self, s, d, t, T, e):
         """
@@ -183,9 +175,7 @@ class LarsonMillerDamage(DamageModel):
           T (torch.tensor):      temperature
           e (torch.tensor):      total strain rate
         """
-        return torch.ones_like(s) * 1e-6, torch.zeros_like(d)
-        #return (10.0**(self.C(T) - self.b(T) / T) * torch.abs(s - d*s)**(-self.a(T) / T),
-        #        (10.0**(self.C(T) - self.b(T) / T) * self.a(T) * s * torch.abs(s - d*s)**(-(self.a(T) + T)/T))/T * torch.sign(s-d*s))
+        return torch.ones_like(s) * self.R(T), torch.zeros_like(d)
 
     def d_damage_rate_d_s(self, s, d, t, T, e):
         """
@@ -198,7 +188,6 @@ class LarsonMillerDamage(DamageModel):
           T (torch.tensor):      temperature
         """
         return torch.zeros_like(s)
-        #return (10.0**(self.C(T) - self.b(T) / T) * self.a(T) * (d - 1) * torch.abs(s-d*s)**(-(self.a(T) + T)/T)) / (s*T) * torch.sign(s - d*s)
 
     def d_damage_rate_d_e(self, s, d, t, T, e):
         """
