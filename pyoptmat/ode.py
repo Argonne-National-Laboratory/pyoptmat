@@ -462,7 +462,7 @@ class FixedGridBlockSolver:
             # Update previous adjoint
             prev_adjoint = full_adjoint[-1]
 
-        return grad_result
+        return grad_result, prev_adjoint
 
     def block_update(self, t, t_start, y_start, func, y_guess):
         """
@@ -593,7 +593,10 @@ class IntegrateWithAdjoint(torch.autograd.Function):
           output_grad:    grads with which to dot product
         """
         with torch.no_grad():
-            grad_tuple = ctx.solver.rewind(output_grad)
+            grad_tuple, lambda_0 = ctx.solver.rewind(output_grad)
+
+            if ctx.solver.y0.requires_grad:
+                return (None, None, *grad_tuple) + (lambda_0,)
             return (None, None, *grad_tuple)
 
 
@@ -652,5 +655,8 @@ def odeint_adjoint(
     )
 
     wrapper = IntegrateWithAdjoint()
+
+    if y0.requires_grad:
+        adjoint_params += (y0,)
 
     return wrapper.apply(solver, times, *adjoint_params)

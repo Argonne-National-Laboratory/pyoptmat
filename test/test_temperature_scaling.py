@@ -193,16 +193,16 @@ class TestPiecewiseScaling(unittest.TestCase):
 
         obj = temperature.PiecewiseScaling(points, values)
 
-        xt = torch.rand(7,nbatch) * 28.8 + 0.1
+        xt = torch.rand(7, nbatch) * 28.8 + 0.1
 
         y1 = obj.value(xt)
 
         y2 = np.zeros(y1.numpy().shape)
-        
+
         for j in range(7):
             for i in range(nbatch):
                 ifn = inter.interp1d(points.numpy(), values[i].numpy())
-                y2[j, i] = ifn(xt[j,i].numpy())
+                y2[j, i] = ifn(xt[j, i].numpy())
 
         self.assertEqual(y1.shape, (7, 50))
         self.assertEqual(y2.shape, (7, 50))
@@ -226,17 +226,17 @@ class TestPiecewiseScaling(unittest.TestCase):
 
         obj = temperature.PiecewiseScaling(points, values)
 
-        xt = torch.rand(7,nbatch) * 28.8 + 0.1
-        xt[0,0] = 0.0
+        xt = torch.rand(7, nbatch) * 28.8 + 0.1
+        xt[0, 0] = 0.0
 
         y1 = obj.value(xt)
 
         y2 = np.zeros(y1.numpy().shape)
-        
+
         for j in range(7):
             for i in range(nbatch):
                 ifn = inter.interp1d(points.numpy(), values[i].numpy())
-                y2[j, i] = ifn(xt[j,i].numpy())
+                y2[j, i] = ifn(xt[j, i].numpy())
 
         self.assertEqual(y1.shape, (7, 50))
         self.assertEqual(y2.shape, (7, 50))
