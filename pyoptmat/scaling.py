@@ -118,6 +118,16 @@ class SimpleScalingFunction(ScalingFunction):
 
         return msg
 
+    def scale_mean(self, loc, scale):
+        """
+        Return the scaled mean
+
+        Args:
+            loc (torch.tensor):     scaled loc
+            scale (torch.tensor):   scaled scale
+        """
+        return self.scale(loc)
+
 
 class BoundedScalingFunction(ScalingFunction):
     """
@@ -188,6 +198,15 @@ class BoundedScalingFunction(ScalingFunction):
 
         return msg
 
+    def scale_mean(self, loc, scale):
+        """
+        Return the scaled mean
+
+        Args:
+            loc (torch.tensor):     scaled loc
+            scale (torch.tensor):   scaled scale
+        """
+        return self.scale(loc)
 
 class LogBoundedScalingFunction(ScalingFunction):
     """
@@ -271,3 +290,16 @@ class LogBoundedScalingFunction(ScalingFunction):
         msg += "\t" + str(amean)
 
         return msg
+
+    def scale_mean(self, loc, scale):
+        """
+        Return the scaled mean
+
+        Args:
+            loc (torch.tensor):     scaled loc
+            scale (torch.tensor):   scaled scale
+        """
+        A = torch.log(self.u) - torch.log(self.l)
+        B = torch.log(self.l)
+
+        return A * loc + B

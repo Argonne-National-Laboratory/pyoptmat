@@ -465,10 +465,9 @@ class HierarchicalStatisticalModel(PyroModule):
                     # Fix this to init to the mean (or a sample I guess)
                     ll_param = pyro.param(
                         name + self.param_suffix,
-                        torch.zeros_like(val)
+                        val.detach().clone()
                         .unsqueeze(0)
-                        .repeat((exp_data.shape[2],) + (1,) * dim)
-                        + 0.5,
+                        .repeat((exp_data.shape[2],) + (1,) * dim),
                     )
                     param_value = pyro.sample(name, dist.Delta(ll_param).to_event(dim))
 
