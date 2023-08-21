@@ -204,3 +204,61 @@ class ConstantDamage(DamageModel):
         """
         return torch.zeros_like(e)
 
+class LarsonMillerDamage(DamageModel):
+    """
+    Larson-Miller damage model, which goes like
+
+    .. math::
+
+        \\dot{d} = R(T)
+
+    Args:
+      R (torch.tensor):     Damage rate
+    """
+
+    def __init__(self, R):
+        super().__init__()
+
+        self.R = R
+
+    def damage_rate(self, s, d, t, T, e):
+        """
+        Damage rate and the derivative of the rate with respect to the
+        damage variable
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      damage variable
+          t (torch.tensor):      time
+          T (torch.tensor):      temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.ones_like(s) * self.R(T), torch.zeros_like(d)
+
+    def d_damage_rate_d_s(self, s, d, t, T, e):
+        """
+        Derivative of the damage rate with respect to the stress
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      damage variable
+          t (torch.tensor):      time
+          T (torch.tensor):      temperature
+        """
+        return torch.zeros_like(s)
+
+    def d_damage_rate_d_e(self, s, d, t, T, e):
+        """
+        Derivative of the damage rate with respect to the strain rate
+
+        Here again it's zero
+
+        Args:
+          s (torch.tensor):      stress
+          d (torch.tensor):      current value of damage
+          t (torch.tensor):      current time
+          T (torch.tensor):      current temperature
+          e (torch.tensor):      total strain rate
+        """
+        return torch.zeros_like(e)
+

@@ -40,6 +40,7 @@ if __name__ == "__main__":
     kinematic = hardening.NoKinematicHardeningModel()
     flowrule = flowrules.IsoKinViscoplasticity(n, eta, 
             s0, isotropic, kinematic)
+    
 
     R = CP(torch.tensor(1.0e-3))
 
@@ -88,6 +89,12 @@ if __name__ == "__main__":
     plt.xlabel("Time (hrs)")
     plt.ylabel("Damage")
     plt.show()
+    
+    # Simpler 
+    R = CP(torch.tensor(1.0e-3))
+    dmodel = damage.ConstantDamage(R)
+    model = models.DamagedInelasticModel(E, flowrule, dmodel = dmodel)
+    integrator = models.ModelIntegrator(model)
 
     # Tension with unload
     times = torch.cat([torch.linspace(0, 750, nsteps_hold) , torch.linspace(750, 751, nsteps_hold)[1:]]).unsqueeze(-1)
