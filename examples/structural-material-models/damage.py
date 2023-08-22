@@ -41,19 +41,20 @@ if __name__ == "__main__":
     flowrule = flowrules.IsoKinViscoplasticity(n, eta, 
             s0, isotropic, kinematic)
     
+    C = CP(torch.tensor(15.94))
+    A = CP(torch.tensor(-5379.0))
+    B = CP(torch.tensor(29316.3))
 
-    R = CP(torch.tensor(1.0e-3))
-
-    dmodel = damage.ConstantDamage(R)
+    dmodel = damage.LarsonMillerDamage(C, A, B)
 
     model = models.DamagedInelasticModel(E, flowrule, dmodel = dmodel)
 
-    integrator = models.ModelIntegrator(model)
+    integrator = models.ModelIntegrator(model, block_size = 20)
 
     # Creep
     target_temperature = 550.0 + 273.15
-    target_stresses = torch.tensor([120.0])
-    target_times = torch.ones_like(target_stresses) * 750
+    target_stresses = torch.tensor([180.0])
+    target_times = torch.ones_like(target_stresses) * 15000
 
     nbatch = len(target_stresses)
     nsteps_load = 50
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     R = CP(torch.tensor(1.0e-3))
     dmodel = damage.ConstantDamage(R)
     model = models.DamagedInelasticModel(E, flowrule, dmodel = dmodel)
-    integrator = models.ModelIntegrator(model)
+    integrator = models.ModelIntegrator(model, block_size = 20)
 
     # Tension with unload
     times = torch.cat([torch.linspace(0, 750, nsteps_hold) , torch.linspace(750, 751, nsteps_hold)[1:]]).unsqueeze(-1)
