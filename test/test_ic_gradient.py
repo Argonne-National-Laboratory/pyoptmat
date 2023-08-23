@@ -37,7 +37,7 @@ class IntegratedODE(torch.nn.Module):
             self.method = ode.odeint
 
     def forward(self, times):
-        return self.method(self.model, 2.0*self.y0, times)
+        return self.method(self.model, 2.0 * self.y0, times)
 
 
 class TestSimple(unittest.TestCase):

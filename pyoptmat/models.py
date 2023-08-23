@@ -67,6 +67,9 @@ class InelasticModel(nn.Module):
 
     @property
     def nhist(self):
+        """
+        Number of internal variables
+        """
         return 1 + self.flowrule.nhist
 
     def forward(self, t, y, erate, T):
@@ -86,7 +89,7 @@ class InelasticModel(nn.Module):
           d_y_dot_d_T:    (nbatch,1+nhist) derivative wrt temperature (unused)
         """
         stress = y[..., 0].clone()
-        h = y[..., 1 :].clone()
+        h = y[..., 1:].clone()
 
         frate, dfrate = self.flowrule.flow_rate(stress, h, t, T, erate)
         hrate, dhrate = self.flowrule.history_rate(stress, h, t, T, erate)
@@ -104,16 +107,13 @@ class InelasticModel(nn.Module):
                 (
                     -self.E(T)[..., None, None]
                     * self.flowrule.dflow_dhist(stress, h, t, T, erate)
-                )
+                ),
             ],
             dim=-1,
         )
-        
+
         row2 = torch.cat(
-            [
-                self.flowrule.dhist_dstress(stress, h, t, T, erate).unsqueeze(-1),
-                dhrate
-            ],
+            [self.flowrule.dhist_dstress(stress, h, t, T, erate).unsqueeze(-1), dhrate],
             dim=-1,
         )
         dresult = torch.cat([row1, row2], dim=-2)
@@ -123,9 +123,7 @@ class InelasticModel(nn.Module):
             [
                 (
                     self.E(T)
-                    * (
-                        1.0 -self.flowrule.dflow_derate(stress, h, t, T, erate)
-                    )
+                    * (1.0 - self.flowrule.dflow_derate(stress, h, t, T, erate))
                 ).unsqueeze(-1),
                 self.flowrule.dhist_derate(stress, h, t, T, erate),
             ],
@@ -137,6 +135,7 @@ class InelasticModel(nn.Module):
         Trate = torch.zeros_like(y)
 
         return result, dresult, drate, Trate
+
 
 class DamagedInelasticModel(nn.Module):
     """
@@ -162,6 +161,9 @@ class DamagedInelasticModel(nn.Module):
 
     @property
     def nhist(self):
+        """
+        Number of internal variables
+        """
         return 2 + self.flowrule.nhist
 
     def forward(self, t, y, erate, T):
@@ -190,7 +192,11 @@ class DamagedInelasticModel(nn.Module):
 
         # Stacked rate of evolution vector
         result = torch.cat(
-            [((1-d) * self.E(T) * (erate - frate)).unsqueeze(-1), hrate, drate.unsqueeze(-1)],
+            [
+                ((1 - d) * self.E(T) * (erate - frate)).unsqueeze(-1),
+                hrate,
+                drate.unsqueeze(-1),
+            ],
             dim=-1,
         )
 
@@ -200,9 +206,10 @@ class DamagedInelasticModel(nn.Module):
                 (-self.E(T) * dfrate).unsqueeze(-1).unsqueeze(-1),
                 (
                     -self.E(T)[..., None, None]
-                    * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate) * (1-d)[...,None,None]
+                    * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate)
+                    * (1 - d)[..., None, None]
                 ),
-                (-self.E(T) * (erate - frate)  - self.E(T) * dfrate * stress / (1-d))
+                (-self.E(T) * (erate - frate) - self.E(T) * dfrate * stress / (1 - d))
                 .unsqueeze(-1)
                 .unsqueeze(-1),
             ],
@@ -240,7 +247,12 @@ class DamagedInelasticModel(nn.Module):
         drate = torch.cat(
             [
                 (
-                    self.E(T) * (1-d) * (1.0 - self.flowrule.dflow_derate(stress / (1 - d), h, t, T, erate))
+                    self.E(T)
+                    * (1 - d)
+                    * (
+                        1.0
+                        - self.flowrule.dflow_derate(stress / (1 - d), h, t, T, erate)
+                    )
                 ).unsqueeze(-1),
                 self.flowrule.dhist_derate(stress / (1 - d), h, t, T, erate),
                 self.dmodel.d_damage_rate_d_e(
@@ -307,9 +319,7 @@ class ModelIntegrator(nn.Module):
             times, temperatures
         )
 
-        init = torch.zeros(
-            times.shape[1], self.model.nhist, device=idata.device
-        )
+        init = torch.zeros(times.shape[1], self.model.nhist, device=idata.device)
 
         bmodel = BothBasedModel(
             self.model,
@@ -350,9 +360,7 @@ class ModelIntegrator(nn.Module):
             times, temperatures
         )
 
-        init = torch.zeros(
-            times.shape[1], self.model.nhist, device=strains.device
-        )
+        init = torch.zeros(times.shape[1], self.model.nhist, device=strains.device)
 
         emodel = StrainBasedModel(
             self.model, erate_interpolator, temperature_interpolator
@@ -392,9 +400,7 @@ class ModelIntegrator(nn.Module):
             times, temperatures
         )
 
-        init = torch.zeros(
-            times.shape[1], self.model.nhist, device=stresses.device
-        )
+        init = torch.zeros(times.shape[1], self.model.nhist, device=stresses.device)
 
         smodel = StressBasedModel(
             self.model,

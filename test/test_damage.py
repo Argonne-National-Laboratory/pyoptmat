@@ -147,6 +147,7 @@ class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
             )
         )
 
+
 class TestLMDamage(unittest.TestCase, DamageBase):
     def setUp(self):
         self.A = -5000.0
@@ -167,9 +168,11 @@ class TestLMDamage(unittest.TestCase, DamageBase):
         self.assertTrue(
             np.allclose(
                 self.model.damage_rate(self.s, self.d, self.t, self.T, self.erate)[0],
-                10.0**(self.C-self.B/self.T) * (self.s - self.d*self.s)**(-self.A/self.T)
+                10.0 ** (self.C - self.B / self.T)
+                * (self.s - self.d * self.s) ** (-self.A / self.T),
             )
         )
+
 
 class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
     def setUp(self):
@@ -196,6 +199,7 @@ class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
         self.assertTrue(
             np.allclose(
                 self.model.damage_rate(self.s, self.d, self.t, self.T, self.erate)[0],
-                10.0**(self.C-self.B/self.T) * (self.s - self.d*self.s)**(-self.A/self.T)
+                10.0 ** (self.C - self.B / self.T)
+                * (self.s - self.d * self.s) ** (-self.A / self.T),
             )
         )

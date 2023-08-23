@@ -316,15 +316,11 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatch
         )
 
         self.state_strain = (
-            torch.tensor(
-                [[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]]
-            )
+            torch.tensor([[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]])
             / 3
         )
         self.state_stress = (
-            torch.tensor(
-                [[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]]
-            )
+            torch.tensor([[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]])
             / 3
         )
 
@@ -374,15 +370,11 @@ class TestIsoKinViscoplasticityRecovery(
         )
 
         self.state_strain = (
-            torch.tensor(
-                [[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]]
-            )
+            torch.tensor([[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]])
             / 3
         )
         self.state_stress = (
-            torch.tensor(
-                [[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]]
-            )
+            torch.tensor([[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]])
             / 3
         )
 

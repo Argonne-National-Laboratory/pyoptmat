@@ -464,11 +464,10 @@ class FixedGridBlockSolver:
 
             # Update previous adjoint
             prev_adjoint = full_adjoint[-1]
-        
+
         if len(self.adjoint_params) > 0:
             return grad_result, prev_adjoint
-        else:
-            return tuple(), prev_adjoint
+        return tuple(), prev_adjoint
 
     def block_update(self, t, t_start, y_start, func, y_guess):
         """
