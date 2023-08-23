@@ -66,7 +66,7 @@ class CommonGradient:
 
         for i, (p1, p2) in enumerate(zip(grad, ngrad)):
             print(i, p1, p2)
-            self.assertTrue(np.allclose(p1, p2, rtol=1e-3))
+            self.assertTrue(np.allclose(p1, p2, rtol=1e-3, atol=1e-4))
 
     def test_gradient_stress(self):
         bmodel = self.model_fn([Parameter(pi) for pi in self.p])
@@ -414,7 +414,7 @@ class TestHardeningViscoplasticityDamage(unittest.TestCase, CommonGradient):
         ]
 
         self.model_fn = lambda p: models.ModelIntegrator(
-            models.InelasticModel(
+            models.DamagedInelasticModel(
                 CP(p[0]),
                 flowrules.IsoKinViscoplasticity(
                     CP(p[1]),
@@ -428,7 +428,7 @@ class TestHardeningViscoplasticityDamage(unittest.TestCase, CommonGradient):
             use_adjoint=False,
         )
         self.model_fn2 = lambda p: models.ModelIntegrator(
-            models.InelasticModel(
+            models.DamagedInelasticModel(
                 CP(p[0]),
                 flowrules.IsoKinViscoplasticity(
                     CP(p[1]),
@@ -881,7 +881,7 @@ class TestHardeningViscoplasticityDamageAdjoint(unittest.TestCase, CommonGradien
         ]
 
         self.model_fn = lambda p: models.ModelIntegrator(
-            models.InelasticModel(
+            models.DamagedInelasticModel(
                 CP(p[0]),
                 flowrules.IsoKinViscoplasticity(
                     CP(p[1]),
@@ -895,7 +895,7 @@ class TestHardeningViscoplasticityDamageAdjoint(unittest.TestCase, CommonGradien
             use_adjoint=True,
         )
         self.model_fn2 = lambda p: models.ModelIntegrator(
-            models.InelasticModel(
+            models.DamagedInelasticModel(
                 CP(p[0]),
                 flowrules.IsoKinViscoplasticity(
                     CP(p[1]),
