@@ -218,12 +218,14 @@ class LarsonMillerDamage(DamageModel):
       B (torch.tensor):     Larson-Miller intercept
     """
 
-    def __init__(self, C, A, B):
+    def __init__(self, C, A, B, eps = 1e-12):
         super().__init__()
 
         self.C = C
         self.A = A
         self.B = B
+
+        self.eps = eps
 
     def damage_rate(self, s, d, t, T, e):
         """
@@ -238,8 +240,8 @@ class LarsonMillerDamage(DamageModel):
           e (torch.tensor):      total strain rate
         """
         return (
-                10.0**(self.C(T) - self.B(T) / T)*(s*(1-d))**(-self.A(T)/T),
-                10.0**(self.C(T) - self.B(T) / T)*self.A(T)*s*(s*(1-d))**(-(self.A(T)+T)/T)/T
+                10.0**(self.C(T) - self.B(T) / T)*(torch.abs(s)*(1-d))**(-self.A(T)/T),
+                10.0**(self.C(T) - self.B(T) / T)*self.A(T)*torch.abs(s)*(torch.abs(s)*(1-d))**(-(self.A(T)+T)/T)/T
                 )
 
     def d_damage_rate_d_s(self, s, d, t, T, e):
@@ -252,7 +254,7 @@ class LarsonMillerDamage(DamageModel):
           t (torch.tensor):      time
           T (torch.tensor):      temperature
         """
-        return -10.0**(self.C(T) - self.B(T)/T) * self.A(T) * (s*(1-d))**(-self.A(T)/T) / (s * T)
+        return -10.0**(self.C(T) - self.B(T)/T) * self.A(T) * (torch.abs(s)*(1-d))**(-self.A(T)/T) / ((torch.abs(s)+self.eps) * T) * torch.sign(s)
 
     def d_damage_rate_d_e(self, s, d, t, T, e):
         """

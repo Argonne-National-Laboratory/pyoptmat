@@ -432,7 +432,7 @@ class FixedGridBlockSolver:
         # Flip the output_grad
         output_grad = output_grad.flip(0)
 
-        # Calculate starts at least gradient
+        # Calculate starts at last gradient
         prev_adjoint = output_grad[0]
 
         for k in range(1, self.t.shape[0], self.n):
@@ -450,19 +450,25 @@ class FixedGridBlockSolver:
             )
 
             # Ugh, best way I can think to do this is to combine everything...
-            grad_result = self.scheme.accumulate(
-                grad_result,
-                self.t[k - 1 : k + self.n],
-                self.result[k - 1 : k + self.n],
-                full_adjoint,
-                output_grad[k - 1 : k + self.n],
-                self._get_param_partial,
-            )
+            # There is a logic error here if you *only* have the initial conditions as
+            # a parameter.  In that case we should skip this
+            if len(self.adjoint_params) > 0:
+                grad_result = self.scheme.accumulate(
+                    grad_result,
+                    self.t[k - 1 : k + self.n],
+                    self.result[k - 1 : k + self.n],
+                    full_adjoint,
+                    output_grad[k - 1 : k + self.n],
+                    self._get_param_partial,
+                )
 
             # Update previous adjoint
             prev_adjoint = full_adjoint[-1]
-
-        return grad_result, prev_adjoint
+        
+        if len(self.adjoint_params) > 0:
+            return grad_result, prev_adjoint
+        else:
+            return tuple(), prev_adjoint
 
     def block_update(self, t, t_start, y_start, func, y_guess):
         """
