@@ -14,7 +14,7 @@ setup (
     # Name of the project
     name = 'pyoptmat',
     # Version
-    version = '1.3.3',
+    version = '1.3.4',
     # One line-description
     description = "Statistical inference for material models",
     # README
