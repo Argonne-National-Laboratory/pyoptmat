@@ -189,7 +189,7 @@ class StatisticalModel(PyroModule):
                                     entry i represents the noise in test type i
     """
 
-    def __init__(self, maker, names, locs, scales, eps):
+    def __init__(self, maker, names, locs, scales, eps, nan_num = False):
         super().__init__()
 
         self.maker = maker
@@ -202,6 +202,8 @@ class StatisticalModel(PyroModule):
         self.eps = eps
 
         self.type_noise = self.eps.dim() > 0
+
+        self.nan_num = nan_num
 
     def get_params(self):
         """
@@ -235,9 +237,12 @@ class StatisticalModel(PyroModule):
             predictions[:, :, 0], exp_cycles, exp_types
         )
 
+        if self.nan_num:
+            results = torch.nan_to_num(results)
+
         # Setup the full noise, which can be type specific
         if self.type_noise:
-            full_noise = torch.empty(exp_data.shape[-1])
+            full_noise = torch.empty(exp_data.shape[-1], device = self.eps.device)
             for i in experiments.exp_map.values():
                 full_noise[exp_types == i] = self.eps[i]
         else:
