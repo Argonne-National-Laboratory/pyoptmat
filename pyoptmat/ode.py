@@ -292,7 +292,7 @@ class FixedGridBlockSolver:
         scheme=BackwardEulerScheme(),
         block_size=1,
         rtol=1.0e-6,
-        atol=1.0e-4,
+        atol=1.0e-8,
         miter=100,
         linear_solve_method="direct",
         direct_solve_method="thomas",
