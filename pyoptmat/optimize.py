@@ -189,7 +189,7 @@ class StatisticalModel(PyroModule):
                                     entry i represents the noise in test type i
     """
 
-    def __init__(self, maker, names, locs, scales, eps, nan_num = False):
+    def __init__(self, maker, names, locs, scales, eps, nan_num=False):
         super().__init__()
 
         self.maker = maker
@@ -242,7 +242,7 @@ class StatisticalModel(PyroModule):
 
         # Setup the full noise, which can be type specific
         if self.type_noise:
-            full_noise = torch.empty(exp_data.shape[-1], device = self.eps.device)
+            full_noise = torch.empty(exp_data.shape[-1], device=self.eps.device)
             for i in experiments.exp_map.values():
                 full_noise[exp_types == i] = self.eps[i]
         else:
@@ -470,7 +470,8 @@ class HierarchicalStatisticalModel(PyroModule):
                     # Fix this to init to the mean (or a sample I guess)
                     ll_param = pyro.param(
                         name + self.param_suffix,
-                        val.detach().clone()
+                        val.detach()
+                        .clone()
                         .unsqueeze(0)
                         .repeat((exp_data.shape[2],) + (1,) * dim),
                     )
@@ -553,7 +554,7 @@ class HierarchicalStatisticalModel(PyroModule):
         Assemble a full tensor for the data weights, based on the self.weights
         dictionary
         """
-        weights = torch.zeros(exp_types.shape, device = exp_types.device)
+        weights = torch.zeros(exp_types.shape, device=exp_types.device)
         for tt, v in self.weights.items():
             weights[exp_types == tt] = v
 

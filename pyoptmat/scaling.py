@@ -208,6 +208,7 @@ class BoundedScalingFunction(ScalingFunction):
         """
         return self.scale(loc)
 
+
 class LogBoundedScalingFunction(ScalingFunction):
     """
     Scaling function where the unscaled parameters are

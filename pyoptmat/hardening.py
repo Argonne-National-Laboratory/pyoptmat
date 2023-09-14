@@ -701,6 +701,7 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         """
         return (self.C(T) - self.g(T) * h[..., 0] * torch.sign(ep))[..., None, None]
 
+
 class FAKinematicHardeningModelNoRecovery(KinematicHardeningModel):
     # pylint: disable=line-too-long
     """
@@ -810,9 +811,9 @@ class FAKinematicHardeningModelNoRecovery(KinematicHardeningModel):
         Returns:
           torch.tensor:       derivative with respect to history
         """
-        return (
-            -self.g(T) * torch.ones_like(h[..., 0]) * torch.abs(ep)
-        )[..., None, None]
+        return (-self.g(T) * torch.ones_like(h[..., 0]) * torch.abs(ep))[
+            ..., None, None
+        ]
 
     def dhistory_rate_derate(self, s, h, t, ep, T, e):
         """
@@ -831,6 +832,7 @@ class FAKinematicHardeningModelNoRecovery(KinematicHardeningModel):
           torch.tensor:       derivative with respect to the inelastic rate
         """
         return (self.C(T) - self.g(T) * h[..., 0] * torch.sign(ep))[..., None, None]
+
 
 class ChabocheHardeningModel(KinematicHardeningModel):
     # pylint: disable=line-too-long

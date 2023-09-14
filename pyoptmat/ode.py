@@ -299,7 +299,7 @@ class FixedGridBlockSolver:
         direct_solve_min_size=0,
         adjoint_params=None,
         guess_type="zero",
-        throw_on_fail = False,
+        throw_on_fail=False,
         **kwargs,
     ):
         # Store basic info about the system

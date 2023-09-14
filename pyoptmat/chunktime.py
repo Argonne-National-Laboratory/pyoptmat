@@ -19,8 +19,9 @@ import numpy as np
 from pyoptmat.utility import mbmm
 
 
-def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100,
-        throw_on_fail = False):
+def newton_raphson_chunk(
+    fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100, throw_on_fail=False
+):
     """
     Solve a nonlinear system with Newton's method with a tensor for a
     BackwardEuler type chunking operator context manager.
@@ -55,8 +56,7 @@ def newton_raphson_chunk(fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100,
     if i == miter:
         if throw_on_fail:
             raise RuntimeError("Implicit solve did not succeed.")
-        else:
-            warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
+        warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
 
     return x
 
