@@ -282,6 +282,7 @@ class FixedGridBlockSolver:
         direct_solve_min_size (int): minimum PCR block size for the hybrid approach
         adjoint_params: parameters to track for the adjoint backward pass
         guess_type (string): strategy for initial guess, options are "zero" and "previous"
+        throw_on_fail (bool): if true throw an exception if the implicit solve fails
     """
 
     def __init__(
@@ -298,6 +299,7 @@ class FixedGridBlockSolver:
         direct_solve_min_size=0,
         adjoint_params=None,
         guess_type="zero",
+        throw_on_fail=False,
         **kwargs,
     ):
         # Store basic info about the system
@@ -341,6 +343,9 @@ class FixedGridBlockSolver:
 
         # Initial guess for integration
         self.guess_type = guess_type
+
+        # Throw exception on failed solve
+        self.throw_on_fail = throw_on_fail
 
         # Cached solutions
         self.t = None
@@ -506,6 +511,7 @@ class FixedGridBlockSolver:
             rtol=self.rtol,
             atol=self.atol,
             miter=self.miter,
+            throw_on_fail=self.throw_on_fail,
         )
 
         return dy.reshape(self.batch_size, n, self.prob_size).transpose(

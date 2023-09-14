@@ -222,7 +222,9 @@ class TestFAKinematicHardening(unittest.TestCase, HardeningBase):
     def setUp(self):
         self.C = torch.tensor(100.0)
         self.g = torch.tensor(1.2)
-        self.model = hardening.FAKinematicHardeningModel(CP(self.C), CP(self.g))
+        self.model = hardening.FAKinematicHardeningModelNoRecovery(
+            CP(self.C), CP(self.g)
+        )
 
         self.nbatch = 10
         self.bdim = 1
@@ -239,7 +241,9 @@ class TestFAKinematicHardeningMultiBatch(unittest.TestCase, HardeningBase):
     def setUp(self):
         self.C = torch.tensor(100.0)
         self.g = torch.tensor(1.2)
-        self.model = hardening.FAKinematicHardeningModel(CP(self.C), CP(self.g))
+        self.model = hardening.FAKinematicHardeningModelNoRecovery(
+            CP(self.C), CP(self.g)
+        )
 
         self.nbatch = 10
         self.bdim = 2

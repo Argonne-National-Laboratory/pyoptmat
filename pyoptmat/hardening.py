@@ -702,6 +702,138 @@ class FAKinematicHardeningModel(KinematicHardeningModel):
         return (self.C(T) - self.g(T) * h[..., 0] * torch.sign(ep))[..., None, None]
 
 
+class FAKinematicHardeningModelNoRecovery(KinematicHardeningModel):
+    # pylint: disable=line-too-long
+    """
+    Frederick and Armstrong hardening, as defined in :cite:`frederick2007mathematical`
+
+    The kinematic hardening is equal to the single internal variable.
+
+    The variable evolves as:
+
+    .. math::
+
+      \\dot{x}=\\frac{2}{3}C\\dot{\\varepsilon}_{in}-gx\\left|\\dot{\\varepsilon}_{in}\\right|
+
+    Args:
+      C (|TP|):     kinematic hardening parameter
+      g (|TP|):     recovery parameter
+    """
+
+    def __init__(self, C, g):
+        super().__init__()
+        self.C = C
+        self.g = g
+
+    def value(self, h):
+        """
+        Map from the vector of internal variables to the kinematic hardening
+        value
+
+        Args:
+          h (torch.tensor):   the vector of internal variables for this model
+
+        Returns:
+          torch.tensor:       the kinematic hardening value
+        """
+        return h[..., 0]
+
+    def dvalue(self, h):
+        """
+        Derivative of the map with respect to the internal variables
+
+        Args:
+          h (torch.tensor):   the vector of internal variables for this model
+
+        Returns:
+          torch.tensor:       the derivative of the kinematic hardening value
+                              with respect to the internal variables
+        """
+        return torch.ones(h.shape[:-1] + (1,), device=h.device)
+
+    @property
+    def nhist(self):
+        """
+        The number of internal variables, here just 1
+        """
+        return 1
+
+    def history_rate(self, s, h, t, ep, T, e):
+        """
+        The rate evolving the internal variables
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       internal variable rate
+        """
+        return torch.unsqueeze(
+            self.C(T) * torch.ones_like(h[..., 0]) * ep
+            - self.g(T) * h[..., 0] * torch.abs(ep),
+            -1,
+        )
+
+    def dhistory_rate_dstress(self, s, h, t, ep, T, e):
+        """
+        The derivative of this history rate with respect to the stress
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative with respect to stress
+        """
+        return torch.zeros_like(h)
+
+    def dhistory_rate_dhistory(self, s, h, t, ep, T, e):
+        """
+        The derivative of the history rate with respect to the internal variables
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative with respect to history
+        """
+        return (-self.g(T) * torch.ones_like(h[..., 0]) * torch.abs(ep))[
+            ..., None, None
+        ]
+
+    def dhistory_rate_derate(self, s, h, t, ep, T, e):
+        """
+        The derivative of the history rate with respect to the inelastic
+        strain rate
+
+        Args:
+          s (torch.tensor):   stress
+          h (torch.tensor):   history
+          t (torch.tensor):   time
+          ep (torch.tensor):  the inelastic strain rate
+          T (torch.tensor):   the temperature
+          e (torch.tensor):   total strain rate
+
+        Returns:
+          torch.tensor:       derivative with respect to the inelastic rate
+        """
+        return (self.C(T) - self.g(T) * h[..., 0] * torch.sign(ep))[..., None, None]
+
+
 class ChabocheHardeningModel(KinematicHardeningModel):
     # pylint: disable=line-too-long
     """
