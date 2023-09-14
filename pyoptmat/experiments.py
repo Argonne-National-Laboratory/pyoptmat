@@ -307,7 +307,7 @@ def make_tension_tests(rates, temperatures, elimits, nsteps):
                                     :code:`(times, strains, temperatures, cycles)`
     """
     nbatch = temperatures.shape[0]
-    times = torch.zeros(nsteps, nbatch)
+    times = torch.zeros(nsteps, nbatch, device=rates.device)
     strains = torch.zeros_like(times)
     temps = torch.zeros_like(strains)
 

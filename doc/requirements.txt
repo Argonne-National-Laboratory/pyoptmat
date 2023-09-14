@@ -1,7 +1,7 @@
-sphinx
-sphinxcontrib-bibtex
-sphinx-rtd-theme
 torch
+sphinx==7.0.1
+sphinxcontrib-bibtex==2.5.0
+sphinx-rtd-theme
 numpy
 scipy
 pyro-ppl
@@ -12,5 +12,5 @@ pandas
 xarray[io]
 xarray
 black==22.1.0
-nose
+nose2
 pylint==2.12.2

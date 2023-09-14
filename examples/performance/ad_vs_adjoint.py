@@ -109,6 +109,7 @@ if __name__ == "__main__":
     times, strains, temps, cycles = experiments.make_tension_tests(
         rates, temps, elimits, n_time
     )
+
     data = torch.stack((times, temps, strains)).to(device)
     types = torch.tensor([experiments.exp_map["tensile"]] * n_tests, device=device)
     control = torch.tensor([experiments.control_map["strain"]] * n_tests, device=device)

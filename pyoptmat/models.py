@@ -52,6 +52,97 @@ class InelasticModel(nn.Module):
 
     .. math::
 
+      \\dot{\\sigma} = E \\left(\\dot{\\varepsilon} - \\dot{\\varepsilon}_{in} \\right)
+
+    Args:
+      E:                        Material Young's modulus
+      flowrule:                 :py:class:`pyoptmat.flowrules.FlowRule` defining the inelastic
+                                strain rate
+    """
+
+    def __init__(self, E, flowrule, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.E = E
+        self.flowrule = flowrule
+
+    @property
+    def nhist(self):
+        """
+        Number of internal variables
+        """
+        return 1 + self.flowrule.nhist
+
+    def forward(self, t, y, erate, T):
+        """
+        Return the rate equations for the strain-based version of the model
+
+        Args:
+          t:              (nbatch,) times
+          y:              (nbatch,1+nhist) [stress, history]
+          erate:          (nbatch,) strain rates
+          T:              (nbatch,) temperatures
+
+        Returns:
+          y_dot:          (nbatch,1+nhist) state rate
+          d_y_dot_d_y:    (nbatch,1+nhist,1+nhist) Jacobian wrt the state
+          d_y_dot_d_erate:(nbatch,1+nhist) Jacobian wrt the strain rate
+          d_y_dot_d_T:    (nbatch,1+nhist) derivative wrt temperature (unused)
+        """
+        stress = y[..., 0].clone()
+        h = y[..., 1:].clone()
+
+        frate, dfrate = self.flowrule.flow_rate(stress, h, t, T, erate)
+        hrate, dhrate = self.flowrule.history_rate(stress, h, t, T, erate)
+
+        # Stacked rate of evolution vector
+        result = torch.cat(
+            [(self.E(T) * (erate - frate)).unsqueeze(-1), hrate],
+            dim=-1,
+        )
+
+        # Form the large blocked matrix of d(y_dot)/d(y)
+        row1 = torch.cat(
+            [
+                (-self.E(T) * dfrate).unsqueeze(-1).unsqueeze(-1),
+                (
+                    -self.E(T)[..., None, None]
+                    * self.flowrule.dflow_dhist(stress, h, t, T, erate)
+                ),
+            ],
+            dim=-1,
+        )
+
+        row2 = torch.cat(
+            [self.flowrule.dhist_dstress(stress, h, t, T, erate).unsqueeze(-1), dhrate],
+            dim=-1,
+        )
+        dresult = torch.cat([row1, row2], dim=-2)
+
+        # Form the stacked derivative of the state rate with respect to the strain rate
+        drate = torch.cat(
+            [
+                (
+                    self.E(T)
+                    * (1.0 - self.flowrule.dflow_derate(stress, h, t, T, erate))
+                ).unsqueeze(-1),
+                self.flowrule.dhist_derate(stress, h, t, T, erate),
+            ],
+            dim=-1,
+        )
+
+        # Logically we should return the derivative wrt T, but right now
+        # we're not going to use it
+        Trate = torch.zeros_like(y)
+
+        return result, dresult, drate, Trate
+
+
+class DamagedInelasticModel(nn.Module):
+    """
+    This object provides the standard strain-based rate form of a constitutive model
+
+    .. math::
+
       \\dot{\\sigma} = E \\left(\\dot{\\varepsilon} - (1-d) \\dot{\\varepsilon}_{in} \\right)
 
     Args:
@@ -67,6 +158,13 @@ class InelasticModel(nn.Module):
         self.E = E
         self.flowrule = flowrule
         self.dmodel = dmodel
+
+    @property
+    def nhist(self):
+        """
+        Number of internal variables
+        """
+        return 2 + self.flowrule.nhist
 
     def forward(self, t, y, erate, T):
         """
@@ -92,30 +190,26 @@ class InelasticModel(nn.Module):
         hrate, dhrate = self.flowrule.history_rate(stress / (1 - d), h, t, T, erate)
         drate, ddrate = self.dmodel.damage_rate(stress / (1 - d), d, t, T, erate)
 
-        # Modify for damage
-        frate_p = (1 - d) * frate - drate * stress
-        dfrate_p = (
-            dfrate
-            - self.dmodel.d_damage_rate_d_s(stress / (1 - d), d, t, T, erate) / (1 - d)
-            - drate
-        )
-
         # Stacked rate of evolution vector
         result = torch.cat(
-            [(self.E(T) * (erate - frate_p)).unsqueeze(-1), hrate, drate.unsqueeze(-1)],
+            [
+                ((1 - d) * self.E(T) * (erate - frate)).unsqueeze(-1),
+                hrate,
+                drate.unsqueeze(-1),
+            ],
             dim=-1,
         )
 
         # Form the large blocked matrix of d(y_dot)/d(y)
         row1 = torch.cat(
             [
-                (-self.E(T) * dfrate_p).unsqueeze(-1).unsqueeze(-1),
+                (-self.E(T) * dfrate).unsqueeze(-1).unsqueeze(-1),
                 (
                     -self.E(T)[..., None, None]
-                    * (1 - d)[..., None, None]
                     * self.flowrule.dflow_dhist(stress / (1 - d), h, t, T, erate)
+                    * (1 - d)[..., None, None]
                 ),
-                (self.E(T) * (frate - dfrate * stress / (1 - d)))
+                (-self.E(T) * (erate - frate) - self.E(T) * dfrate * stress / (1 - d))
                 .unsqueeze(-1)
                 .unsqueeze(-1),
             ],
@@ -154,14 +248,10 @@ class InelasticModel(nn.Module):
             [
                 (
                     self.E(T)
+                    * (1 - d)
                     * (
                         1.0
-                        - (1 - d)
-                        * self.flowrule.dflow_derate(stress / (1 - d), h, t, T, erate)
-                        - self.dmodel.d_damage_rate_d_e(
-                            stress / (1 - d), d, t, T, erate
-                        )
-                        * stress
+                        - self.flowrule.dflow_derate(stress / (1 - d), h, t, T, erate)
                     )
                 ).unsqueeze(-1),
                 self.flowrule.dhist_derate(stress / (1 - d), h, t, T, erate),
@@ -188,16 +278,14 @@ class ModelIntegrator(nn.Module):
       model:                        base strain-controlled model
       method (optional):            integrate method used to solve the equations, defaults
                                     to `"backward-euler"`
-      d0 (optional):                intitial value of damage
       use_adjoint (optional):       if `True` use the adjoint approach to
       **kwargs:                     passed on to the odeint method
 
     """
 
-    def __init__(self, model, *args, d0=0, use_adjoint=True, **kwargs):
+    def __init__(self, model, *args, use_adjoint=True, **kwargs):
         super().__init__(*args)
         self.model = model
-        self.d0 = d0
         self.use_adjoint = use_adjoint
         self.kwargs_for_integration = kwargs
 
@@ -231,10 +319,7 @@ class ModelIntegrator(nn.Module):
             times, temperatures
         )
 
-        init = torch.zeros(
-            times.shape[1], 2 + self.model.flowrule.nhist, device=idata.device
-        )
-        init[:, -1] = self.d0
+        init = torch.zeros(times.shape[1], self.model.nhist, device=idata.device)
 
         bmodel = BothBasedModel(
             self.model,
@@ -275,10 +360,7 @@ class ModelIntegrator(nn.Module):
             times, temperatures
         )
 
-        init = torch.zeros(
-            times.shape[1], 2 + self.model.flowrule.nhist, device=strains.device
-        )
-        init[:, -1] = self.d0
+        init = torch.zeros(times.shape[1], self.model.nhist, device=strains.device)
 
         emodel = StrainBasedModel(
             self.model, erate_interpolator, temperature_interpolator
@@ -318,10 +400,7 @@ class ModelIntegrator(nn.Module):
             times, temperatures
         )
 
-        init = torch.zeros(
-            times.shape[1], 2 + self.model.flowrule.nhist, device=stresses.device
-        )
-        init[:, -1] = self.d0
+        init = torch.zeros(times.shape[1], self.model.nhist, device=stresses.device)
 
         smodel = StressBasedModel(
             self.model,

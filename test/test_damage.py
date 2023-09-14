@@ -134,7 +134,7 @@ class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
             torch.linspace(0.1, 0.5, self.nbatch), self.extra_batch
         )
         self.t = batch_transform(torch.ones(self.nbatch), self.extra_batch)
-        self.T = batch_transform(torch.zeros_like(self.t), self.extra_batch)
+        self.T = batch_transform(torch.ones(self.nbatch), self.extra_batch)
         self.erate = batch_transform(
             torch.linspace(1e-2, 1e-3, self.nbatch), self.extra_batch
         )
@@ -144,5 +144,62 @@ class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
             np.allclose(
                 self.model.damage_rate(self.s, self.d, self.t, self.T, self.erate)[0],
                 (self.s / self.A) ** (self.xi) * (1 - self.d) ** (self.xi - self.phi),
+            )
+        )
+
+
+class TestLMDamage(unittest.TestCase, DamageBase):
+    def setUp(self):
+        self.A = -5000.0
+        self.B = 20000.0
+        self.C = 20.0
+        self.model = damage.LarsonMillerDamage(CP(self.C), CP(self.A), CP(self.B))
+
+        self.nbatch = 10
+        self.bdim = 1
+
+        self.s = torch.linspace(90, 100, self.nbatch)
+        self.d = torch.linspace(0.1, 0.5, self.nbatch)
+        self.t = torch.ones(self.nbatch)
+        self.T = torch.ones_like(self.t) * 600.0
+        self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
+
+    def test_damage_rate(self):
+        self.assertTrue(
+            np.allclose(
+                self.model.damage_rate(self.s, self.d, self.t, self.T, self.erate)[0],
+                10.0 ** (self.C - self.B / self.T)
+                * (self.s - self.d * self.s) ** (-self.A / self.T),
+            )
+        )
+
+
+class TestHLDamageArbitraryBatch(unittest.TestCase, DamageBase):
+    def setUp(self):
+        self.A = -5000.0
+        self.B = 30000.0
+        self.C = 20.0
+        self.model = damage.LarsonMillerDamage(CP(self.C), CP(self.A), CP(self.B))
+
+        self.nbatch = 10
+        self.extra_batch = 7
+        self.bdim = 2
+
+        self.s = batch_transform(torch.linspace(90, 100, self.nbatch), self.extra_batch)
+        self.d = batch_transform(
+            torch.linspace(0.1, 0.5, self.nbatch), self.extra_batch
+        )
+        self.t = batch_transform(torch.ones(self.nbatch), self.extra_batch)
+        self.T = batch_transform(torch.ones(self.nbatch), self.extra_batch) * 600.0
+        self.erate = batch_transform(
+            torch.linspace(1e-2, 1e-3, self.nbatch), self.extra_batch
+        )
+
+    def test_damage_rate(self):
+        self.assertTrue(
+            np.allclose(
+                self.model.damage_rate(self.s, self.d, self.t, self.T, self.erate)[0],
+                10.0 ** (self.C - self.B / self.T)
+                * (self.s - self.d * self.s) ** (-self.A / self.T),
             )
         )
