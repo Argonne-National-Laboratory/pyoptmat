@@ -293,7 +293,7 @@ class FixedGridBlockSolver:
         block_size=1,
         rtol=1.0e-6,
         atol=1.0e-8,
-        miter=100,
+        miter=200,
         linear_solve_method="direct",
         direct_solve_method="thomas",
         direct_solve_min_size=0,

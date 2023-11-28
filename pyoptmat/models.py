@@ -545,7 +545,7 @@ class StressBasedModel(nn.Module):
 
             return R[..., None], J[..., None, None]
 
-        erate, _ = solvers.newton_raphson(RJ, erate_guess)
+        erate, _ = solvers.newton_raphson(RJ, erate_guess, atol = 1.0e-2)
         yp = y.clone()
         yp[..., 0] = cs
         ydot, J, Je, _ = self.model(t, yp, erate[..., 0], cT)
