@@ -283,6 +283,7 @@ class FixedGridBlockSolver:
         direct_solve_min_size (int): minimum PCR block size for the hybrid approach
         adjoint_params: parameters to track for the adjoint backward pass
         guess_type (string): strategy for initial guess, options are "zero" and "previous"
+        guess_history (torch.tensor): complete load history used for guess, overrides guess_type
         throw_on_fail (bool): if true throw an exception if the implicit solve fails,
         offset_step (int): use a special, smaller chunk size for the first step
     """
@@ -302,6 +303,7 @@ class FixedGridBlockSolver:
         direct_solve_min_size=0,
         adjoint_params=None,
         guess_type="zero",
+        guess_history=None,
         throw_on_fail=False,
         offset_step = 0,
         **kwargs,
@@ -348,6 +350,7 @@ class FixedGridBlockSolver:
 
         # Initial guess for integration
         self.guess_type = guess_type
+        self.guess_history = guess_history
 
         # Throw exception on failed solve
         self.throw_on_fail = throw_on_fail
@@ -379,6 +382,7 @@ class FixedGridBlockSolver:
         )
         result[0] = self.y0
         incs = self._gen_increments(t)
+
 
         for k1,k2 in zip(incs[:-1], incs[1:]):
             result[k1 : k2] = self.block_update(
@@ -420,7 +424,9 @@ class FixedGridBlockSolver:
             k (int): current time step
             nchunk (int): current chunk size
         """
-        if self.guess_type == "zero":
+        if self.guess_history is not None:
+            guess = self.guess_history[k : k + nchunk] - result[k - 1]
+        elif self.guess_type == "zero":
             guess = torch.zeros_like(result[k : k + nchunk])
         elif self.guess_type == "previous":
             if k - nchunk - 1 < 0:

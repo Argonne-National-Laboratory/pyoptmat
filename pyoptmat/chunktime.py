@@ -57,7 +57,6 @@ def newton_raphson_chunk(
             x -= dx
             R, J = fn(x)
             nR = torch.norm(R, dim = -1)
-        print(i, torch.max(nR))
         i += 1
 
     if i == miter:

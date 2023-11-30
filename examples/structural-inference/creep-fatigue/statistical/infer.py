@@ -94,6 +94,7 @@ if __name__ == "__main__":
         scale_scale_priors,
         eps,
         include_noise=False,
+        use_cached_guess= True
     ).to(device)
 
     # 4) Get the guide

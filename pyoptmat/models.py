@@ -283,7 +283,7 @@ class ModelIntegrator(nn.Module):
 
     """
 
-    def __init__(self, model, *args, use_adjoint=True, **kwargs):
+    def __init__(self, model, *args, use_adjoint=True, bisect_first = False, **kwargs):
         super().__init__(*args)
         self.model = model
         self.use_adjoint = use_adjoint
@@ -293,6 +293,8 @@ class ModelIntegrator(nn.Module):
             self.imethod = ode.odeint_adjoint
         else:
             self.imethod = ode.odeint
+
+        self.bisect_first = bisect_first
 
     def solve_both(self, times, temperatures, idata, control):
         """
@@ -327,6 +329,7 @@ class ModelIntegrator(nn.Module):
             base_interpolator,
             temperature_interpolator,
             control,
+            bisect_first = self.bisect_first
         )
 
         return self.imethod(bmodel, init, times, **self.kwargs_for_integration)
@@ -435,7 +438,7 @@ class BothBasedModel(nn.Module):
       indices:  split into strain and stress control
     """
 
-    def __init__(self, model, rate_fn, base_fn, T_fn, control, *args, **kwargs):
+    def __init__(self, model, rate_fn, base_fn, T_fn, control, bisect_first = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
         self.rate_fn = rate_fn
@@ -445,7 +448,7 @@ class BothBasedModel(nn.Module):
 
         self.emodel = StrainBasedModel(self.model, self.rate_fn, self.T_fn)
         self.smodel = StressBasedModel(
-            self.model, self.rate_fn, self.base_fn, self.T_fn
+            self.model, self.rate_fn, self.base_fn, self.T_fn, bisect_first = bisect_first
         )
 
     def forward(self, t, y):
@@ -514,12 +517,15 @@ class StressBasedModel(nn.Module):
       T_fn:         T(t)
     """
 
-    def __init__(self, model, srate_fn, stress_fn, T_fn, *args, **kwargs):
+    def __init__(self, model, srate_fn, stress_fn, T_fn, min_erate = -1e2, max_erate = 1e3, bisect_first = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
         self.srate_fn = srate_fn
         self.stress_fn = stress_fn
         self.T_fn = T_fn
+        self.min_erate = min_erate
+        self.max_erate = max_erate
+        self.bisect_first = bisect_first
 
     def forward(self, t, y):
         """
@@ -533,28 +539,33 @@ class StressBasedModel(nn.Module):
         cs = self.stress_fn(t)
         cT = self.T_fn(t)
 
-        erate_guess = torch.zeros_like(y[..., 0])[..., None]
-
         def RJ(erate):
             yp = y.clone()
             yp[..., 0] = cs
-            ydot, _, Je, _ = self.model(t, yp, erate[..., 0], cT)
+            ydot, _, Je, _ = self.model(t, yp, erate, cT)
 
             R = ydot[..., 0] - csr
             J = Je[..., 0]
 
-            return R[..., None], J[..., None, None]
+            return R, J
+        
+        if self.bisect_first:
+            erate = solvers.scalar_bisection_newton(RJ, 
+                    torch.ones_like(y[...,0]) * self.min_erate,
+                    torch.ones_like(y[...,0]) * self.max_erate)
+        else:
+            erate = solvers.scalar_newton(RJ, 
+                    torch.zeros_like(y[...,0]))
 
-        erate, _ = solvers.newton_raphson(RJ, erate_guess, atol = 1.0e-2)
         yp = y.clone()
         yp[..., 0] = cs
-        ydot, J, Je, _ = self.model(t, yp, erate[..., 0], cT)
+        ydot, J, Je, _ = self.model(t, yp, erate, cT)
 
         # Rescale the jacobian
         J[..., 0, :] = -J[..., 0, :] / Je[..., 0][..., None]
         J[..., :, 0] = 0
 
         # Insert the strain rate
-        ydot[..., 0] = erate[..., 0]
+        ydot[..., 0] = erate
 
         return ydot, J

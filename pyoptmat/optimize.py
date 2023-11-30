@@ -124,7 +124,7 @@ class DeterministicModel(Module):
       ics (list(torch.tensor)): initial conditions to use for each parameter
     """
 
-    def __init__(self, maker, names, ics):
+    def __init__(self, maker, names, ics, use_cached_guess = False):
         super().__init__()
 
         self.maker = maker
@@ -135,6 +135,9 @@ class DeterministicModel(Module):
         self.params = names
         for name, ic in zip(names, ics):
             setattr(self, name, Parameter(ic))
+
+        self.use_cached_guess = use_cached_guess
+        self.cached_solution = None
 
     def get_params(self):
         """
@@ -155,11 +158,17 @@ class DeterministicModel(Module):
           exp_types (torch.tensor):   experiment types, as integers
           exp_control (torch.tensor): stress/strain control flag
         """
-        model = self.maker(*self.get_params())
+        if self.use_cached_guess:
+            model = self.maker(*self.get_params(), guess_history = self.cached_solution)
+        else:
+            model = self.maker(*self.get_params())
 
         predictions = model.solve_both(
             exp_data[0], exp_data[1], exp_data[2], exp_control
         )
+
+        if self.use_cached_guess:
+            self.cached_solution = predictions.detach().clone()
 
         return experiments.convert_results(predictions[:, :, 0], exp_cycles, exp_types)
 
@@ -189,7 +198,7 @@ class StatisticalModel(PyroModule):
                                     entry i represents the noise in test type i
     """
 
-    def __init__(self, maker, names, locs, scales, eps, nan_num=False):
+    def __init__(self, maker, names, locs, scales, eps, nan_num=False, use_cached_guess = False):
         super().__init__()
 
         self.maker = maker
@@ -204,6 +213,9 @@ class StatisticalModel(PyroModule):
         self.type_noise = self.eps.dim() > 0
 
         self.nan_num = nan_num
+
+        self.use_cached_guess = use_cached_guess
+        self.cached_solution = None
 
     def get_params(self):
         """
@@ -229,10 +241,17 @@ class StatisticalModel(PyroModule):
         Keyword Args:
           exp_results (torch.tensor): true results for conditioning
         """
-        model = self.maker(*self.get_params())
+        if self.use_cached_guess:
+            model = self.maker(*self.get_params(), guess_history = self.cached_solution)
+        else:
+            model = self.maker(*self.get_params())
+
         predictions = model.solve_both(
             exp_data[0], exp_data[1], exp_data[2], exp_control
         )
+        if self.use_cached_guess:
+            self.cached_solution = predictions.detach().clone()
+
         results = experiments.convert_results(
             predictions[:, :, 0], exp_cycles, exp_types
         )
@@ -318,6 +337,7 @@ class HierarchicalStatisticalModel(PyroModule):
         param_suffix="_param",
         include_noise=False,
         weights=None,
+        use_cached_guess = False
     ):
         super().__init__()
 
@@ -394,6 +414,9 @@ class HierarchicalStatisticalModel(PyroModule):
 
         # This annoyance is required to make the adjoint solver work
         self.extra_param_names = []
+
+        self.use_cached_guess = use_cached_guess
+        self.cached_solution = None
 
     @property
     def nparams(self):
@@ -531,13 +554,23 @@ class HierarchicalStatisticalModel(PyroModule):
             scale=self._make_weight_tensor(exp_types)
         ):
             # Sample the bottom level parameters
-            bmodel = self.maker(
-                *self.sample_bot(), extra_params=self.get_extra_params()
-            )
+            if self.use_cached_guess:
+                bmodel = self.maker(
+                    *self.sample_bot(), extra_params=self.get_extra_params(),
+                    guess_history = self.cached_solution
+                )
+            else:
+                bmodel = self.maker(
+                    *self.sample_bot(), extra_params=self.get_extra_params()
+                )
+
             # Generate the results
             predictions = bmodel.solve_both(
                 exp_data[0], exp_data[1], exp_data[2], exp_control
             )
+            if self.use_cached_guess:
+                self.cached_solution = predictions.detach().clone()
+
             # Process the results
             results = experiments.convert_results(
                 predictions[:, :, 0], exp_cycles, exp_types
