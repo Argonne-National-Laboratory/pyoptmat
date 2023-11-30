@@ -20,7 +20,8 @@ from pyoptmat.utility import mbmm
 
 
 def newton_raphson_chunk(
-    fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100, throw_on_fail=False
+    fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100, throw_on_fail=False,
+    linesearch = False
 ):
     """
     Solve a nonlinear system with Newton's method with a tensor for a
@@ -36,6 +37,7 @@ def newton_raphson_chunk(
       atol (float):         nonlinear absolute tolerance
       miter (int):          maximum number of nonlinear iterations
       throw_on_fail (bool): throw exception if solve fails
+      linesearch (bool):    if true use backtracking linesearch
 
     Returns:
       torch.tensor:         solution to system of equations
@@ -49,7 +51,13 @@ def newton_raphson_chunk(
 
     while (i < miter) and torch.any(torch.logical_not(torch.logical_or(nR <= atol, nR / nR0 <= rtol))):
         dx = solver.solve(J, R)
-        x, R, J, nR, alpha = chunk_linesearch(x, dx, fn, R)
+        if linesearch:
+            x, R, J, nR, alpha = chunk_linesearch(x, dx, fn, R)
+        else:
+            x -= dx
+            R, J = fn(x)
+            nR = torch.norm(R, dim = -1)
+        print(i, torch.max(nR))
         i += 1
 
     if i == miter:

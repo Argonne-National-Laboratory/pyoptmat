@@ -275,6 +275,7 @@ class FixedGridBlockSolver:
         rtol (float): relative tolerance for Newton's method
         atol (float): absolute tolerance for Newton's method
         miter (int): maximum number of Newton iterations
+        linesearch (bool): whether to use 
         linear_solve_method (str): method to solve batched sparse Ax = b, options
             are currently "direct" or "dense"
         direct_solve_method (str): method to use for the direct solver, options are
@@ -282,7 +283,8 @@ class FixedGridBlockSolver:
         direct_solve_min_size (int): minimum PCR block size for the hybrid approach
         adjoint_params: parameters to track for the adjoint backward pass
         guess_type (string): strategy for initial guess, options are "zero" and "previous"
-        throw_on_fail (bool): if true throw an exception if the implicit solve fails
+        throw_on_fail (bool): if true throw an exception if the implicit solve fails,
+        offset_step (int): use a special, smaller chunk size for the first step
     """
 
     def __init__(
@@ -294,12 +296,14 @@ class FixedGridBlockSolver:
         rtol=1.0e-6,
         atol=1.0e-8,
         miter=200,
+        linesearch = False,
         linear_solve_method="direct",
         direct_solve_method="thomas",
         direct_solve_min_size=0,
         adjoint_params=None,
         guess_type="zero",
         throw_on_fail=False,
+        offset_step = 0,
         **kwargs,
     ):
         # Store basic info about the system
@@ -318,6 +322,7 @@ class FixedGridBlockSolver:
         self.rtol = rtol
         self.atol = atol
         self.miter = miter
+        self.linesearch = linesearch
 
         # Store for later
         self.adjoint_params = adjoint_params
@@ -347,6 +352,9 @@ class FixedGridBlockSolver:
         # Throw exception on failed solve
         self.throw_on_fail = throw_on_fail
 
+        # Special first chunk size
+        self.offset_step = offset_step
+
         # Cached solutions
         self.t = None
         self.result = None
@@ -370,14 +378,15 @@ class FixedGridBlockSolver:
             t.shape[0], *self.y0.shape, dtype=self.y0.dtype, device=self.y0.device
         )
         result[0] = self.y0
+        incs = self._gen_increments(t)
 
-        for k in range(1, t.shape[0], self.n):
-            result[k : k + self.n] = self.block_update(
-                t[k : k + self.n],
-                t[k - 1],
-                result[k - 1],
+        for k1,k2 in zip(incs[:-1], incs[1:]):
+            result[k1 : k2] = self.block_update(
+                t[k1 : k2],
+                t[k1 - 1],
+                result[k1 - 1],
                 self.func,
-                self._initial_guess(result, k),
+                self._initial_guess(result, k1, k2-k1),
             )
 
         # Store for the backward pass, if we're going to do that
@@ -387,22 +396,38 @@ class FixedGridBlockSolver:
 
         return result
 
-    def _initial_guess(self, result, k):
+    def _gen_increments(self, t):
+        """
+        Generate the increments in time to use the chunk integrate the equations
+
+        Args:
+            t (torch.tensor):   timesteps requested
+        """
+        steps = [1]
+        ntotal = t.shape[0]
+        if self.offset_step > 0:
+            steps += [self.offset_step + 1]
+        steps += list(range(steps[-1],ntotal, self.n))[1:] + [ntotal]
+
+        return steps
+
+    def _initial_guess(self, result, k, nchunk):
         """
         Form the initial guess
 
         Args:
             result (torch.tensor): currently-populated results
             k (int): current time step
+            nchunk (int): current chunk size
         """
         if self.guess_type == "zero":
-            guess = torch.zeros_like(result[k : k + self.n])
+            guess = torch.zeros_like(result[k : k + nchunk])
         elif self.guess_type == "previous":
-            if k - self.n - 1 < 0:
-                guess = torch.zeros_like(result[k : k + self.n])
+            if k - nchunk - 1 < 0:
+                guess = torch.zeros_like(result[k : k + nchunk])
             else:
-                guess = result[(k - self.n) : k] - result[k - self.n - 1].unsqueeze(0)
-            blk = self.n - result[k : k + self.n].shape[0]
+                guess = result[(k - nchunk) : k] - result[k - nchunk - 1].unsqueeze(0)
+            blk = nchunk - result[k : k + nchunk].shape[0]
             guess = guess[blk:]
         else:
             raise ValueError(f"Unknown initial guess strategy {self.guess_type}!")
@@ -439,18 +464,21 @@ class FixedGridBlockSolver:
 
         # Calculate starts at last gradient
         prev_adjoint = output_grad[0]
+        
+        # Generate reverse increments
+        incs = [1 + self.t.shape[0] - r for r in self._gen_increments(self.t)[::-1]]
 
-        for k in range(1, self.t.shape[0], self.n):
+        for k1, k2 in zip(incs[:-1], incs[1:]):
             # Could also cache these of course
             _, J = self.func(
-                self.t[k - 1 : k + self.n], self.result[k - 1 : k + self.n]
+                self.t[k1 - 1 : k2], self.result[k1 - 1 : k2]
             )
 
             full_adjoint = self.scheme.update_adjoint(
-                self.t[k - 1 : k + self.n].diff(dim=0),
+                self.t[k1 - 1 : k2].diff(dim=0),
                 J,
                 prev_adjoint,
-                output_grad[k - 1 : k + self.n],
+                output_grad[k1 - 1 : k2],
                 solver=self.direct_solver,
             )
 
@@ -460,10 +488,10 @@ class FixedGridBlockSolver:
             if len(self.adjoint_params) > 0:
                 grad_result = self.scheme.accumulate(
                     grad_result,
-                    self.t[k - 1 : k + self.n],
-                    self.result[k - 1 : k + self.n],
+                    self.t[k1 - 1 : k2],
+                    self.result[k1 - 1 : k2],
                     full_adjoint,
-                    output_grad[k - 1 : k + self.n],
+                    output_grad[k1 - 1 : k2],
                     self._get_param_partial,
                 )
 
@@ -512,6 +540,7 @@ class FixedGridBlockSolver:
             atol=self.atol,
             miter=self.miter,
             throw_on_fail=self.throw_on_fail,
+            linesearch = self.linesearch
         )
 
         return dy.reshape(self.batch_size, n, self.prob_size).transpose(
