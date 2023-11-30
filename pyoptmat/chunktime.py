@@ -47,7 +47,7 @@ def newton_raphson_chunk(
     nR0 = nR
     i = 0
 
-    while (i < miter) and torch.any(nR > atol) and torch.any(nR / nR0 > rtol):
+    while (i < miter) and torch.any(torch.logical_not(torch.logical_or(nR <= atol, nR / nR0 <= rtol))):
         dx = solver.solve(J, R)
         x, R, J, nR, alpha = chunk_linesearch(x, dx, fn, R)
         i += 1
@@ -86,7 +86,7 @@ def chunk_linesearch(x, dx, fn, R0, sigma = 2.0, c=1e-3, miter = 10):
         if nR <= crit or i >= miter:
             break
         alpha /= sigma
-    return x - dx * alpha, R, J, torch.max(torch.norm(R, dim = -1)), alpha
+    return x - dx * alpha, R, J, torch.norm(R, dim = -1), alpha
 
 
 
