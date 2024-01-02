@@ -540,15 +540,16 @@ class StressBasedModel(nn.Module):
         cT = self.T_fn(t)
 
         def RJ(erate):
-            yp = y.clone()
-            yp[..., 0] = cs
-            ydot, _, Je, _ = self.model(t, yp, erate, cT)
+            ydot, _, Je, _ = self.model(t, 
+                    torch.cat([cs.unsqueeze(-1), y[...,1:]], dim = -1),
+                    erate.detach(), cT)
 
             R = ydot[..., 0] - csr
             J = Je[..., 0]
 
             return R, J
         
+        # Doing the detach here actually makes the parameter gradients wrong... 
         if self.bisect_first:
             erate = solvers.scalar_bisection_newton(RJ, 
                     torch.ones_like(y[...,0]) * self.min_erate,
@@ -557,15 +558,13 @@ class StressBasedModel(nn.Module):
             erate = solvers.scalar_newton(RJ, 
                     torch.zeros_like(y[...,0]))
 
-        yp = y.clone()
-        yp[..., 0] = cs
-        ydot, J, Je, _ = self.model(t, yp, erate, cT)
+        ydot, J, Je, _ = self.model(t, 
+                torch.cat([cs.unsqueeze(-1), y[...,1:]], dim = -1),
+                erate, cT)
 
-        # Rescale the jacobian
-        J[..., 0, :] = -J[..., 0, :] / Je[..., 0][..., None]
-        J[..., :, 0] = 0
+        # Corrected jacobian
+        row1 = torch.cat([torch.zeros_like(J[...,0,0]).unsqueeze(-1), -J[..., 0, 1:] / Je[...,0][...,None]], dim = -1).unsqueeze(-2)
+        rest = torch.cat([torch.zeros_like(J[...,1:,0]).unsqueeze(-1), J[...,1:,1:]], dim = -1)
+        jac = torch.cat([row1,rest], dim = -2)
 
-        # Insert the strain rate
-        ydot[..., 0] = erate
-
-        return ydot, J
+        return torch.cat([erate.unsqueeze(-1), ydot[...,1:]], dim = -1), jac
