@@ -52,7 +52,7 @@ def newton_raphson_chunk(
     while (i < miter) and torch.any(torch.logical_not(torch.logical_or(nR <= atol, nR / nR0 <= rtol))):
         dx = solver.solve(J, R)
         if linesearch:
-            x, R, J, nR, alpha = chunk_linesearch(x, dx, fn, R)
+            x, R, J, nR, alpha = chunk_linesearch(x, dx, fn, R, rtol, atol)
         else:
             x -= dx
             R, J = fn(x)
@@ -66,34 +66,37 @@ def newton_raphson_chunk(
 
     return x
 
-def chunk_linesearch(x, dx, fn, R0, sigma = 2.0, c=1e-3, miter = 10):
+def chunk_linesearch(x, dx, fn, R0, overall_rtol, overall_atol, sigma = 2.0, c=1e-3, miter = 10):
     """
     Backtracking linesearch for the chunk NR algorithm.
 
-    Terminates when the Armijo criteria is reached, or you exceed some maximum iterations
+    Terminates when the Armijo criteria is reached, or you exceed some maximum iterations, or when you would meet the 
+    convergence requirements with the current alpha
 
     Args:
         x (torch.tensor): initial point
         dx (torch.tensor): direction
         R0 (torch.tensor): initial residual
+        overall_rtol (scalar): Newton relative tolerance
+        overall_atol (scalar): Newton absolute tolerance
 
     Keyword Args:
         sigma (scalar): decrease factor, i.e. alpha /= sigma
         c (scalar): stopping criteria
         miter (scalar): maximum iterations
     """
-    alpha = 1.0
+    alpha = torch.ones(x.shape[:-1], device = x.device)
     nR0 = torch.norm(R0, dim = -1)
     i = 0
     while True:
-        R, J = fn(x - dx * alpha)
-        nR = torch.max(torch.norm(R, dim = -1)**2.0)
-        crit = torch.max(nR0**2.0 + 2.0 * c * alpha * torch.einsum('...i,...i', R0, dx))
+        R, J = fn(x - dx * alpha.unsqueeze(-1))
+        nR = torch.norm(R, dim = -1)**2.0
+        crit = nR0**2.0 + 2.0 * c * alpha * torch.einsum('...i,...i', R0, dx)
         i += 1
-        if nR <= crit or i >= miter:
+        if torch.all(nR <= crit) or i >= miter or torch.all(torch.sqrt(nR) < overall_atol) or torch.all(torch.sqrt(nR)/nR0 < overall_rtol):
             break
-        alpha /= sigma
-    return x - dx * alpha, R, J, torch.norm(R, dim = -1), alpha
+        alpha[nR > crit] /= sigma
+    return x - dx * alpha.unsqueeze(-1), R, J, torch.norm(R, dim = -1), alpha
 
 
 

@@ -315,19 +315,14 @@ class ModelIntegrator(nn.Module):
         # Likely if this happens dt = 0
         rates[torch.isnan(rates)] = 0
 
-        rate_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(times, rates)
-        base_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(times, idata)
-        temperature_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
-            times, temperatures
-        )
-
         init = torch.zeros(times.shape[1], self.model.nhist, device=idata.device)
 
         bmodel = BothBasedModel(
             self.model,
-            rate_interpolator,
-            base_interpolator,
-            temperature_interpolator,
+            times,
+            rates,
+            idata,
+            temperatures,
             control,
             bisect_first = self.bisect_first
         )
@@ -438,17 +433,23 @@ class BothBasedModel(nn.Module):
       indices:  split into strain and stress control
     """
 
-    def __init__(self, model, rate_fn, base_fn, T_fn, control, bisect_first = False, *args, **kwargs):
+    def __init__(self, model, times, rates, base, temps, control, bisect_first = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
-        self.rate_fn = rate_fn
-        self.base_fn = base_fn
-        self.T_fn = T_fn
         self.control = control
 
-        self.emodel = StrainBasedModel(self.model, self.rate_fn, self.T_fn)
+        self.econtrol = self.control == 0
+        self.scontrol = self.control == 1
+
+        self.emodel = StrainBasedModel(self.model, 
+                utility.ArbitraryBatchTimeSeriesInterpolator(times[...,self.econtrol], rates[...,self.econtrol]),
+                utility.ArbitraryBatchTimeSeriesInterpolator(times[...,self.econtrol], temps[...,self.econtrol]))
         self.smodel = StressBasedModel(
-            self.model, self.rate_fn, self.base_fn, self.T_fn, bisect_first = bisect_first
+            self.model, 
+             utility.ArbitraryBatchTimeSeriesInterpolator(times[...,self.scontrol], rates[...,self.scontrol]),
+             utility.ArbitraryBatchTimeSeriesInterpolator(times[...,self.scontrol], base[...,self.scontrol]),
+             utility.ArbitraryBatchTimeSeriesInterpolator(times[...,self.scontrol], temps[...,self.scontrol]), 
+             bisect_first = bisect_first
         )
 
     def forward(self, t, y):
@@ -460,20 +461,21 @@ class BothBasedModel(nn.Module):
             t:  input times
             y:  input state
         """
-        strain_rates, strain_jacs = self.emodel(t, y)
-        stress_rates, stress_jacs = self.smodel(t, y)
+        n = (y.shape[-1],)
+        base = y.shape[:-1]
 
-        actual_rates = torch.zeros_like(strain_rates)
+        actual_rates = torch.zeros(base + n, device = t.device)
+        actual_jacs = torch.zeros(base + n + n, device = t.device)
 
-        e_control = self.control == 0
-        s_control = self.control == 1
+        if torch.any(self.econtrol):
+            strain_rates, strain_jacs = self.emodel(t[...,self.econtrol], y[...,self.econtrol,:])
+            actual_rates[...,self.econtrol,:] = strain_rates
+            actual_jacs[...,self.econtrol,:,:] = strain_jacs
 
-        actual_rates[..., e_control, :] = strain_rates[..., e_control, :]
-        actual_rates[..., s_control, :] = stress_rates[..., s_control, :]
-
-        actual_jacs = torch.zeros_like(strain_jacs)
-        actual_jacs[..., e_control, :, :] = strain_jacs[..., e_control, :, :]
-        actual_jacs[..., s_control, :, :] = stress_jacs[..., s_control, :, :]
+        if torch.any(self.scontrol):
+            stress_rates, stress_jacs = self.smodel(t[...,self.scontrol], y[...,self.scontrol,:])
+            actual_rates[...,self.scontrol,:] = stress_rates
+            actual_jacs[...,self.scontrol,:,:] = stress_jacs
 
         return actual_rates, actual_jacs
 
