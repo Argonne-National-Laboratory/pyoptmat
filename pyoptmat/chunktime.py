@@ -58,7 +58,7 @@ def newton_raphson_chunk(
             R, J = fn(x)
             nR = torch.norm(R, dim = -1)
         i += 1
-
+    
     if i == miter:
         if throw_on_fail:
             raise RuntimeError("Implicit solve did not succeed.")
@@ -66,7 +66,7 @@ def newton_raphson_chunk(
 
     return x
 
-def chunk_linesearch(x, dx, fn, R0, overall_rtol, overall_atol, sigma = 2.0, c=1e-3, miter = 10):
+def chunk_linesearch(x, dx, fn, R0, overall_rtol, overall_atol, sigma = 2.0, c=0.0, miter = 10):
     """
     Backtracking linesearch for the chunk NR algorithm.
 
@@ -93,9 +93,10 @@ def chunk_linesearch(x, dx, fn, R0, overall_rtol, overall_atol, sigma = 2.0, c=1
         nR = torch.norm(R, dim = -1)**2.0
         crit = nR0**2.0 + 2.0 * c * alpha * torch.einsum('...i,...i', R0, dx)
         i += 1
-        if torch.all(nR <= crit) or i >= miter or torch.all(torch.sqrt(nR) < overall_atol) or torch.all(torch.sqrt(nR)/nR0 < overall_rtol):
+        if torch.all(nR < crit) or i >= miter or torch.all(torch.sqrt(nR) < overall_atol) or torch.all(torch.sqrt(nR)/nR0 < overall_rtol):
             break
-        alpha[nR > crit] /= sigma
+        alpha[nR >= crit] /= sigma
+
     return x - dx * alpha.unsqueeze(-1), R, J, torch.norm(R, dim = -1), alpha
 
 

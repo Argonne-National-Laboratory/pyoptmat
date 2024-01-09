@@ -41,7 +41,7 @@ if __name__ == "__main__":
     ntemps = 5
     temps = torch.linspace(750, 950, ntemps) + 273.15
     elimits = torch.ones(ntemps) * 0.25
-    erates = torch.ones(ntemps) * 8.33e-5
+    erates = torch.logspace(-16,-1,ntemps)
 
     nsteps = 200
 
@@ -50,33 +50,26 @@ if __name__ == "__main__":
     )
 
     # Perfect viscoplastic model
-    A = torch.tensor(-8.679)
-    B = torch.tensor(-0.744)
+    C = torch.tensor(-5.0)
     mu = temperature.PolynomialScaling(
         torch.tensor([-1.34689305e-02, -5.18806776e00, 7.86708330e04])
     )
-    b = torch.tensor(2.474e-7)
-    k = torch.tensor(1.38064e-20)
-    eps0 = torch.tensor(1e10)
     E = temperature.PolynomialScaling(
         torch.tensor([-3.48056033e-02, -1.44398964e01, 2.06464967e05])
     )
+    sy = temperature.ConstantParameter(200.0)
 
-    ih = hardening.VoceIsotropicHardeningModel(
-        temperature.ConstantParameter(torch.tensor(150.0)),
-        temperature.ConstantParameter(torch.tensor(10.0)),
-    )
-    kh = hardening.NoKinematicHardeningModel()
+    C = torch.tensor(12000.0)
+    g = torch.tensor(10.1)
+    kh = hardening.FAKinematicHardeningModel(temperature.ConstantParameter(C), temperature.ConstantParameter(g))
 
-    fr = flowrules.IsoKinViscoplasticity(
-        temperature.KMRateSensitivityScaling(A, mu, b, k),
-        temperature.KMViscosityScaling(A, B, mu, eps0, b, k),
-        temperature.ConstantParameter(0),
-        ih,
-        kh,
+    ih = hardening.Theta0VoceIsotropicHardeningModel(temperature.ConstantParameter(100.0), temperature.ConstantParameter(500.0))
+
+    fr = flowrules.IsoKinRateIndependentPlasticity(
+        E, sy, ih, kh
     )
     model = models.InelasticModel(E, fr)
-    integrator = models.ModelIntegrator(model)
+    integrator = models.ModelIntegrator(model, guess_type = "previous", linesearch = True, block_size = 10)
 
     stresses = integrator.solve_strain(times, strains, temperatures)[:, :, 0]
 
@@ -120,7 +113,9 @@ if __name__ == "__main__":
             stresses[:, i],
             label=None,
             ls="--",
-            color=l.get_color(), lw = 4, alpha = 0.5
+            color=l.get_color(),
+            lw = 4,
+            alpha = 0.5
         )
 
     plt.xlabel("Strain (mm/mm)")

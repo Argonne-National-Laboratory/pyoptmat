@@ -72,6 +72,9 @@ class InelasticModel(nn.Module):
         """
         return 1 + self.flowrule.nhist
 
+    def setup(self, t, y):
+        self.flowrule.setup(t, y)
+
     def forward(self, t, y, erate, T):
         """
         Return the rate equations for the strain-based version of the model
@@ -133,7 +136,7 @@ class InelasticModel(nn.Module):
         # Logically we should return the derivative wrt T, but right now
         # we're not going to use it
         Trate = torch.zeros_like(y)
-
+        
         return result, dresult, drate, Trate
 
 
@@ -452,6 +455,12 @@ class BothBasedModel(nn.Module):
              bisect_first = bisect_first
         )
 
+    def setup(self, t, y):
+        if torch.any(self.econtrol):
+            self.emodel.setup(t[...,self.econtrol], y[...,self.econtrol,:])
+        if torch.any(self.scontrol):
+            self.smodel.setup(t[...,self.scontrol], y[...,self.scontrol,:])
+
     def forward(self, t, y):
         """
         Evaluate both strain and stress control and paste into the right
@@ -496,6 +505,9 @@ class StrainBasedModel(nn.Module):
         self.erate_fn = erate_fn
         self.T_fn = T_fn
 
+    def setup(self, t, y):
+        self.model.setup(t, y)
+
     def forward(self, t, y):
         """
         Strain rate as a function of t and state
@@ -528,6 +540,9 @@ class StressBasedModel(nn.Module):
         self.min_erate = min_erate
         self.max_erate = max_erate
         self.bisect_first = bisect_first
+
+    def setup(self, t, y):
+        self.model.setup(t, y)
 
     def forward(self, t, y):
         """

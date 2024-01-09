@@ -327,6 +327,48 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatch
         self.t = self.times[2]
         self.step = 2
 
+class TestIsoKinRIPlasticity(unittest.TestCase, CommonModel, CommonModelBatchBatch):
+    def setUp(self):
+        self.E = torch.tensor(100000.0)
+        self.sy = torch.tensor(10.0)
+
+        self.R = torch.tensor(101.0)
+        self.d = torch.tensor(1.3)
+        self.iso = hardening.VoceIsotropicHardeningModel(CP(self.R), CP(self.d))
+
+        self.C = torch.tensor(12000.0)
+        self.g = torch.tensor(10.1)
+        self.kin = hardening.FAKinematicHardeningModel(CP(self.C), CP(self.g))
+
+        self.flowrule = flowrules.IsoKinRateIndependentPlasticity(
+            CP(self.E), CP(self.sy), self.iso, self.kin
+        )
+        self.model = models.InelasticModel(CP(self.E), self.flowrule)
+
+        self.times = torch.transpose(
+            torch.tensor(np.array([np.linspace(0, 1, 4) for i in range(3)])), 1, 0
+        )
+        self.strains = torch.transpose(
+            torch.tensor(np.array([np.linspace(0, 1, 4) for i in range(3)])), 1, 0
+        )
+        self.temperatures = torch.zeros_like(self.times)
+        self.stresses = (
+            torch.transpose(
+                torch.tensor(np.array([np.linspace(0, 1, 4) for i in range(3)])), 1, 0
+            )
+            * 200
+        )
+
+        self.state_strain = (
+            torch.tensor([[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]])
+        ) / 3.0
+        self.state_stress = (
+            torch.tensor([[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]])
+        ) / 3.0
+
+        self.t = self.times[2]
+        self.step = 2
+
 
 class TestIsoKinViscoplasticityRecovery(
     unittest.TestCase, CommonModel, CommonModelBatchBatch
@@ -492,3 +534,4 @@ class TestAll(unittest.TestCase, CommonModel, CommonModelBatchBatch):
 
         self.t = self.times[2]
         self.step = 2
+

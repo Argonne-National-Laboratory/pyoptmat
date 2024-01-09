@@ -61,9 +61,9 @@ def scalar_newton(fn, x0, atol = 1.0e-6, miter = 100):
     for i in range(miter):
         if torch.all(torch.abs(R) < atol):
             break
-
+        
         x -= R / J
-
+        
         R, J = fn(x)
     else:
         warnings.warn("Scalar implicit solve did not succeed.  Results may be inaccurate...")
