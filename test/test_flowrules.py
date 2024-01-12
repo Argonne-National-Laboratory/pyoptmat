@@ -18,7 +18,7 @@ class CommonFlowRule:
             self.s,
             nbatch_dim=1,
         )
-        
+
         self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_history_rate(self):
@@ -46,7 +46,7 @@ class CommonFlowRule:
             self.h,
             nbatch_dim=1,
         ).unsqueeze(1)
-        
+
         self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_history_stress(self):
@@ -734,7 +734,7 @@ class TestIsoKinChabocheRIPlasticity(
         self.kin = hardening.ChabocheHardeningModel(CP(self.C), CP(self.g))
 
         self.model = flowrules.IsoKinRateIndependentPlasticity(
-            CP(self.E), CP(self.sy), self.iso, self.kin
+            CP(self.E), CP(self.sy), self.iso, self.kin, s = 0.01
         )
 
         self.s = torch.linspace(160, 240, self.nbatch)
@@ -782,9 +782,33 @@ class TestIsoKinChabocheRIPlasticity(
         numer = utility.batch_differentiate(lambda x: self.model.ep_residual(self.ep_guess, self.s, self.h, self.t, self.T, x), self.erate).unsqueeze(-1)
         self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
 
-    def test_definiition_flow_rate(self):
-        vals = self.model.flow_rate(self.s, self.h, self.t, self.T, self.erate)[0]
-        yielding = self.model.f(self.s, self.h, self.T) > 0
-        r = self.model.ep_residual(vals, self.s, self.h, self.t, self.T, self.erate)
-        self.assertTrue(torch.allclose(r[yielding], torch.tensor(0.0)))
+    def test_d_sig(self):
+        x = torch.linspace(-1, 1, 10)
+        exact = self.model.dsig(x)
+        numer = utility.batch_differentiate(lambda x: self.model.sig(x), x)
 
+        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+
+    def test_df_ds(self):
+        exact = self.model.df_ds(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(lambda x: self.model.f(x, self.h, self.T), self.s)
+
+        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+
+    def test_dmix_fn_ds(self):
+        exact = self.model.dmix_fn_ds(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(lambda x: self.model.mix_fn(x, self.h, self.T), self.s)
+        
+        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol, atol = 1.0e-4))
+
+    def test_df_dh(self):
+        exact = self.model.df_dh(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(lambda x: self.model.f(self.s, x, self.T), self.h)
+
+        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+
+    def test_dmix_fn_dh(self):
+        exact = self.model.dmix_fn_dh(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(lambda x: self.model.mix_fn(self.s, x, self.T), self.h)
+        
+        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))

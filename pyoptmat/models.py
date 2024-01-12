@@ -72,9 +72,6 @@ class InelasticModel(nn.Module):
         """
         return 1 + self.flowrule.nhist
 
-    def setup(self, t, y):
-        self.flowrule.setup(t, y)
-
     def forward(self, t, y, erate, T):
         """
         Return the rate equations for the strain-based version of the model
@@ -91,8 +88,8 @@ class InelasticModel(nn.Module):
           d_y_dot_d_erate:(nbatch,1+nhist) Jacobian wrt the strain rate
           d_y_dot_d_T:    (nbatch,1+nhist) derivative wrt temperature (unused)
         """
-        stress = y[..., 0].clone()
-        h = y[..., 1:].clone()
+        stress = y[..., 0]
+        h = y[..., 1:]
 
         frate, dfrate = self.flowrule.flow_rate(stress, h, t, T, erate)
         hrate, dhrate = self.flowrule.history_rate(stress, h, t, T, erate)
@@ -455,12 +452,6 @@ class BothBasedModel(nn.Module):
              bisect_first = bisect_first
         )
 
-    def setup(self, t, y):
-        if torch.any(self.econtrol):
-            self.emodel.setup(t[...,self.econtrol], y[...,self.econtrol,:])
-        if torch.any(self.scontrol):
-            self.smodel.setup(t[...,self.scontrol], y[...,self.scontrol,:])
-
     def forward(self, t, y):
         """
         Evaluate both strain and stress control and paste into the right
@@ -505,9 +496,6 @@ class StrainBasedModel(nn.Module):
         self.erate_fn = erate_fn
         self.T_fn = T_fn
 
-    def setup(self, t, y):
-        self.model.setup(t, y)
-
     def forward(self, t, y):
         """
         Strain rate as a function of t and state
@@ -541,9 +529,6 @@ class StressBasedModel(nn.Module):
         self.max_erate = max_erate
         self.bisect_first = bisect_first
 
-    def setup(self, t, y):
-        self.model.setup(t, y)
-
     def forward(self, t, y):
         """
         Stress rate as a function of t and state
@@ -559,7 +544,7 @@ class StressBasedModel(nn.Module):
         def RJ(erate):
             ydot, _, Je, _ = self.model(t, 
                     torch.cat([cs.unsqueeze(-1), y[...,1:]], dim = -1),
-                    erate.detach(), cT)
+                    erate, cT)
 
             R = ydot[..., 0] - csr
             J = Je[..., 0]

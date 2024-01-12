@@ -62,12 +62,12 @@ def scalar_newton(fn, x0, atol = 1.0e-6, miter = 100):
         if torch.all(torch.abs(R) < atol):
             break
         
-        x -= R / J
+        x = x - R / J
         
         R, J = fn(x)
     else:
         warnings.warn("Scalar implicit solve did not succeed.  Results may be inaccurate...")
-
+    
     return x
 
 def scalar_bisection_newton(fn, a, b, atol = 1.0e-6, miter = 100, biter = 10):

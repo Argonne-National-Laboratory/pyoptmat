@@ -521,10 +521,6 @@ class FixedGridBlockSolver:
         # Various useful sizes
         n = t.shape[0]  # Number of time steps to do at once
         
-        self.func.setup(torch.vstack((t_start.unsqueeze(0), t)),
-                torch.vstack((torch.zeros_like(y_start).unsqueeze(0), y_guess.reshape(self.batch_size, n, self.prob_size).transpose(0, 1)))
-                + y_start.unsqueeze(0).expand(n + 1, -1, -1))
-
         def RJ(dy):
             # Make things into a more rational shape
             dy = dy.reshape(self.batch_size, n, self.prob_size).transpose(0, 1)
