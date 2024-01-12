@@ -58,10 +58,9 @@ def newton_raphson_chunk(
     while (i < miter) and torch.any(
         torch.logical_not(torch.logical_or(nR <= atol, nR / nR0 <= rtol))
     ):
-        print(i, torch.max(nR))
         dx = solver.solve(J, R)
         if linesearch:
-            x, R, J, nR, alpha = chunk_linesearch(x, dx, fn, R, rtol, atol)
+            x, R, J, nR = chunk_linesearch(x, dx, fn, R, rtol, atol)
         else:
             x -= dx
             R, J = fn(x)
@@ -82,7 +81,8 @@ def chunk_linesearch(
     """
     Backtracking linesearch for the chunk NR algorithm.
 
-    Terminates when the Armijo criteria is reached, or you exceed some maximum iterations, or when you would meet the
+    Terminates when the Armijo criteria is reached, or you exceed
+    some maximum iterations, or when you would meet the
     convergence requirements with the current alpha
 
     Args:
@@ -114,7 +114,7 @@ def chunk_linesearch(
             break
         alpha[nR >= crit] /= sigma
 
-    return x - dx * alpha.unsqueeze(-1), R, J, torch.norm(R, dim=-1), alpha
+    return x - dx * alpha.unsqueeze(-1), R, J, torch.norm(R, dim=-1)
 
 
 class BidiagonalOperator(torch.nn.Module):
