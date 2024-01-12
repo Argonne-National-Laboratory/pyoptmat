@@ -72,11 +72,6 @@ class CommonModel:
             lambda x: use.forward(self.t, x)[0], self.state_stress
         )
         
-        # 3 time steps, 3 state variables
-        print(stress_rates.shape)
-        print(dv[1])
-        print(ddv[1])
-        
         self.assertTrue(np.allclose(dv, ddv, rtol=1e-4, atol=1e-4))
 
     def test_partial_state(self):
@@ -118,9 +113,6 @@ class CommonModel:
         numer = utility.batch_differentiate(
             lambda y: self.model.forward(t, self.state_strain, y, T)[0], erate
         ).squeeze(-1)
-
-        print(exact)
-        print(numer)
 
         self.assertTrue(torch.allclose(exact, numer, atol=1e-4, rtol=1e-4))
 

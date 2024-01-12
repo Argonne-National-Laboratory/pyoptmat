@@ -563,10 +563,16 @@ class StressBasedModel(nn.Module):
         ydot, J, Je, _ = self.model(t, 
                 torch.cat([cs.unsqueeze(-1), y[...,1:]], dim = -1),
                 erate, cT)
+        
+        # There is an annoying extra term that is the derivative of the history rate with respect to the 
+        # solved for strain rate times the derivative of the strain rate with respect to history 
+        t1 = Je[...,1:].unsqueeze(-1)
+        t2 = utility.mbmm(1.0/Je[...,:1].unsqueeze(-1), J[...,0,1:].unsqueeze(-2))
+        t3 = utility.mbmm(t1, t2)
 
         # Corrected jacobian
         row1 = torch.cat([torch.zeros_like(J[...,0,0]).unsqueeze(-1), -J[..., 0, 1:] / Je[...,0][...,None]], dim = -1).unsqueeze(-2)
-        rest = torch.cat([torch.zeros_like(J[...,1:,0]).unsqueeze(-1), J[...,1:,1:]], dim = -1)
+        rest = torch.cat([torch.zeros_like(J[...,1:,0]).unsqueeze(-1), J[...,1:,1:] - t3], dim = -1)
         jac = torch.cat([row1,rest], dim = -2)
 
         return torch.cat([erate.unsqueeze(-1), ydot[...,1:]], dim = -1), jac
