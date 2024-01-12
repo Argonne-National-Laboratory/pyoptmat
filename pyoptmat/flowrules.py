@@ -1125,9 +1125,10 @@ class PerfectViscoplasticity(FlowRule):
         """
         return torch.zeros_like(h), torch.zeros(h.shape + h.shape[-1:])
 
+
 class PerfectRateIndependentPlasticity(FlowRule):
     """
-    Perfect rate independent plasticity 
+    Perfect rate independent plasticity
 
     Args:
       sy (|TP|):     yield stress
@@ -1171,7 +1172,7 @@ class PerfectRateIndependentPlasticity(FlowRule):
         fr = torch.zeros_like(s)
         yielding = self.f(s, h, T) > 0
         fr[yielding] = e[yielding]
-        
+
         dfr = torch.zeros_like(s)
 
         return fr, dfr
@@ -1226,6 +1227,7 @@ class PerfectRateIndependentPlasticity(FlowRule):
                                                 with respect to history
         """
         return torch.zeros_like(h), torch.zeros(h.shape + h.shape[-1:])
+
 
 class IsoKinViscoplasticity(FlowRule):
     """
@@ -1530,8 +1532,8 @@ class IsoKinViscoplasticity(FlowRule):
 
 class IsoKinRateIndependentPlasticity(FlowRule):
     """
-    An approximation to rate independent plasticity.  The model is defined by 
-    
+    An approximation to rate independent plasticity.  The model is defined by
+
     .. math::
 
         \\dot{\\varepsilon}_{in} = \\xi(f) \\dot{\\varepsilon}_{p,ri}
@@ -1571,9 +1573,9 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         s (float):          scale factor for the sigmoid function, controls the amount of smoothing at the onset of plasticity
     """
 
-    def __init__(self, E, sy, isotropic, kinematic, soffset = 1e-10, s = 1.0):
+    def __init__(self, E, sy, isotropic, kinematic, soffset=1e-10, s=1.0):
         super().__init__()
-        self. E = E
+        self.E = E
         self.isotropic = isotropic
         self.kinematic = kinematic
         self.sy = sy
@@ -1595,7 +1597,7 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         """
         ih = self.isotropic.value(h[..., : self.isotropic.nhist])
         kh = self.kinematic.value(h[..., self.isotropic.nhist :])
-        return torch.abs(s-kh) - self.sy(T) - ih
+        return torch.abs(s - kh) - self.sy(T) - ih
 
     def df_ds(self, s, h, T):
         """
@@ -1610,7 +1612,7 @@ class IsoKinRateIndependentPlasticity(FlowRule):
           the derivative value
         """
         kh = self.kinematic.value(h[..., self.isotropic.nhist :])
-        return torch.sign(s-kh)
+        return torch.sign(s - kh)
 
     def df_dh(self, s, h, T):
         """
@@ -1626,9 +1628,11 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         """
         kh = self.kinematic.value(h[..., self.isotropic.nhist :])
         di = -self.isotropic.dvalue(h[..., : self.isotropic.nhist])
-        dk = -torch.sign(s-kh).unsqueeze(-1) * self.kinematic.dvalue(h[..., self.isotropic.nhist :])
+        dk = -torch.sign(s - kh).unsqueeze(-1) * self.kinematic.dvalue(
+            h[..., self.isotropic.nhist :]
+        )
 
-        return torch.cat([di,dk], axis = -1)
+        return torch.cat([di, dk], axis=-1)
 
     def ep_residual(self, ep, s, h, t, T, e):
         """
@@ -1651,10 +1655,28 @@ class IsoKinRateIndependentPlasticity(FlowRule):
 
         kh = self.kinematic.value(hkin)
 
-        i_dot = utility.mbmm(self.isotropic.dvalue(hiso).unsqueeze(-2), self.isotropic.history_rate(s, hiso, t, ep, T, e).unsqueeze(-1)).squeeze(-1).squeeze(-1)
-        k_dot = utility.mbmm(self.kinematic.dvalue(hkin).unsqueeze(-2), self.kinematic.history_rate(s, hkin, t, ep, T, e).unsqueeze(-1)).squeeze(-1).squeeze(-1)
+        i_dot = (
+            utility.mbmm(
+                self.isotropic.dvalue(hiso).unsqueeze(-2),
+                self.isotropic.history_rate(s, hiso, t, ep, T, e).unsqueeze(-1),
+            )
+            .squeeze(-1)
+            .squeeze(-1)
+        )
+        k_dot = (
+            utility.mbmm(
+                self.kinematic.dvalue(hkin).unsqueeze(-2),
+                self.kinematic.history_rate(s, hkin, t, ep, T, e).unsqueeze(-1),
+            )
+            .squeeze(-1)
+            .squeeze(-1)
+        )
 
-        return torch.sign(s - kh + self.soffset) * self.E(T) * (e - ep) - torch.sign(s - kh + self.soffset) * k_dot - i_dot
+        return (
+            torch.sign(s - kh + self.soffset) * self.E(T) * (e - ep)
+            - torch.sign(s - kh + self.soffset) * k_dot
+            - i_dot
+        )
 
     def ep_jacobian_ep(self, ep, s, h, t, T, e):
         """
@@ -1675,11 +1697,21 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         hkin = h[..., self.isotropic.nhist :]
 
         kh = self.kinematic.value(hkin)
-        
-        di_dot = utility.mbmm(self.isotropic.dvalue(hiso).unsqueeze(-2), self.isotropic.dhistory_rate_derate(s, hiso, t, ep, T, e)).squeeze(-1)
-        dk_dot = utility.mbmm(self.kinematic.dvalue(hkin).unsqueeze(-2), self.kinematic.dhistory_rate_derate(s, hkin, t, ep, T, e)).squeeze(-1)
 
-        return -(torch.sign(s - kh + self.soffset) * self.E(T)).unsqueeze(-1) - torch.sign(s - kh + self.soffset).unsqueeze(-1) * dk_dot - di_dot
+        di_dot = utility.mbmm(
+            self.isotropic.dvalue(hiso).unsqueeze(-2),
+            self.isotropic.dhistory_rate_derate(s, hiso, t, ep, T, e),
+        ).squeeze(-1)
+        dk_dot = utility.mbmm(
+            self.kinematic.dvalue(hkin).unsqueeze(-2),
+            self.kinematic.dhistory_rate_derate(s, hkin, t, ep, T, e),
+        ).squeeze(-1)
+
+        return (
+            -(torch.sign(s - kh + self.soffset) * self.E(T)).unsqueeze(-1)
+            - torch.sign(s - kh + self.soffset).unsqueeze(-1) * dk_dot
+            - di_dot
+        )
 
     def ep_jacobian_s(self, ep, s, h, t, T, e):
         """
@@ -1700,9 +1732,15 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         hkin = h[..., self.isotropic.nhist :]
 
         kh = self.kinematic.value(hkin)
-        
-        di_dot = utility.mbmm(self.isotropic.dvalue(hiso).unsqueeze(-2), self.isotropic.dhistory_rate_dstress(s, hiso, t, ep, T, e).unsqueeze(-1)).squeeze(-1)
-        dk_dot = utility.mbmm(self.kinematic.dvalue(hkin).unsqueeze(-2), self.kinematic.dhistory_rate_dstress(s, hkin, t, ep, T, e).unsqueeze(-1)).squeeze(-1)
+
+        di_dot = utility.mbmm(
+            self.isotropic.dvalue(hiso).unsqueeze(-2),
+            self.isotropic.dhistory_rate_dstress(s, hiso, t, ep, T, e).unsqueeze(-1),
+        ).squeeze(-1)
+        dk_dot = utility.mbmm(
+            self.kinematic.dvalue(hkin).unsqueeze(-2),
+            self.kinematic.dhistory_rate_dstress(s, hkin, t, ep, T, e).unsqueeze(-1),
+        ).squeeze(-1)
 
         return -torch.sign(s - kh + self.soffset).unsqueeze(-1) * dk_dot - di_dot
 
@@ -1726,10 +1764,16 @@ class IsoKinRateIndependentPlasticity(FlowRule):
 
         kh = self.kinematic.value(hkin)
 
-        di_dot = utility.mbmm(self.isotropic.dvalue(hiso).unsqueeze(-2), self.isotropic.dhistory_rate_dhistory(s, hiso, t, ep, T, e)).squeeze(-2)
-        dk_dot = utility.mbmm(self.kinematic.dvalue(hkin).unsqueeze(-2), self.kinematic.dhistory_rate_dhistory(s, hkin, t, ep, T, e)).squeeze(-2)
+        di_dot = utility.mbmm(
+            self.isotropic.dvalue(hiso).unsqueeze(-2),
+            self.isotropic.dhistory_rate_dhistory(s, hiso, t, ep, T, e),
+        ).squeeze(-2)
+        dk_dot = utility.mbmm(
+            self.kinematic.dvalue(hkin).unsqueeze(-2),
+            self.kinematic.dhistory_rate_dhistory(s, hkin, t, ep, T, e),
+        ).squeeze(-2)
 
-        return torch.cat([-di_dot, -torch.sign(s - kh).unsqueeze(-1) * dk_dot], dim = -1)
+        return torch.cat([-di_dot, -torch.sign(s - kh).unsqueeze(-1) * dk_dot], dim=-1)
 
     def ep_jacobian_e(self, ep, s, h, t, T, e):
         """
@@ -1749,7 +1793,7 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         hkin = h[..., self.isotropic.nhist :]
 
         kh = self.kinematic.value(hkin)
-        
+
         return (torch.sign(s - kh + self.soffset) * self.E(T)).unsqueeze(-1)
 
     def sig(self, x):
@@ -1765,7 +1809,7 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         Args:
             x (torch.tensor): input to sigmoid
         """
-        return (torch.tanh(self.s * x) + 1.0)/2.0
+        return (torch.tanh(self.s * x) + 1.0) / 2.0
 
     def dsig(self, x):
         """
@@ -1774,7 +1818,7 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         Args:
             x (torch.tensor): input to sigmoid
         """
-        return 0.5*self.s / torch.cosh(self.s * x)**2.0
+        return 0.5 * self.s / torch.cosh(self.s * x) ** 2.0
 
     def mix_fn(self, s, h, T):
         """
@@ -1820,8 +1864,11 @@ class IsoKinRateIndependentPlasticity(FlowRule):
           T (torch.tensor):   temperature
           e (torch.tensor):   total strain rate
         """
+
         def RJ(x):
-            return self.ep_residual(x, s+self.soffset, h, t, T, e), self.ep_jacobian_ep(x, s+self.soffset, h, t, T, e).squeeze(-1)
+            return self.ep_residual(
+                x, s + self.soffset, h, t, T, e
+            ), self.ep_jacobian_ep(x, s + self.soffset, h, t, T, e).squeeze(-1)
 
         return solvers.scalar_newton(RJ, torch.zeros_like(e))
 
@@ -1845,10 +1892,16 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         bfr = self.plastic_rate(s, h, t, T, e)
 
         fr = mf * bfr
-        dfr = -(self.ep_jacobian_s(bfr, s, h, t, T, e) / self.ep_jacobian_ep(bfr, s, h, t, T, e)).squeeze(-1) * mf + self.dmix_fn_ds(s, h, T) * bfr
-        
+        dfr = (
+            -(
+                self.ep_jacobian_s(bfr, s, h, t, T, e)
+                / self.ep_jacobian_ep(bfr, s, h, t, T, e)
+            ).squeeze(-1)
+            * mf
+            + self.dmix_fn_ds(s, h, T) * bfr
+        )
+
         return fr, dfr
-        
 
     def dflow_derate(self, s, h, t, T, e):
         """
@@ -1870,7 +1923,13 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         """
         pfr = self.plastic_rate(s, h, t, T, e)
         mf = self.mix_fn(s, h, T)
-        dfr = -(self.ep_jacobian_e(pfr, s, h, t, T, e) / self.ep_jacobian_ep(pfr, s, h, t, T, e)).squeeze(-1) * mf
+        dfr = (
+            -(
+                self.ep_jacobian_e(pfr, s, h, t, T, e)
+                / self.ep_jacobian_ep(pfr, s, h, t, T, e)
+            ).squeeze(-1)
+            * mf
+        )
 
         return dfr
 
@@ -1890,8 +1949,11 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         """
         bfr = self.plastic_rate(s, h, t, T, e)
         mf = self.mix_fn(s, h, T)
-        dfr = -(self.ep_jacobian_h(bfr, s, h, t, T, e) / self.ep_jacobian_ep(bfr, s, h, t, T, e)) * mf.unsqueeze(-1) + self.dmix_fn_dh(s, h, T) * bfr.unsqueeze(-1)
-        
+        dfr = -(
+            self.ep_jacobian_h(bfr, s, h, t, T, e)
+            / self.ep_jacobian_ep(bfr, s, h, t, T, e)
+        ) * mf.unsqueeze(-1) + self.dmix_fn_dh(s, h, T) * bfr.unsqueeze(-1)
+
         return dfr.unsqueeze(-2)
 
     @property
@@ -1937,8 +1999,8 @@ class IsoKinRateIndependentPlasticity(FlowRule):
         )
 
         df_dh = self.dflow_dhist(s, h, t, T, e)
-        df_di = df_dh[...,:self.isotropic.nhist]
-        df_dk = df_dh[...,self.isotropic.nhist:]
+        df_di = df_dh[..., : self.isotropic.nhist]
+        df_dk = df_dh[..., self.isotropic.nhist :]
 
         # Jacobian contribution
         hdiv = torch.cat(
@@ -1950,7 +2012,7 @@ class IsoKinRateIndependentPlasticity(FlowRule):
                             self.isotropic.dhistory_rate_derate(
                                 s, hiso, t, erate, T, e
                             ),
-                            df_di 
+                            df_di,
                         ),
                         self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e)
                         * df_dk,
@@ -1963,7 +2025,7 @@ class IsoKinRateIndependentPlasticity(FlowRule):
                             self.kinematic.dhistory_rate_derate(
                                 s, hkin, t, erate, T, e
                             ),
-                            df_di 
+                            df_di,
                         ),
                         self.kinematic.dhistory_rate_dhistory(s, hkin, t, erate, T, e)
                         + utility.mbmm(
@@ -2038,15 +2100,16 @@ class IsoKinRateIndependentPlasticity(FlowRule):
 
         return torch.cat(
             [
-                self.isotropic.dhistory_rate_dtotalrate(s, hiso, t, erate, T, e) + utility.mbmm(
+                self.isotropic.dhistory_rate_dtotalrate(s, hiso, t, erate, T, e)
+                + utility.mbmm(
                     self.isotropic.dhistory_rate_derate(s, hiso, t, erate, T, e),
                     derate[..., None, None],
-                )[...,0],
-                self.kinematic.dhistory_rate_dtotalrate(s, hkin, t, erate, T, e) + utility.mbmm(
+                )[..., 0],
+                self.kinematic.dhistory_rate_dtotalrate(s, hkin, t, erate, T, e)
+                + utility.mbmm(
                     self.kinematic.dhistory_rate_derate(s, hkin, t, erate, T, e),
-                    derate[..., None, None])[...,0],
+                    derate[..., None, None],
+                )[..., 0],
             ],
             dim=-1,
         )
-
-

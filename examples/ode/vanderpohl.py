@@ -81,11 +81,21 @@ if __name__ == "__main__":
 
     model = VanderPolODE(mu)
 
-    res_exp = ode.odeint(model, y0, times, method="forward-euler",
-            block_size = time_chunk, guess_type = "previous")
+    res_exp = ode.odeint(
+        model,
+        y0,
+        times,
+        method="forward-euler",
+        block_size=time_chunk,
+        guess_type="previous",
+    )
     res_imp = ode.odeint(
-        model, y0, times, method="backward-euler",
-        block_size = time_chunk, guess_type = "previous"
+        model,
+        y0,
+        times,
+        method="backward-euler",
+        block_size=time_chunk,
+        guess_type="previous",
     )
 
     plt.figure()
@@ -103,11 +113,21 @@ if __name__ == "__main__":
 
     model = VanderPolODE(mu)
 
-    res_exp = ode.odeint(model, y0, times, method="forward-euler",
-            block_size = time_chunk, guess_type = "previous")
+    res_exp = ode.odeint(
+        model,
+        y0,
+        times,
+        method="forward-euler",
+        block_size=time_chunk,
+        guess_type="previous",
+    )
     res_imp = ode.odeint(
-        model, y0, times, method="backward-euler",
-        block_size = time_chunk, guess_type = "previous"
+        model,
+        y0,
+        times,
+        method="backward-euler",
+        block_size=time_chunk,
+        guess_type="previous",
     )
 
     plt.figure()
@@ -126,8 +146,12 @@ if __name__ == "__main__":
     model = VanderPolODE(mu)
 
     res_imp = ode.odeint(
-        model, y0, times, method="backward-euler",
-        block_size = time_chunk, guess_type = "previous"
+        model,
+        y0,
+        times,
+        method="backward-euler",
+        block_size=time_chunk,
+        guess_type="previous",
     )
 
     plt.figure()

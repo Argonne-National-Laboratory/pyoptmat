@@ -74,7 +74,7 @@ if __name__ == "__main__":
         iso_hardening,
         kin_hardening,
     )
-    
+
     n_constant = CP(torch.tensor(15.0))
     eta_constant = CP(torch.tensor(1.0))
     ri_flowrule = flowrules.IsoKinViscoplasticity(
@@ -135,17 +135,11 @@ if __name__ == "__main__":
         label="Varying temperature",
     )
 
-    grange = np.linspace(0.4,1.4,50)
+    grange = np.linspace(0.4, 1.4, 50)
+    plt.semilogy(grange, np.exp(C) * np.ones_like(grange), color="k", label=None)
     plt.semilogy(
-            grange,
-            np.exp(C)*np.ones_like(grange),
-            color = 'k',
-            label = None)
-    plt.semilogy(
-            grange,
-            np.exp(B.numpy()) * np.exp(A.numpy()*grange),
-            color = 'k',
-            label = None)
+        grange, np.exp(B.numpy()) * np.exp(A.numpy() * grange), color="k", label=None
+    )
 
     plt.axvline(x=g0, ls="--", color="k")
     plt.legend(loc="best")

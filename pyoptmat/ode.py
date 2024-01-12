@@ -275,7 +275,7 @@ class FixedGridBlockSolver:
         rtol (float): relative tolerance for Newton's method
         atol (float): absolute tolerance for Newton's method
         miter (int): maximum number of Newton iterations
-        linesearch (bool): whether to use 
+        linesearch (bool): whether to use
         linear_solve_method (str): method to solve batched sparse Ax = b, options
             are currently "direct" or "dense"
         direct_solve_method (str): method to use for the direct solver, options are
@@ -297,7 +297,7 @@ class FixedGridBlockSolver:
         rtol=1.0e-6,
         atol=1.0e-8,
         miter=200,
-        linesearch = False,
+        linesearch=False,
         linear_solve_method="direct",
         direct_solve_method="thomas",
         direct_solve_min_size=0,
@@ -305,7 +305,7 @@ class FixedGridBlockSolver:
         guess_type="zero",
         guess_history=None,
         throw_on_fail=False,
-        offset_step = 0,
+        offset_step=0,
         **kwargs,
     ):
         # Store basic info about the system
@@ -383,14 +383,13 @@ class FixedGridBlockSolver:
         result[0] = self.y0
         incs = self._gen_increments(t)
 
-
-        for k1,k2 in zip(incs[:-1], incs[1:]):
-            result[k1 : k2] = self.block_update(
-                t[k1 : k2],
+        for k1, k2 in zip(incs[:-1], incs[1:]):
+            result[k1:k2] = self.block_update(
+                t[k1:k2],
                 t[k1 - 1],
                 result[k1 - 1],
                 self.func,
-                self._initial_guess(result, k1, k2-k1),
+                self._initial_guess(result, k1, k2 - k1),
             )
 
         # Store for the backward pass, if we're going to do that
@@ -411,7 +410,7 @@ class FixedGridBlockSolver:
         ntotal = t.shape[0]
         if self.offset_step > 0:
             steps += [self.offset_step + 1]
-        steps += list(range(steps[-1],ntotal, self.n))[1:] + [ntotal]
+        steps += list(range(steps[-1], ntotal, self.n))[1:] + [ntotal]
 
         return steps
 
@@ -470,15 +469,13 @@ class FixedGridBlockSolver:
 
         # Calculate starts at last gradient
         prev_adjoint = output_grad[0]
-        
+
         # Generate reverse increments
         incs = [1 + self.t.shape[0] - r for r in self._gen_increments(self.t)[::-1]]
 
         for k1, k2 in zip(incs[:-1], incs[1:]):
             # Could also cache these of course
-            _, J = self.func(
-                self.t[k1 - 1 : k2], self.result[k1 - 1 : k2]
-            )
+            _, J = self.func(self.t[k1 - 1 : k2], self.result[k1 - 1 : k2])
 
             full_adjoint = self.scheme.update_adjoint(
                 self.t[k1 - 1 : k2].diff(dim=0),
@@ -520,7 +517,7 @@ class FixedGridBlockSolver:
         """
         # Various useful sizes
         n = t.shape[0]  # Number of time steps to do at once
-        
+
         def RJ(dy):
             # Make things into a more rational shape
             dy = dy.reshape(self.batch_size, n, self.prob_size).transpose(0, 1)
@@ -546,7 +543,7 @@ class FixedGridBlockSolver:
             atol=self.atol,
             miter=self.miter,
             throw_on_fail=self.throw_on_fail,
-            linesearch = self.linesearch
+            linesearch=self.linesearch,
         )
 
         return dy.reshape(self.batch_size, n, self.prob_size).transpose(

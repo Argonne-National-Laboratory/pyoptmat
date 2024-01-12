@@ -87,14 +87,14 @@ if __name__ == "__main__":
 
     # 3) Create the actual model
     model = optimize.HierarchicalStatisticalModel(
-        lambda *args, **kwargs: make(*args, block_size = time_chunk_size, **kwargs),
+        lambda *args, **kwargs: make(*args, block_size=time_chunk_size, **kwargs),
         names,
         loc_loc_priors,
         loc_scale_priors,
         scale_scale_priors,
         eps,
         include_noise=False,
-        use_cached_guess= True
+        use_cached_guess=True,
     ).to(device)
 
     # 4) Get the guide

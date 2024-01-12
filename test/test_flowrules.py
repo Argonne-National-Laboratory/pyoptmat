@@ -209,6 +209,7 @@ class TestPerfectViscoplasticity(
         self.rtol = 1e-4
         self.rtol2 = 1e-4
 
+
 class TestPerfectRateIndependentPlasticity(
     unittest.TestCase, CommonFlowRule, CommonFlowRuleBatchBatch
 ):
@@ -229,6 +230,7 @@ class TestPerfectRateIndependentPlasticity(
 
         self.rtol = 1e-4
         self.rtol2 = 1e-4
+
 
 class TestWrappedRIIsoKinViscoplasticity(
     unittest.TestCase, CommonFlowRule, CommonFlowRuleBatchBatch
@@ -586,6 +588,7 @@ class TestIsoKinViscoplasticity(
 
         self.assertTrue(np.allclose(i1, i2, rtol=1.0e-4))
 
+
 class TestSuperimposedFlowRate(
     unittest.TestCase, CommonFlowRule, CommonFlowRuleBatchBatch
 ):
@@ -734,7 +737,7 @@ class TestIsoKinChabocheRIPlasticity(
         self.kin = hardening.ChabocheHardeningModel(CP(self.C), CP(self.g))
 
         self.model = flowrules.IsoKinRateIndependentPlasticity(
-            CP(self.E), CP(self.sy), self.iso, self.kin, s = 0.01
+            CP(self.E), CP(self.sy), self.iso, self.kin, s=0.01
         )
 
         self.s = torch.linspace(160, 240, self.nbatch)
@@ -763,52 +766,88 @@ class TestIsoKinChabocheRIPlasticity(
         self.ep_guess = self.erate.clone()
 
     def test_d_residual_dep(self):
-        exact = self.model.ep_jacobian_ep(self.ep_guess, self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.batch_differentiate(lambda x: self.model.ep_residual(x, self.s, self.h, self.t, self.T, self.erate), self.ep_guess).unsqueeze(-1)
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        exact = self.model.ep_jacobian_ep(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                x, self.s, self.h, self.t, self.T, self.erate
+            ),
+            self.ep_guess,
+        ).unsqueeze(-1)
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
 
     def test_d_residual_ds(self):
-        exact = self.model.ep_jacobian_s(self.ep_guess, self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.batch_differentiate(lambda x: self.model.ep_residual(self.ep_guess, x, self.h, self.t, self.T, self.erate), self.s).unsqueeze(-1)
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        exact = self.model.ep_jacobian_s(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                self.ep_guess, x, self.h, self.t, self.T, self.erate
+            ),
+            self.s,
+        ).unsqueeze(-1)
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
 
     def test_d_residual_dh(self):
-        exact = self.model.ep_jacobian_h(self.ep_guess, self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.batch_differentiate(lambda x: self.model.ep_residual(self.ep_guess, self.s, x, self.t, self.T, self.erate), self.h)
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        exact = self.model.ep_jacobian_h(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                self.ep_guess, self.s, x, self.t, self.T, self.erate
+            ),
+            self.h,
+        )
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
 
     def test_d_residual_de(self):
-        exact = self.model.ep_jacobian_e(self.ep_guess, self.s, self.h, self.t, self.T, self.erate)
-        numer = utility.batch_differentiate(lambda x: self.model.ep_residual(self.ep_guess, self.s, self.h, self.t, self.T, x), self.erate).unsqueeze(-1)
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        exact = self.model.ep_jacobian_e(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                self.ep_guess, self.s, self.h, self.t, self.T, x
+            ),
+            self.erate,
+        ).unsqueeze(-1)
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
 
     def test_d_sig(self):
         x = torch.linspace(-1, 1, 10)
         exact = self.model.dsig(x)
         numer = utility.batch_differentiate(lambda x: self.model.sig(x), x)
 
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
 
     def test_df_ds(self):
         exact = self.model.df_ds(self.s, self.h, self.T)
-        numer = utility.batch_differentiate(lambda x: self.model.f(x, self.h, self.T), self.s)
+        numer = utility.batch_differentiate(
+            lambda x: self.model.f(x, self.h, self.T), self.s
+        )
 
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
 
     def test_dmix_fn_ds(self):
         exact = self.model.dmix_fn_ds(self.s, self.h, self.T)
-        numer = utility.batch_differentiate(lambda x: self.model.mix_fn(x, self.h, self.T), self.s)
-        
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol, atol = 1.0e-4))
+        numer = utility.batch_differentiate(
+            lambda x: self.model.mix_fn(x, self.h, self.T), self.s
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol, atol=1.0e-4))
 
     def test_df_dh(self):
         exact = self.model.df_dh(self.s, self.h, self.T)
-        numer = utility.batch_differentiate(lambda x: self.model.f(self.s, x, self.T), self.h)
+        numer = utility.batch_differentiate(
+            lambda x: self.model.f(self.s, x, self.T), self.h
+        )
 
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
 
     def test_dmix_fn_dh(self):
         exact = self.model.dmix_fn_dh(self.s, self.h, self.T)
-        numer = utility.batch_differentiate(lambda x: self.model.mix_fn(self.s, x, self.T), self.h)
-        
-        self.assertTrue(torch.allclose(exact, numer, rtol = self.rtol))
+        numer = utility.batch_differentiate(
+            lambda x: self.model.mix_fn(self.s, x, self.T), self.h
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))

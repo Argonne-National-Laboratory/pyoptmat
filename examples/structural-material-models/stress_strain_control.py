@@ -91,7 +91,7 @@ if __name__ == "__main__":
         stresses.T.numpy(),
     ):
         (l,) = plt.plot(ei, si, label="T = %3.0fK" % Ti[0])
-        plt.plot(epi, si, label=None, ls="--", color=l.get_color(), lw = 4, alpha = 0.5)
+        plt.plot(epi, si, label=None, ls="--", color=l.get_color(), lw=4, alpha=0.5)
 
     plt.legend(loc="best")
     plt.xlabel("Strain (mm/mm)")
@@ -120,7 +120,9 @@ if __name__ == "__main__":
             stresses[:, i],
             label=None,
             ls="--",
-            color=l.get_color(), lw = 4, alpha = 0.5
+            color=l.get_color(),
+            lw=4,
+            alpha=0.5,
         )
 
     plt.xlabel("Strain (mm/mm)")

@@ -71,7 +71,7 @@ class CommonModel:
         ddv = utility.batch_differentiate(
             lambda x: use.forward(self.t, x)[0], self.state_stress
         )
-        
+
         self.assertTrue(np.allclose(dv, ddv, rtol=1e-4, atol=1e-4))
 
     def test_partial_state(self):
@@ -327,6 +327,7 @@ class TestIsoKinViscoplasticity(unittest.TestCase, CommonModel, CommonModelBatch
         self.t = self.times[2]
         self.step = 2
 
+
 class TestIsoKinRIPlasticity(unittest.TestCase, CommonModel, CommonModelBatchBatch):
     def setUp(self):
         self.E = torch.tensor(100000.0)
@@ -362,8 +363,8 @@ class TestIsoKinRIPlasticity(unittest.TestCase, CommonModel, CommonModelBatchBat
         self.state_strain = (
             torch.tensor([[90.0, 30.0, 10.0], [100.0, 10.0, 15.0], [101.0, 50.0, 60.0]])
         ) / 3.0
-        self.state_stress = (
-            torch.tensor([[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]])
+        self.state_stress = torch.tensor(
+            [[0.05, 30.0, 10.0], [0.07, 10.0, 15.0], [0.08, 50.0, 60.0]]
         )
 
         self.t = self.times[2]
@@ -534,4 +535,3 @@ class TestAll(unittest.TestCase, CommonModel, CommonModelBatchBatch):
 
         self.t = self.times[2]
         self.step = 2
-

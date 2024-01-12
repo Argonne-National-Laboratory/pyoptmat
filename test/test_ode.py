@@ -181,6 +181,7 @@ class TestFallingBatch(unittest.TestCase):
 
         self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
 
+
 class TestFallingBatchUnequal(unittest.TestCase):
     def setUp(self):
         self.m = 1.0 / 4.0
@@ -206,7 +207,7 @@ class TestFallingBatchUnequal(unittest.TestCase):
             self.times,
             method="forward-euler",
             block_size=self.nchunk,
-            offset_step = 2
+            offset_step=2,
         )
 
         self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
@@ -219,7 +220,7 @@ class TestFallingBatchUnequal(unittest.TestCase):
             self.times,
             method="backward-euler",
             block_size=self.nchunk,
-            offset_step = 2
+            offset_step=2,
         )
 
         self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)

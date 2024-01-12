@@ -44,7 +44,7 @@ device = torch.device(dev)
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
     """
-        Maker with Young's modulus fixed
+    Maker with Young's modulus fixed
     """
     return make_model(torch.tensor(0.5), n, eta, s0, R, d, device=device, **kwargs).to(
         device
@@ -89,9 +89,18 @@ if __name__ == "__main__":
 
     # 3) Create the actual model
     model = optimize.HierarchicalStatisticalModel(
-            lambda *args, **kwargs: make(*args, block_size = time_chunk_size, direct_solve_method = linear_solve_method,
-                **kwargs), 
-            names, loc_loc_priors, loc_scale_priors, scale_scale_priors, eps, use_cached_guess = False
+        lambda *args, **kwargs: make(
+            *args,
+            block_size=time_chunk_size,
+            direct_solve_method=linear_solve_method,
+            **kwargs
+        ),
+        names,
+        loc_loc_priors,
+        loc_scale_priors,
+        scale_scale_priors,
+        eps,
+        use_cached_guess=False,
     ).to(device)
 
     # 4) Get the guide

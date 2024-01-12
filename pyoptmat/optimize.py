@@ -124,7 +124,7 @@ class DeterministicModel(Module):
       ics (list(torch.tensor)): initial conditions to use for each parameter
     """
 
-    def __init__(self, maker, names, ics, use_cached_guess = False):
+    def __init__(self, maker, names, ics, use_cached_guess=False):
         super().__init__()
 
         self.maker = maker
@@ -159,7 +159,7 @@ class DeterministicModel(Module):
           exp_control (torch.tensor): stress/strain control flag
         """
         if self.use_cached_guess:
-            model = self.maker(*self.get_params(), guess_history = self.cached_solution)
+            model = self.maker(*self.get_params(), guess_history=self.cached_solution)
         else:
             model = self.maker(*self.get_params())
 
@@ -198,7 +198,9 @@ class StatisticalModel(PyroModule):
                                     entry i represents the noise in test type i
     """
 
-    def __init__(self, maker, names, locs, scales, eps, nan_num=False, use_cached_guess = False):
+    def __init__(
+        self, maker, names, locs, scales, eps, nan_num=False, use_cached_guess=False
+    ):
         super().__init__()
 
         self.maker = maker
@@ -242,7 +244,7 @@ class StatisticalModel(PyroModule):
           exp_results (torch.tensor): true results for conditioning
         """
         if self.use_cached_guess:
-            model = self.maker(*self.get_params(), guess_history = self.cached_solution)
+            model = self.maker(*self.get_params(), guess_history=self.cached_solution)
         else:
             model = self.maker(*self.get_params())
 
@@ -337,7 +339,7 @@ class HierarchicalStatisticalModel(PyroModule):
         param_suffix="_param",
         include_noise=False,
         weights=None,
-        use_cached_guess = False
+        use_cached_guess=False,
     ):
         super().__init__()
 
@@ -556,8 +558,9 @@ class HierarchicalStatisticalModel(PyroModule):
             # Sample the bottom level parameters
             if self.use_cached_guess:
                 bmodel = self.maker(
-                    *self.sample_bot(), extra_params=self.get_extra_params(),
-                    guess_history = self.cached_solution
+                    *self.sample_bot(),
+                    extra_params=self.get_extra_params(),
+                    guess_history=self.cached_solution,
                 )
             else:
                 bmodel = self.maker(
