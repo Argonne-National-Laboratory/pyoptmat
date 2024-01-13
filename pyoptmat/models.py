@@ -283,10 +283,11 @@ class ModelIntegrator(nn.Module):
 
     """
 
-    def __init__(self, model, *args, use_adjoint=True, bisect_first=False, **kwargs):
+    def __init__(self, model, *args, use_adjoint=True, bisect_first=False, throw_on_scalar_fail = False, **kwargs):
         super().__init__(*args)
         self.model = model
         self.use_adjoint = use_adjoint
+        self.throw_on_scalar_fail = throw_on_scalar_fail
         self.kwargs_for_integration = kwargs
 
         if self.use_adjoint:
@@ -325,6 +326,7 @@ class ModelIntegrator(nn.Module):
             temperatures,
             control,
             bisect_first=self.bisect_first,
+            throw_on_scalar_fail = self.throw_on_scalar_fail
         )
 
         return self.imethod(bmodel, init, times, **self.kwargs_for_integration)
@@ -405,6 +407,8 @@ class ModelIntegrator(nn.Module):
             stress_rate_interpolator,
             stress_interpolator,
             temperature_interpolator,
+            bisect_first = self.bisect_first,
+            throw_on_scalar_fail = self.throw_on_scalar_fail
         )
 
         return self.imethod(smodel, init, times, **self.kwargs_for_integration)
@@ -442,6 +446,7 @@ class BothBasedModel(nn.Module):
         temps,
         control,
         bisect_first=False,
+        throw_on_scalar_fail = False,
         *args,
         **kwargs
     ):
@@ -473,6 +478,7 @@ class BothBasedModel(nn.Module):
                 times[..., self.scontrol], temps[..., self.scontrol]
             ),
             bisect_first=bisect_first,
+            throw_on_scalar_fail = throw_on_scalar_fail
         )
 
     def forward(self, t, y):
@@ -556,6 +562,7 @@ class StressBasedModel(nn.Module):
         max_erate=1e3,
         guess_erate=1.0e-3,
         bisect_first=False,
+        throw_on_scalar_fail = False,
         *args,
         **kwargs
     ):
@@ -568,6 +575,7 @@ class StressBasedModel(nn.Module):
         self.max_erate = max_erate
         self.bisect_first = bisect_first
         self.guess_erate = guess_erate
+        self.throw_on_scalar_fail = throw_on_scalar_fail
 
     def forward(self, t, y):
         """
@@ -597,9 +605,11 @@ class StressBasedModel(nn.Module):
                 RJ,
                 torch.ones_like(y[..., 0]) * self.min_erate,
                 torch.ones_like(y[..., 0]) * self.max_erate,
+                throw_on_fail = self.throw_on_scalar_fail
             )
         else:
-            erate = solvers.scalar_newton(RJ, torch.sign(csr) * self.guess_erate)
+            erate = solvers.scalar_newton(RJ, torch.sign(csr) * self.guess_erate,
+                    throw_on_fail = self.throw_on_scalar_fail)
 
         ydot, J, Je, _ = self.model(
             t, torch.cat([cs.unsqueeze(-1), y[..., 1:]], dim=-1), erate, cT

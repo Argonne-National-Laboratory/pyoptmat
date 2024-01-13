@@ -45,7 +45,7 @@ def scalar_bisection(fn, a, b, atol=1.0e-6, miter=100):
     return c
 
 
-def scalar_newton(fn, x0, atol=1.0e-6, miter=100):
+def scalar_newton(fn, x0, atol=1.0e-6, miter=100, throw_on_fail = False):
     """
     Solve logically scalar equations with Newton's method
 
@@ -68,6 +68,8 @@ def scalar_newton(fn, x0, atol=1.0e-6, miter=100):
 
         R, J = fn(x)
     else:
+        if throw_on_fail:
+            raise RuntimeError("Scalar solve failed")
         warnings.warn(
             "Scalar implicit solve did not succeed.  Results may be inaccurate..."
         )
@@ -75,7 +77,7 @@ def scalar_newton(fn, x0, atol=1.0e-6, miter=100):
     return x
 
 
-def scalar_bisection_newton(fn, a, b, atol=1.0e-6, miter=100, biter=10):
+def scalar_bisection_newton(fn, a, b, atol=1.0e-6, miter=100, biter=10, throw_on_fail = False):
     """
     Solve logically scalar equations by switching from bisection to Newton's method
 
@@ -90,7 +92,7 @@ def scalar_bisection_newton(fn, a, b, atol=1.0e-6, miter=100, biter=10):
         miter (int): max number of iterations for Newton's method
     """
     x = scalar_bisection(fn, a, b, atol=atol, miter=biter)
-    return scalar_newton(fn, x, atol=atol, miter=miter)
+    return scalar_newton(fn, x, atol=atol, miter=miter, throw_on_fail = throw_on_fail)
 
 
 def newton_raphson_bt(
