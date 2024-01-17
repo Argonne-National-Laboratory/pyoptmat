@@ -402,7 +402,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
     Args:
         model1 (flowrules.FlowRule):            first flow rule
         model2 (flowrules.FlowRule):            second flow rule
-        g0 (torch.tensor):                      activation energy threshold
+        A, B, C (torch.tensor):                 Kocks-Mecking parameters
         mu (temperature.TemperatureParameter):  shear modulus
         b (torch.tensor):                       burgers vector
         eps0 (torch.tensor):                    reference strain rate
@@ -410,30 +410,35 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         sf (torch.tensor):                      sharpness parameter
 
     Keyword Args:
+        A_scale, B_scale, C_scale:              scaling functions for K-M parameters
         eps (float):                            default 1e-20, offset to
                                                 avoid divide-by-zero
-        g0_scale (function):                    scaling function for g0,
-                                                defaults to no scaling
     """
 
     def __init__(
         self,
         model1,
         model2,
-        g0,
+        A,
+        B,
+        C,
         mu,
         b,
         eps0,
         k,
         sf,
+        A_scale = lambda x: x,
+        B_scale = lambda x: x,
+        C_scale = lambda x: x,
         eps=torch.tensor(1e-20),
-        g0_scale=lambda x: x,
     ):
         super().__init__()
 
         self.model1 = model1
         self.model2 = model2
-        self.g0 = g0
+        self.A = A
+        self.B = B
+        self.C = C
 
         self.mu = mu
         self.b = b
@@ -443,7 +448,9 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         self.sf = sf
 
         self.eps = eps
-        self.g0_scale = g0_scale
+        self.A_scale = A_scale
+        self.B_scale = B_scale
+        self.C_scale = C_scale
 
         # Check for conformal history vectors
         if self.model1.nhist != self.model2.nhist:
@@ -505,8 +512,11 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
             torch.tensor:       value of the weighting function
         """
         return (
-            torch.tanh(self.sf * (self.g(T, e) - self.g0_scale(self.g0))) + 1.0
+            torch.tanh(self.sf * (self.g(T, e) - self.g0())) + 1.0
         ) / 2.0
+
+    def g0(self):
+        return (self.C_scale.scale(self.C) - self.B_scale.scale(self.B)) / self.A_scale(self.A)
 
     def df_e(self, T, e):
         """
@@ -524,7 +534,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
             self.sf
             / (
                 2.0
-                * torch.cosh(self.sf * (self.g(T, e) - self.g0_scale(self.g0))) ** 2.0
+                * torch.cosh(self.sf * (self.g(T, e) - self.g0())) ** 2.0
             )
             * self.dg_e(T, e)
         )
