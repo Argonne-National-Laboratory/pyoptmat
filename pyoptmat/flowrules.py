@@ -427,9 +427,9 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         eps0,
         k,
         sf,
-        A_scale = lambda x: x,
-        B_scale = lambda x: x,
-        C_scale = lambda x: x,
+        A_scale=lambda x: x,
+        B_scale=lambda x: x,
+        C_scale=lambda x: x,
         eps=torch.tensor(1e-20),
     ):
         super().__init__()
@@ -511,12 +511,12 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         Returns:
             torch.tensor:       value of the weighting function
         """
-        return (
-            torch.tanh(self.sf * (self.g(T, e) - self.g0())) + 1.0
-        ) / 2.0
+        return (torch.tanh(self.sf * (self.g(T, e) - self.g0())) + 1.0) / 2.0
 
     def g0(self):
-        return (self.C_scale.scale(self.C) - self.B_scale.scale(self.B)) / self.A_scale(self.A)
+        return (self.C_scale.scale(self.C) - self.B_scale.scale(self.B)) / self.A_scale(
+            self.A
+        )
 
     def df_e(self, T, e):
         """
@@ -532,10 +532,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         """
         return (
             self.sf
-            / (
-                2.0
-                * torch.cosh(self.sf * (self.g(T, e) - self.g0())) ** 2.0
-            )
+            / (2.0 * torch.cosh(self.sf * (self.g(T, e) - self.g0())) ** 2.0)
             * self.dg_e(T, e)
         )
 
