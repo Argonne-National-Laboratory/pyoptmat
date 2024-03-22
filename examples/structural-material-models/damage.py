@@ -35,21 +35,20 @@ if __name__ == "__main__":
     s0 = CP(torch.tensor(0.0))
     theta0 = CP(torch.tensor(3000.0))
     tau = CP(torch.tensor(100.0))
-   
+
     isotropic = hardening.Theta0VoceIsotropicHardeningModel(tau, theta0)
     kinematic = hardening.NoKinematicHardeningModel()
-    flowrule = flowrules.IsoKinViscoplasticity(n, eta, 
-            s0, isotropic, kinematic)
-    
+    flowrule = flowrules.IsoKinViscoplasticity(n, eta, s0, isotropic, kinematic)
+
     C = CP(torch.tensor(15.94))
     A = CP(torch.tensor(-5379.0))
     B = CP(torch.tensor(29316.3))
 
     dmodel = damage.LarsonMillerDamage(C, A, B)
 
-    model = models.DamagedInelasticModel(E, flowrule, dmodel = dmodel)
+    model = models.DamagedInelasticModel(E, flowrule, dmodel=dmodel)
 
-    integrator = models.ModelIntegrator(model, block_size = 20)
+    integrator = models.ModelIntegrator(model, block_size=20)
 
     # Creep
     target_temperature = 550.0 + 273.15
@@ -74,7 +73,7 @@ if __name__ == "__main__":
 
     state = integrator.solve_stress(times, stresses, temperatures)
 
-    strains = state[...,0]
+    strains = state[..., 0]
 
     plt.plot(times, strains)
     plt.xlabel("Time (hrs)")
@@ -86,34 +85,40 @@ if __name__ == "__main__":
     plt.ylabel("Stress (MPa)")
     plt.show()
 
-    plt.plot(times, state[...,-1])
+    plt.plot(times, state[..., -1])
     plt.xlabel("Time (hrs)")
     plt.ylabel("Damage")
     plt.show()
-    
-    # Simpler 
+
+    # Simpler
     R = CP(torch.tensor(1.0e-3))
     dmodel = damage.ConstantDamage(R)
-    model = models.DamagedInelasticModel(E, flowrule, dmodel = dmodel)
-    integrator = models.ModelIntegrator(model, block_size = 20)
+    model = models.DamagedInelasticModel(E, flowrule, dmodel=dmodel)
+    integrator = models.ModelIntegrator(model, block_size=20)
 
     # Tension with unload
-    times = torch.cat([torch.linspace(0, 750, nsteps_hold) , torch.linspace(750, 751, nsteps_hold)[1:]]).unsqueeze(-1)
-    strains = torch.cat([torch.linspace(0, 0.4, nsteps_hold), torch.linspace(0.4, 0.398, nsteps_hold)[1:]]).unsqueeze(-1)
+    times = torch.cat(
+        [torch.linspace(0, 750, nsteps_hold), torch.linspace(750, 751, nsteps_hold)[1:]]
+    ).unsqueeze(-1)
+    strains = torch.cat(
+        [
+            torch.linspace(0, 0.4, nsteps_hold),
+            torch.linspace(0.4, 0.398, nsteps_hold)[1:],
+        ]
+    ).unsqueeze(-1)
     temperatures = torch.zeros_like(strains)
 
     state = integrator.solve_strain(times, strains, temperatures)
-    stress = state[...,0]
+    stress = state[..., 0]
 
-    E_final = (stress[-2,0] - stress[-1,0])/(strains[-2,0] - strains[-1,0])
-    d = state[-1,0,-1]
+    E_final = (stress[-2, 0] - stress[-1, 0]) / (strains[-2, 0] - strains[-1, 0])
+    d = state[-1, 0, -1]
 
     print("Initial modulus: %f" % E.pvalue.cpu())
     print("Final modulus: %f" % E_final.cpu())
-    print("Calculated modulus: %f" % (E.pvalue * (1-d)).cpu())
+    print("Calculated modulus: %f" % (E.pvalue * (1 - d)).cpu())
 
     plt.plot(strains, stress)
     plt.xlabel("Strain (mm/mm)")
     plt.ylabel("Stress (MPa)")
     plt.show()
-

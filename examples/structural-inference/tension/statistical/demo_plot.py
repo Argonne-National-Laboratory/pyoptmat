@@ -32,7 +32,7 @@ device = torch.device(dev)
 # Don't try to optimize for the Young's modulus
 def make(n, eta, s0, R, d, **kwargs):
     """
-        Maker with the Young's modulus fixed
+    Maker with the Young's modulus fixed
     """
     return make_model(torch.tensor(0.5), n, eta, s0, R, d, device=device, **kwargs).to(
         device
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     names = ["n", "eta", "s0", "R", "d"]
     sampler = optimize.StatisticalModel(
-        lambda *args, **kwargs: make(*args, block_size = time_chunk_size, **kwargs),
+        lambda *args, **kwargs: make(*args, block_size=time_chunk_size, **kwargs),
         names,
         [0.50, 0.49, 0.49, 0.48, 0.48],
         [0.02, 0.02, 0.03, 0.05, 0.05],

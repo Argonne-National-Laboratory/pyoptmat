@@ -76,7 +76,11 @@ if __name__ == "__main__":
     print("")
 
     # 3) Create the actual model
-    model = optimize.DeterministicModel(lambda *args, **kwargs: make(*args, block_size = time_chunk_size, **kwargs), names, ics)
+    model = optimize.DeterministicModel(
+        lambda *args, **kwargs: make(*args, block_size=time_chunk_size, **kwargs),
+        names,
+        ics,
+    )
 
     # 4) Setup the optimizer
     niter = 200

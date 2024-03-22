@@ -182,6 +182,50 @@ class TestFallingBatch(unittest.TestCase):
         self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
 
 
+class TestFallingBatchUnequal(unittest.TestCase):
+    def setUp(self):
+        self.m = 1.0 / 4.0
+        self.w = 8.0
+        self.k = 2.0
+
+        self.nbatch = 20
+        self.y0 = torch.zeros(self.nbatch, 2)
+
+        self.nsteps = 1000
+        self.nchunk = 10
+        self.times = torch.tensor(
+            np.array([np.linspace(0, 5.0, self.nsteps) for i in range(self.nbatch)]).T
+        )
+
+        self.model = FallingODE(self.m, self.w, self.k)
+
+    def test_forward(self):
+        exact = self.model.exact(self.times, self.y0)
+        numerical = ode.odeint(
+            self.model,
+            self.y0,
+            self.times,
+            method="forward-euler",
+            block_size=self.nchunk,
+            offset_step=2,
+        )
+
+        self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
+
+    def test_backward(self):
+        exact = self.model.exact(self.times, self.y0)
+        numerical = ode.odeint(
+            self.model,
+            self.y0,
+            self.times,
+            method="backward-euler",
+            block_size=self.nchunk,
+            offset_step=2,
+        )
+
+        self.assertTrue(torch.max(torch.abs((numerical[1:] - exact[1:]))) < 1.0e-1)
+
+
 class FallingParameterizedODE(torch.nn.Module):
     """
     From ORNL/TM-9912

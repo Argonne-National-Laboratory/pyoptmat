@@ -19,7 +19,7 @@ class CommonFlowRule:
             nbatch_dim=1,
         )
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_history_rate(self):
         if self.skip:
@@ -34,7 +34,7 @@ class CommonFlowRule:
             nbatch_dim=1,
         )
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_flow_history(self):
         if self.skip:
@@ -47,7 +47,7 @@ class CommonFlowRule:
             nbatch_dim=1,
         ).unsqueeze(1)
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_history_stress(self):
         if self.skip:
@@ -60,7 +60,7 @@ class CommonFlowRule:
             nbatch_dim=1,
         )
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_flow_erate(self):
         exact = self.model.dflow_derate(self.s, self.h, self.t, self.T, self.erate)
@@ -70,7 +70,7 @@ class CommonFlowRule:
             nbatch_dim=1,
         )
 
-        self.assertTrue(np.allclose(exact, torch.flatten(numer), rtol=1.0e-2))
+        self.assertTrue(np.allclose(exact, torch.flatten(numer), rtol=self.rtol2))
 
     def test_history_erate(self):
         if self.skip:
@@ -83,7 +83,7 @@ class CommonFlowRule:
             nbatch_dim=1,
         )
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-2, atol=1e-6))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol2, atol=1e-6))
 
 
 class CommonFlowRuleBatchBatch:
@@ -111,7 +111,7 @@ class CommonFlowRuleBatchBatch:
 
         self.assertEqual(exact.shape, numer.shape)
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_history_rate_bb(self):
         if self.skip:
@@ -126,7 +126,7 @@ class CommonFlowRuleBatchBatch:
 
         self.assertEqual(exact.shape, numer.shape)
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_flow_history_bb(self):
         if self.skip:
@@ -141,7 +141,7 @@ class CommonFlowRuleBatchBatch:
 
         self.assertEqual(exact.shape, numer.shape)
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_history_stress_bb(self):
         if self.skip:
@@ -149,14 +149,14 @@ class CommonFlowRuleBatchBatch:
 
         s, h, t, T, erate = self.expand_all()
 
-        exact = self.model.dhist_dstress(s, h, t, T, self.erate)
+        exact = self.model.dhist_dstress(s, h, t, T, erate)
         numer = utility.batch_differentiate(
             lambda x: self.model.history_rate(x, h, t, T, erate)[0], s, nbatch_dim=2
         )
 
         self.assertEqual(exact.shape, numer.shape)
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-4))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol))
 
     def test_flow_erate_bb(self):
 
@@ -169,7 +169,7 @@ class CommonFlowRuleBatchBatch:
 
         self.assertEqual(exact.shape, numer.shape)
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-2))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol2))
 
     def test_history_erate_bb(self):
         if self.skip:
@@ -184,7 +184,7 @@ class CommonFlowRuleBatchBatch:
 
         self.assertEqual(exact.shape, numer.shape)
 
-        self.assertTrue(np.allclose(exact, numer, rtol=1.0e-2, atol=1e-6))
+        self.assertTrue(np.allclose(exact, numer, rtol=self.rtol2, atol=1e-6))
 
 
 class TestPerfectViscoplasticity(
@@ -205,6 +205,31 @@ class TestPerfectViscoplasticity(
         self.skip = True
         self.T = torch.zeros_like(self.t)
         self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
+
+        self.rtol = 1e-4
+        self.rtol2 = 1e-4
+
+
+class TestPerfectRateIndependentPlasticity(
+    unittest.TestCase, CommonFlowRule, CommonFlowRuleBatchBatch
+):
+    def setUp(self):
+
+        self.sy = torch.tensor(100.0)
+
+        self.nbatch = 10
+
+        self.model = flowrules.PerfectRateIndependentPlasticity(CP(self.sy))
+
+        self.s = torch.linspace(91, 121, self.nbatch)
+        self.h = torch.reshape(torch.linspace(50, 110, self.nbatch), (self.nbatch, 1))
+        self.t = torch.ones(self.nbatch)
+        self.skip = True
+        self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
+
+        self.rtol = 1e-4
+        self.rtol2 = 1e-4
 
 
 class TestWrappedRIIsoKinViscoplasticity(
@@ -262,6 +287,9 @@ class TestWrappedRIIsoKinViscoplasticity(
         self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
 
         self.skip = False
+
+        self.rtol = 1e-4
+        self.rtol2 = 1e-4
 
 
 class TestKocksMeckingRegimeFlowRule(
@@ -332,6 +360,9 @@ class TestKocksMeckingRegimeFlowRule(
 
         self.skip = False
 
+        self.rtol = 1e-4
+        self.rtol2 = 1e-2
+
 
 class TestSoftKocksMeckingRegimeFlowRule(
     unittest.TestCase, CommonFlowRule, CommonFlowRuleBatchBatch
@@ -376,13 +407,18 @@ class TestSoftKocksMeckingRegimeFlowRule(
         self.eps0 = 1.0
         self.k = 1.0
 
-        self.g0 = 1.5
+        self.A = torch.tensor(-3.35)
+        self.B = torch.tensor(-3.23)
+        self.C = torch.tensor(-5.82)
+
         self.sf = 10.0
 
         self.model = flowrules.SoftKocksMeckingRegimeFlowRule(
             self.model1,
             self.model2,
-            self.g0,
+            self.A,
+            self.B,
+            self.C,
             self.mu,
             self.b,
             self.eps0,
@@ -408,6 +444,9 @@ class TestSoftKocksMeckingRegimeFlowRule(
         self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
 
         self.skip = False
+
+        self.rtol = 1e-4
+        self.rtol2 = 1e-2
 
 
 class TestSoftKocksMeckingRegimeFlowRuleComplex(
@@ -452,13 +491,18 @@ class TestSoftKocksMeckingRegimeFlowRuleComplex(
         self.eps0 = 1.0
         self.k = 1.0
 
-        self.g0 = 1.5
+        self.A = torch.tensor(-3.35)
+        self.B = torch.tensor(-3.23)
+        self.C = torch.tensor(-5.82)
+
         self.sf = 10.0
 
         self.model = flowrules.SoftKocksMeckingRegimeFlowRule(
             self.model1,
             self.model2,
-            self.g0,
+            self.A,
+            self.B,
+            self.C,
             self.mu,
             self.b,
             self.eps0,
@@ -484,6 +528,9 @@ class TestSoftKocksMeckingRegimeFlowRuleComplex(
         self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
 
         self.skip = False
+
+        self.rtol = 1e-4
+        self.rtol2 = 1e-2
 
 
 class TestIsoKinViscoplasticity(
@@ -526,6 +573,9 @@ class TestIsoKinViscoplasticity(
         self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
 
         self.skip = False
+
+        self.rtol = 1e-4
+        self.rtol2 = 1e-4
 
     def test_kin(self):
         def fn(i):
@@ -608,6 +658,9 @@ class TestSuperimposedFlowRate(
 
         self.skip = False
 
+        self.rtol = 1e-4
+        self.rtol2 = 1e-4
+
 
 class TestIsoKinChabocheViscoplasticity(
     unittest.TestCase, CommonFlowRule, CommonFlowRuleBatchBatch
@@ -651,6 +704,9 @@ class TestIsoKinChabocheViscoplasticity(
 
         self.skip = False
 
+        self.rtol = 1e-4
+        self.rtol2 = 1e-4
+
     def test_kin(self):
         def fn(i):
             hp = self.h.clone()
@@ -671,3 +727,137 @@ class TestIsoKinChabocheViscoplasticity(
         i2 = self.model.dflow_diso(self.s, self.h, self.t, self.T, self.erate)
 
         self.assertTrue(np.allclose(i1, i2, rtol=1.0e-4))
+
+
+class TestIsoKinChabocheRIPlasticity(
+    unittest.TestCase, CommonFlowRule, CommonFlowRuleBatchBatch
+):
+    def setUp(self):
+        self.sy = torch.tensor(110.0)
+        self.E = torch.tensor(50000.0)
+
+        self.nbatch = 10
+
+        self.R = torch.tensor(101.0)
+        self.d = torch.tensor(1.3)
+        self.iso = hardening.VoceIsotropicHardeningModel(CP(self.R), CP(self.d))
+
+        self.C = torch.tensor([100.0, 1000, 1500])
+        self.g = torch.tensor([1.2, 100, 50])
+        self.kin = hardening.ChabocheHardeningModel(CP(self.C), CP(self.g))
+
+        self.model = flowrules.IsoKinRateIndependentPlasticity(
+            CP(self.E), CP(self.sy), self.iso, self.kin, s=0.01
+        )
+
+        self.s = torch.linspace(160, 240, self.nbatch)
+        self.h = torch.reshape(
+            torch.tensor(
+                np.array(
+                    [
+                        np.linspace(51, 110, self.nbatch),
+                        np.linspace(-10, 21, self.nbatch)[::-1],
+                        np.linspace(0, 2, self.nbatch),
+                        np.linspace(-2, 0, self.nbatch),
+                    ]
+                )
+            ).T,
+            (self.nbatch, 4),
+        )
+        self.t = torch.ones(self.nbatch)
+        self.T = torch.zeros_like(self.t)
+        self.erate = torch.linspace(1e-2, 1e-3, self.nbatch)
+
+        self.skip = False
+
+        self.rtol = 1e-4
+        self.rtol2 = 1e-4
+
+        self.ep_guess = self.erate.clone()
+
+    def test_d_residual_dep(self):
+        exact = self.model.ep_jacobian_ep(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                x, self.s, self.h, self.t, self.T, self.erate
+            ),
+            self.ep_guess,
+        ).unsqueeze(-1)
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
+
+    def test_d_residual_ds(self):
+        exact = self.model.ep_jacobian_s(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                self.ep_guess, x, self.h, self.t, self.T, self.erate
+            ),
+            self.s,
+        ).unsqueeze(-1)
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
+
+    def test_d_residual_dh(self):
+        exact = self.model.ep_jacobian_h(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                self.ep_guess, self.s, x, self.t, self.T, self.erate
+            ),
+            self.h,
+        )
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
+
+    def test_d_residual_de(self):
+        exact = self.model.ep_jacobian_e(
+            self.ep_guess, self.s, self.h, self.t, self.T, self.erate
+        )
+        numer = utility.batch_differentiate(
+            lambda x: self.model.ep_residual(
+                self.ep_guess, self.s, self.h, self.t, self.T, x
+            ),
+            self.erate,
+        ).unsqueeze(-1)
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
+
+    def test_d_sig(self):
+        x = torch.linspace(-1, 1, 10)
+        exact = self.model.dsig(x)
+        numer = utility.batch_differentiate(lambda x: self.model.sig(x), x)
+
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
+
+    def test_df_ds(self):
+        exact = self.model.df_ds(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(
+            lambda x: self.model.f(x, self.h, self.T), self.s
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
+
+    def test_dmix_fn_ds(self):
+        exact = self.model.dmix_fn_ds(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(
+            lambda x: self.model.mix_fn(x, self.h, self.T), self.s
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol, atol=1.0e-4))
+
+    def test_df_dh(self):
+        exact = self.model.df_dh(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(
+            lambda x: self.model.f(self.s, x, self.T), self.h
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))
+
+    def test_dmix_fn_dh(self):
+        exact = self.model.dmix_fn_dh(self.s, self.h, self.T)
+        numer = utility.batch_differentiate(
+            lambda x: self.model.mix_fn(self.s, x, self.T), self.h
+        )
+
+        self.assertTrue(torch.allclose(exact, numer, rtol=self.rtol))

@@ -8,6 +8,95 @@ import warnings
 import torch
 
 
+def scalar_bisection(fn, a, b, atol=1.0e-6, miter=100):
+    """
+    Solve logically scalar equations with bisection
+
+    Args:
+        fn (function): function returning scalar residual and jacobian
+        a (torch.tensor): lower bound
+        b (torch.tensor): upper bound
+
+    Keyword Args:
+        atol : absolute tolerance for convergence
+        miter (int): max number of iterations
+    """
+    Ra, _ = fn(a)
+    Rb, _ = fn(b)
+
+    if not torch.all((torch.sign(Ra) + torch.sign(Rb)) == 0):
+        raise RuntimeError("Initial values do not bisect in bisection solver")
+
+    c = (a + b) / 2.0
+    Rc, _ = fn(c)
+
+    for _ in range(miter):
+        if torch.all(torch.abs(Rc) < atol):
+            break
+
+        ac = torch.sign(Ra) == torch.sign(Rc)
+        bc = torch.sign(Rb) == torch.sign(Rc)
+        a[ac] = c[ac]
+        b[bc] = c[bc]
+
+        c = (a + b) / 2.0
+        Rc, _ = fn((a + b) / 2.0)
+
+    return c
+
+
+def scalar_newton(fn, x0, atol=1.0e-6, miter=100, throw_on_fail=False):
+    """
+    Solve logically scalar equations with Newton's method
+
+    Args:
+        fn (function): function returning scalar residual and jacobian
+        x0 (torch.tensor): initial guess
+
+    Keyword Args:
+        atol (float): absolute tolerance for convergence
+        miter (int): maximum number of iterations
+    """
+    x = x0
+    R, J = fn(x)
+
+    for _ in range(miter):
+        if torch.all(torch.abs(R) < atol):
+            break
+
+        x = x - R / J
+
+        R, J = fn(x)
+    else:
+        if throw_on_fail:
+            raise RuntimeError("Scalar solve failed")
+        warnings.warn(
+            "Scalar implicit solve did not succeed.  Results may be inaccurate..."
+        )
+
+    return x
+
+
+def scalar_bisection_newton(
+    fn, a, b, atol=1.0e-6, miter=100, biter=10, throw_on_fail=False
+):
+    """
+    Solve logically scalar equations by switching from bisection to Newton's method
+
+    Args:
+        fn (function): function returning scalar residual and jacobian
+        a (torch.tensor): lower bound
+        b (torch.tensor): upper bound
+
+    Keyword Args:
+        atol : absolute tolerance for convergence
+        biter: initial number of bisection iterations
+        miter (int): max number of iterations for Newton's method
+    """
+    x = scalar_bisection(fn, a, b, atol=atol, miter=biter)
+    return scalar_newton(fn, x, atol=atol, miter=miter, throw_on_fail=throw_on_fail)
+
+
 def newton_raphson_bt(
     fn, x0, linsolver="lu", rtol=1e-6, atol=1e-10, miter=100, max_bt=5
 ):

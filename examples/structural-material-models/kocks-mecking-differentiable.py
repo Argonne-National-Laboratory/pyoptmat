@@ -48,7 +48,6 @@ if __name__ == "__main__":
     mu = temperature.PolynomialScaling(
         [-2.60610204e-05, 3.61911162e-02, -4.23765368e01, 8.44212545e04]
     )
-    g0 = torch.tensor(0.771)
     k = torch.tensor(1.38064e-20)
     b = torch.tensor(2.019e-7)
     eps0 = torch.tensor(1.0e6)
@@ -74,23 +73,21 @@ if __name__ == "__main__":
         iso_hardening,
         kin_hardening,
     )
-    
-    n_constant = CP(torch.tensor(15.0))
-    eta_constant = CP(torch.tensor(1.0))
-    ri_flowrule = flowrules.IsoKinViscoplasticity(
-        n_constant, eta_constant, s0, iso_hardening, kin_hardening
+
+    ri_flowrule = flowrules.IsoKinRateIndependentPlasticity(
+        E, s0, iso_hardening, kin_hardening, s=10.0
     )
-    
-    sf = torch.tensor(10.0)
+
+    sf = torch.tensor(50.0)
     flowrule = flowrules.SoftKocksMeckingRegimeFlowRule(
-        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k, sf
+        ri_flowrule, rd_flowrule, A, B, C, mu, b, eps0, k, sf
     )
 
     model = models.InelasticModel(E, flowrule)
-    integrator = models.ModelIntegrator(model)
+    integrator = models.ModelIntegrator(model, block_size=50, linesearch=True)
 
     ngrid = 10
-    nsteps = 200
+    nsteps = 2000
     elimits = torch.ones(ngrid) * 0.05
 
     # Constant temperature, varying flow rate
@@ -116,9 +113,18 @@ if __name__ == "__main__":
     )
 
     results_temp = integrator.solve_strain(times, strains, temperatures)
+
+    plt.figure()
+    plt.plot(strains, results_temp[:, :, 0], label=["%i K" % T for T in temps])
+    plt.xlabel("Strain (mm/mm)")
+    plt.ylabel("Stress (MPa)")
+    plt.legend(loc="best")
+    plt.show()
+
     yield_temp = calculate_yield(strains, results_temp[:, :, 0])
     norm_temp = yield_temp / mu.value(temps)
 
+    plt.figure()
     plt.semilogy(
         g_rate.numpy(),
         norm_rate.numpy(),
@@ -136,21 +142,39 @@ if __name__ == "__main__":
         label="Varying temperature",
     )
 
-    grange = np.linspace(0.4,1.4,50)
+    grange = np.linspace(0.4, 1.4, 50)
+    plt.semilogy(grange, np.exp(C) * np.ones_like(grange), color="k", label=None)
     plt.semilogy(
-            grange,
-            np.exp(C)*np.ones_like(grange),
-            color = 'k',
-            label = None)
-    plt.semilogy(
-            grange,
-            np.exp(B.numpy()) * np.exp(A.numpy()*grange),
-            color = 'k',
-            label = None)
+        grange, np.exp(B.numpy()) * np.exp(A.numpy() * grange), color="k", label=None
+    )
 
     plt.axvline(x=g0, ls="--", color="k")
     plt.legend(loc="best")
     plt.xlabel("Normalized activation energy")
     plt.ylabel("Normalized flow stress")
     plt.tight_layout()
+    plt.show()
+
+    plt.figure()
+    plt.plot(temperatures[0], yield_temp, "kx")
+    plt.xlabel("Temperature (K)")
+    plt.ylabel("Yield stress (MPa)")
+    plt.show()
+
+    nstress = 5
+    times, stresses, temperatures, cycles = experiments.make_creep_tests(
+        torch.ones_like(temps) * 150.0,
+        temps,
+        torch.ones_like(temps),
+        torch.ones_like(temps) * 1000.0,
+        50,
+        150,
+    )
+
+    creep_strains = integrator.solve_stress(times, stresses, temperatures)[:, :, 0]
+    plt.figure()
+    plt.semilogy(times, creep_strains, label=["%i K" % T for T in temps])
+    plt.xlabel("Time (s)")
+    plt.ylabel("Creep strain (mm/mm)")
+    plt.legend(loc="best")
     plt.show()

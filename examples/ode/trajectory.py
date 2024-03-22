@@ -63,6 +63,7 @@ eps_act = 0.05
 # Prior for the noise
 eps_prior = 0.1  # Just measure variance in data...
 
+
 def model_act(times):
     """
     times: ntime x nbatch
@@ -77,7 +78,7 @@ def model_act(times):
             torch.stack(
                 (
                     v * torch.cos(a) * times,
-                    v * torch.sin(a) * times - 0.5 * g * times ** 2.0,
+                    v * torch.sin(a) * times - 0.5 * g * times**2.0,
                 )
             ).T,
             eps_act,
@@ -88,7 +89,7 @@ def model_act(times):
 
 
 class Integrator(pyro.nn.PyroModule):
-    def __init__(self, eqn, y0, extra_params=[], block_size = 1):
+    def __init__(self, eqn, y0, extra_params=[], block_size=1):
         super().__init__()
         self.eqn = eqn
         self.y0 = y0
@@ -100,7 +101,7 @@ class Integrator(pyro.nn.PyroModule):
             self.eqn,
             self.y0,
             times,
-            block_size = self.block_size,
+            block_size=self.block_size,
             extra_params=self.extra_params,
         )
 
@@ -274,8 +275,9 @@ if __name__ == "__main__":
     pyro.clear_param_store()
 
     def maker(v, a, **kwargs):
-        return Integrator(ODE(v, a), torch.zeros(nsamples, 2),
-                block_size = time_block, **kwargs)
+        return Integrator(
+            ODE(v, a), torch.zeros(nsamples, 2), block_size=time_block, **kwargs
+        )
 
     # Setup the model
     model = Model(

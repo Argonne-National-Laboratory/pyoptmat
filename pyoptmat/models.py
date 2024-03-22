@@ -88,8 +88,8 @@ class InelasticModel(nn.Module):
           d_y_dot_d_erate:(nbatch,1+nhist) Jacobian wrt the strain rate
           d_y_dot_d_T:    (nbatch,1+nhist) derivative wrt temperature (unused)
         """
-        stress = y[..., 0].clone()
-        h = y[..., 1:].clone()
+        stress = y[..., 0]
+        h = y[..., 1:]
 
         frate, dfrate = self.flowrule.flow_rate(stress, h, t, T, erate)
         hrate, dhrate = self.flowrule.history_rate(stress, h, t, T, erate)
@@ -283,16 +283,27 @@ class ModelIntegrator(nn.Module):
 
     """
 
-    def __init__(self, model, *args, use_adjoint=True, **kwargs):
+    def __init__(
+        self,
+        model,
+        *args,
+        use_adjoint=True,
+        bisect_first=False,
+        throw_on_scalar_fail=False,
+        **kwargs
+    ):
         super().__init__(*args)
         self.model = model
         self.use_adjoint = use_adjoint
+        self.throw_on_scalar_fail = throw_on_scalar_fail
         self.kwargs_for_integration = kwargs
 
         if self.use_adjoint:
             self.imethod = ode.odeint_adjoint
         else:
             self.imethod = ode.odeint
+
+        self.bisect_first = bisect_first
 
     def solve_both(self, times, temperatures, idata, control):
         """
@@ -313,20 +324,17 @@ class ModelIntegrator(nn.Module):
         # Likely if this happens dt = 0
         rates[torch.isnan(rates)] = 0
 
-        rate_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(times, rates)
-        base_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(times, idata)
-        temperature_interpolator = utility.ArbitraryBatchTimeSeriesInterpolator(
-            times, temperatures
-        )
-
         init = torch.zeros(times.shape[1], self.model.nhist, device=idata.device)
 
         bmodel = BothBasedModel(
             self.model,
-            rate_interpolator,
-            base_interpolator,
-            temperature_interpolator,
+            times,
+            rates,
+            idata,
+            temperatures,
             control,
+            bisect_first=self.bisect_first,
+            throw_on_scalar_fail=self.throw_on_scalar_fail,
         )
 
         return self.imethod(bmodel, init, times, **self.kwargs_for_integration)
@@ -407,6 +415,8 @@ class ModelIntegrator(nn.Module):
             stress_rate_interpolator,
             stress_interpolator,
             temperature_interpolator,
+            bisect_first=self.bisect_first,
+            throw_on_scalar_fail=self.throw_on_scalar_fail,
         )
 
         return self.imethod(smodel, init, times, **self.kwargs_for_integration)
@@ -435,17 +445,48 @@ class BothBasedModel(nn.Module):
       indices:  split into strain and stress control
     """
 
-    def __init__(self, model, rate_fn, base_fn, T_fn, control, *args, **kwargs):
+    def __init__(
+        self,
+        model,
+        times,
+        rates,
+        base,
+        temps,
+        control,
+        *args,
+        bisect_first=False,
+        throw_on_scalar_fail=False,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.model = model
-        self.rate_fn = rate_fn
-        self.base_fn = base_fn
-        self.T_fn = T_fn
         self.control = control
 
-        self.emodel = StrainBasedModel(self.model, self.rate_fn, self.T_fn)
+        self.econtrol = self.control == 0
+        self.scontrol = self.control == 1
+
+        self.emodel = StrainBasedModel(
+            self.model,
+            utility.ArbitraryBatchTimeSeriesInterpolator(
+                times[..., self.econtrol], rates[..., self.econtrol]
+            ),
+            utility.ArbitraryBatchTimeSeriesInterpolator(
+                times[..., self.econtrol], temps[..., self.econtrol]
+            ),
+        )
         self.smodel = StressBasedModel(
-            self.model, self.rate_fn, self.base_fn, self.T_fn
+            self.model,
+            utility.ArbitraryBatchTimeSeriesInterpolator(
+                times[..., self.scontrol], rates[..., self.scontrol]
+            ),
+            utility.ArbitraryBatchTimeSeriesInterpolator(
+                times[..., self.scontrol], base[..., self.scontrol]
+            ),
+            utility.ArbitraryBatchTimeSeriesInterpolator(
+                times[..., self.scontrol], temps[..., self.scontrol]
+            ),
+            bisect_first=bisect_first,
+            throw_on_scalar_fail=throw_on_scalar_fail,
         )
 
     def forward(self, t, y):
@@ -457,20 +498,25 @@ class BothBasedModel(nn.Module):
             t:  input times
             y:  input state
         """
-        strain_rates, strain_jacs = self.emodel(t, y)
-        stress_rates, stress_jacs = self.smodel(t, y)
+        n = (y.shape[-1],)
+        base = y.shape[:-1]
 
-        actual_rates = torch.zeros_like(strain_rates)
+        actual_rates = torch.zeros(base + n, device=t.device)
+        actual_jacs = torch.zeros(base + n + n, device=t.device)
 
-        e_control = self.control == 0
-        s_control = self.control == 1
+        if torch.any(self.econtrol):
+            strain_rates, strain_jacs = self.emodel(
+                t[..., self.econtrol], y[..., self.econtrol, :]
+            )
+            actual_rates[..., self.econtrol, :] = strain_rates
+            actual_jacs[..., self.econtrol, :, :] = strain_jacs
 
-        actual_rates[..., e_control, :] = strain_rates[..., e_control, :]
-        actual_rates[..., s_control, :] = stress_rates[..., s_control, :]
-
-        actual_jacs = torch.zeros_like(strain_jacs)
-        actual_jacs[..., e_control, :, :] = strain_jacs[..., e_control, :, :]
-        actual_jacs[..., s_control, :, :] = stress_jacs[..., s_control, :, :]
+        if torch.any(self.scontrol):
+            stress_rates, stress_jacs = self.smodel(
+                t[..., self.scontrol], y[..., self.scontrol, :]
+            )
+            actual_rates[..., self.scontrol, :] = stress_rates
+            actual_jacs[..., self.scontrol, :, :] = stress_jacs
 
         return actual_rates, actual_jacs
 
@@ -514,12 +560,30 @@ class StressBasedModel(nn.Module):
       T_fn:         T(t)
     """
 
-    def __init__(self, model, srate_fn, stress_fn, T_fn, *args, **kwargs):
+    def __init__(
+        self,
+        model,
+        srate_fn,
+        stress_fn,
+        T_fn,
+        *args,
+        min_erate=-1e2,
+        max_erate=1e3,
+        guess_erate=1.0e-3,
+        bisect_first=False,
+        throw_on_scalar_fail=False,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.model = model
         self.srate_fn = srate_fn
         self.stress_fn = stress_fn
         self.T_fn = T_fn
+        self.min_erate = min_erate
+        self.max_erate = max_erate
+        self.bisect_first = bisect_first
+        self.guess_erate = guess_erate
+        self.throw_on_scalar_fail = throw_on_scalar_fail
 
     def forward(self, t, y):
         """
@@ -533,28 +597,53 @@ class StressBasedModel(nn.Module):
         cs = self.stress_fn(t)
         cT = self.T_fn(t)
 
-        erate_guess = torch.zeros_like(y[..., 0])[..., None]
-
         def RJ(erate):
-            yp = y.clone()
-            yp[..., 0] = cs
-            ydot, _, Je, _ = self.model(t, yp, erate[..., 0], cT)
+            ydot, _, Je, _ = self.model(
+                t, torch.cat([cs.unsqueeze(-1), y[..., 1:]], dim=-1), erate, cT
+            )
 
             R = ydot[..., 0] - csr
             J = Je[..., 0]
 
-            return R[..., None], J[..., None, None]
+            return R, J
 
-        erate, _ = solvers.newton_raphson(RJ, erate_guess)
-        yp = y.clone()
-        yp[..., 0] = cs
-        ydot, J, Je, _ = self.model(t, yp, erate[..., 0], cT)
+        # Doing the detach here actually makes the parameter gradients wrong...
+        if self.bisect_first:
+            erate = solvers.scalar_bisection_newton(
+                RJ,
+                torch.ones_like(y[..., 0]) * self.min_erate,
+                torch.ones_like(y[..., 0]) * self.max_erate,
+                throw_on_fail=self.throw_on_scalar_fail,
+            )
+        else:
+            erate = solvers.scalar_newton(
+                RJ,
+                torch.sign(csr) * self.guess_erate,
+                throw_on_fail=self.throw_on_scalar_fail,
+            )
 
-        # Rescale the jacobian
-        J[..., 0, :] = -J[..., 0, :] / Je[..., 0][..., None]
-        J[..., :, 0] = 0
+        ydot, J, Je, _ = self.model(
+            t, torch.cat([cs.unsqueeze(-1), y[..., 1:]], dim=-1), erate, cT
+        )
 
-        # Insert the strain rate
-        ydot[..., 0] = erate[..., 0]
+        # There is an annoying extra term that is the derivative of the
+        # history rate with respect to the solved for strain rate times
+        # the derivative of the strain rate with respect to history
+        t1 = Je[..., 1:].unsqueeze(-1)
+        t2 = utility.mbmm(1.0 / Je[..., :1].unsqueeze(-1), J[..., 0, 1:].unsqueeze(-2))
+        t3 = utility.mbmm(t1, t2)
 
-        return ydot, J
+        # Corrected jacobian
+        row1 = torch.cat(
+            [
+                torch.zeros_like(J[..., 0, 0]).unsqueeze(-1),
+                -J[..., 0, 1:] / Je[..., 0][..., None],
+            ],
+            dim=-1,
+        ).unsqueeze(-2)
+        rest = torch.cat(
+            [torch.zeros_like(J[..., 1:, 0]).unsqueeze(-1), J[..., 1:, 1:] - t3], dim=-1
+        )
+        jac = torch.cat([row1, rest], dim=-2)
+
+        return torch.cat([erate.unsqueeze(-1), ydot[..., 1:]], dim=-1), jac

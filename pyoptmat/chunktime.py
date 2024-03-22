@@ -20,7 +20,14 @@ from pyoptmat.utility import mbmm
 
 
 def newton_raphson_chunk(
-    fn, x0, solver, rtol=1e-6, atol=1e-10, miter=100, throw_on_fail=False
+    fn,
+    x0,
+    solver,
+    rtol=1e-6,
+    atol=1e-10,
+    miter=100,
+    throw_on_fail=False,
+    linesearch=False,
 ):
     """
     Solve a nonlinear system with Newton's method with a tensor for a
@@ -36,6 +43,7 @@ def newton_raphson_chunk(
       atol (float):         nonlinear absolute tolerance
       miter (int):          maximum number of nonlinear iterations
       throw_on_fail (bool): throw exception if solve fails
+      linesearch (bool):    if true use backtracking linesearch
 
     Returns:
       torch.tensor:         solution to system of equations
@@ -47,10 +55,16 @@ def newton_raphson_chunk(
     nR0 = nR
     i = 0
 
-    while (i < miter) and torch.any(nR > atol) and torch.any(nR / nR0 > rtol):
-        x -= solver.solve(J, R)
-        R, J = fn(x)
-        nR = torch.norm(R, dim=-1)
+    while (i < miter) and torch.any(
+        torch.logical_not(torch.logical_or(nR <= atol, nR / nR0 <= rtol))
+    ):
+        dx = solver.solve(J, R)
+        if linesearch:
+            x, R, J, nR = chunk_linesearch(x, dx, fn, R, rtol, atol)
+        else:
+            x -= dx
+            R, J = fn(x)
+            nR = torch.norm(R, dim=-1)
         i += 1
 
     if i == miter:
@@ -59,6 +73,48 @@ def newton_raphson_chunk(
         warnings.warn("Implicit solve did not succeed.  Results may be inaccurate...")
 
     return x
+
+
+def chunk_linesearch(
+    x, dx, fn, R0, overall_rtol, overall_atol, sigma=2.0, c=0.0, miter=10
+):
+    """
+    Backtracking linesearch for the chunk NR algorithm.
+
+    Terminates when the Armijo criteria is reached, or you exceed
+    some maximum iterations, or when you would meet the
+    convergence requirements with the current alpha
+
+    Args:
+        x (torch.tensor): initial point
+        dx (torch.tensor): direction
+        R0 (torch.tensor): initial residual
+        overall_rtol (scalar): Newton relative tolerance
+        overall_atol (scalar): Newton absolute tolerance
+
+    Keyword Args:
+        sigma (scalar): decrease factor, i.e. alpha /= sigma
+        c (scalar): stopping criteria
+        miter (scalar): maximum iterations
+    """
+    alpha = torch.ones(x.shape[:-1], device=x.device)
+    nR0 = torch.norm(R0, dim=-1)
+    i = 0
+    while True:
+        R, J = fn(x - dx * alpha.unsqueeze(-1))
+        nR = torch.norm(R, dim=-1) ** 2.0
+        crit = nR0**2.0 + 2.0 * c * alpha * torch.einsum("...i,...i", R0, dx)
+        i += 1
+        if (
+            torch.all(nR < crit)
+            or i >= miter
+            or torch.all(torch.sqrt(nR) < overall_atol)
+            or torch.all(torch.sqrt(nR) / nR0 < overall_rtol)
+        ):
+            break
+        alpha[nR >= crit] /= sigma
+
+    return x - dx * alpha.unsqueeze(-1), R, J, torch.norm(R, dim=-1)
 
 
 class BidiagonalOperator(torch.nn.Module):
