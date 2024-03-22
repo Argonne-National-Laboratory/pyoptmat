@@ -1,4 +1,4 @@
-# pylint: disable=abstract-method, useless-super-delegation, line-too-long, duplicate-code, too-many-lines
+# pylint: disable=abstract-method, useless-super-delegation, line-too-long, duplicate-code, too-many-lines, too-many-arguments, too-many-public-methods
 
 """
   Module containing inelastic flow rules.  These provide the rate of the
@@ -514,6 +514,9 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         return (torch.tanh(self.sf * (self.g(T, e) - self.g0())) + 1.0) / 2.0
 
     def g0(self):
+        """
+        The intercept value
+        """
         return (self.C_scale.scale(self.C) - self.B_scale.scale(self.B)) / self.A_scale(
             self.A
         )

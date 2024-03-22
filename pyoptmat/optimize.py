@@ -1,3 +1,5 @@
+# pylint: disable=too-many-instance-attributes, too-many-arguments, not-context-manager
+
 """
   Objects and helper functions to help with deterministic model calibration
   and statistical inference.

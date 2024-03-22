@@ -30,7 +30,7 @@ def scalar_bisection(fn, a, b, atol=1.0e-6, miter=100):
     c = (a + b) / 2.0
     Rc, _ = fn(c)
 
-    for i in range(miter):
+    for _ in range(miter):
         if torch.all(torch.abs(Rc) < atol):
             break
 
@@ -60,7 +60,7 @@ def scalar_newton(fn, x0, atol=1.0e-6, miter=100, throw_on_fail=False):
     x = x0
     R, J = fn(x)
 
-    for i in range(miter):
+    for _ in range(miter):
         if torch.all(torch.abs(R) < atol):
             break
 

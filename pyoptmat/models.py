@@ -453,9 +453,9 @@ class BothBasedModel(nn.Module):
         base,
         temps,
         control,
+        *args,
         bisect_first=False,
         throw_on_scalar_fail=False,
-        *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
@@ -566,12 +566,12 @@ class StressBasedModel(nn.Module):
         srate_fn,
         stress_fn,
         T_fn,
+        *args,
         min_erate=-1e2,
         max_erate=1e3,
         guess_erate=1.0e-3,
         bisect_first=False,
         throw_on_scalar_fail=False,
-        *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
@@ -626,8 +626,9 @@ class StressBasedModel(nn.Module):
             t, torch.cat([cs.unsqueeze(-1), y[..., 1:]], dim=-1), erate, cT
         )
 
-        # There is an annoying extra term that is the derivative of the history rate with respect to the
-        # solved for strain rate times the derivative of the strain rate with respect to history
+        # There is an annoying extra term that is the derivative of the
+        # history rate with respect to the solved for strain rate times
+        # the derivative of the strain rate with respect to history
         t1 = Je[..., 1:].unsqueeze(-1)
         t2 = utility.mbmm(1.0 / Je[..., :1].unsqueeze(-1), J[..., 0, 1:].unsqueeze(-2))
         t3 = utility.mbmm(t1, t2)
