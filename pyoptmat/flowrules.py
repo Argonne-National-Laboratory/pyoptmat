@@ -517,7 +517,7 @@ class SoftKocksMeckingRegimeFlowRule(FlowRule):
         """
         The intercept value
         """
-        return (self.C_scale.scale(self.C) - self.B_scale.scale(self.B)) / self.A_scale(
+        return (self.C_scale(self.C) - self.B_scale(self.B)) / self.A_scale(
             self.A
         )
 

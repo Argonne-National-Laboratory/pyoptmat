@@ -407,13 +407,18 @@ class TestSoftKocksMeckingRegimeFlowRule(
         self.eps0 = 1.0
         self.k = 1.0
 
-        self.g0 = 1.5
+        self.A = torch.tensor(-3.35)
+        self.B = torch.tensor(-3.23)
+        self.C = torch.tensor(-5.82)
+
         self.sf = 10.0
 
         self.model = flowrules.SoftKocksMeckingRegimeFlowRule(
             self.model1,
             self.model2,
-            self.g0,
+            self.A,
+            self.B,
+            self.C,
             self.mu,
             self.b,
             self.eps0,
@@ -486,13 +491,18 @@ class TestSoftKocksMeckingRegimeFlowRuleComplex(
         self.eps0 = 1.0
         self.k = 1.0
 
-        self.g0 = 1.5
+        self.A = torch.tensor(-3.35)
+        self.B = torch.tensor(-3.23)
+        self.C = torch.tensor(-5.82)
+
         self.sf = 10.0
 
         self.model = flowrules.SoftKocksMeckingRegimeFlowRule(
             self.model1,
             self.model2,
-            self.g0,
+            self.A,
+            self.B,
+            self.C,
             self.mu,
             self.b,
             self.eps0,
