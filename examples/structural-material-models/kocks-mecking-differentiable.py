@@ -48,7 +48,6 @@ if __name__ == "__main__":
     mu = temperature.PolynomialScaling(
         [-2.60610204e-05, 3.61911162e-02, -4.23765368e01, 8.44212545e04]
     )
-    g0 = torch.tensor(0.771)
     k = torch.tensor(1.38064e-20)
     b = torch.tensor(2.019e-7)
     eps0 = torch.tensor(1.0e6)
@@ -81,7 +80,7 @@ if __name__ == "__main__":
 
     sf = torch.tensor(50.0)
     flowrule = flowrules.SoftKocksMeckingRegimeFlowRule(
-        ri_flowrule, rd_flowrule, g0, mu, b, eps0, k, sf
+        ri_flowrule, rd_flowrule, A, B, C, mu, b, eps0, k, sf
     )
 
     model = models.InelasticModel(E, flowrule)

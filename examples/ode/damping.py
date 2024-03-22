@@ -35,14 +35,11 @@ import sys
 sys.path.append("../..")
 from pyoptmat import ode, utility, neuralode
 
-if torch.cuda.is_available():
-    dev = "cuda:0"
-else:
-    dev = "cpu"
+dev = "cpu"
 device = torch.device(dev)
 
 # I'm assuming single precision will be fine for this but for now use doubles
-torch.set_default_tensor_type(torch.DoubleTensor)
+torch.set_default_dtype(torch.float64)
 
 
 class MassDamperSpring(torch.nn.Module):
